@@ -418,7 +418,6 @@ test_that("marginalized blocks keep metadata but omit latent mean nodes", {
 
 test_that("formula syntax ending with a marginalized block ends with a complete line", {
 
-  skip_if_not_installed("runjags")
 
   # A marginalized diagonal block emits only its SD assignments, which carry no
   # newline of their own; here they are the last lines of the formula syntax.
@@ -819,18 +818,17 @@ test_that("bridge formula reconstruction ignores all-marginalized blocks in the 
 
 test_that("JAGS_extend preserves marginalized random-effect metadata", {
 
-  skip_if_not_installed("runjags")
 
   result <- .re_compile_result(
     random_effects_compile(marginalized = "estimate")
   )
   fit <- structure(
     list(
-      mcmc = coda::mcmc.list(coda::mcmc(matrix(0, 2, 1, dimnames = list(NULL, "x")))),
-      summary.pars = list(mutate = NULL)
+      mcmc = coda::mcmc.list(coda::mcmc(matrix(0, 2, 1, dimnames = list(NULL, "x"))))
     ),
-    class = c("runjags", "BayesTools_fit")
+    class = "BayesTools_fit"
   )
+  fit <- add_test_chain_states(fit)
   attr(fit, "prior_list") <- list()
   attr(fit, "model_syntax") <- "model{}"
   attr(fit, "required_packages") <- character()

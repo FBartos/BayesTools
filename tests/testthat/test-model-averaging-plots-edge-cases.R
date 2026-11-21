@@ -517,8 +517,7 @@ test_that("PET and PEESE plots rebuild scalar atoms from bias branches", {
     PET = c(rep(0, 10), seq(.1, 1, length.out = 10), rep(0, 10)),
     PEESE = c(rep(0, 20), seq(.2, 2, length.out = 10))
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, "bias")
@@ -563,8 +562,7 @@ test_that("conditional bias plots restore omitted structural scalar values", {
     PET = c(rep(0, 6), seq(.1, 1, length.out = 6), rep(0, 6)),
     PEESE = c(rep(0, 12), seq(.2, 2, length.out = 6))
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
   for(condition in list(NULL, "PETPEESE", "PET", "omega")){
@@ -603,8 +601,7 @@ test_that("conditional bias plots restore omitted structural scalar values", {
   if(!is.null(indicator)){
     posterior <- cbind(posterior, mu_x_indicator = indicator)
   }
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- list(mu_intercept = prior("point", list(0)), mu_x = slope_prior)
   attr(fit, "formula_scale") <- list(mu = formula_scale_for_test(~ x, list(x = list(mean = 5, sd = 2))))
   fit <- attach_test_parameter_map(fit)
@@ -1098,8 +1095,7 @@ test_that("plot_models rejects a parameter that the samples and the inference do
 test_that("individual omega plots validate the figure selector", {
 
   make_fit <- function(values, priors){
-    fit <- coda::mcmc(values)
-    class(fit) <- c("mcmc", "BayesTools_fit")
+    fit <- test_fit_from_chains(coda::mcmc(values))
     attr(fit, "prior_list") <- priors
     fit <- BayesTools:::.bt_attach_parameter_map(fit)
     fit <- BayesTools:::.bt_attach_draw_geometry(fit)
@@ -1606,8 +1602,7 @@ test_that("conditional posterior prior overlay uses conditioned spike-and-slab s
     theta           = c(rep(0, 50), seq(0.5, 1.5, length.out = 50)),
     theta_indicator = c(rep(0, 50), rep(1, 50))
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -1659,8 +1654,7 @@ test_that("posterior prior overlays use the spike-and-slab inclusion probability
     theta           = c(rep(0, 60), seq(-1, 1, length.out = 40)),
     theta_indicator = c(rep(0, 60), rep(1, 40))
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -1708,8 +1702,7 @@ test_that("conditional posterior prior overlays do not scale raw coefficients by
     gamma_indicator = gamma_included,
     sigma           = seq(.5, 2, length.out = 100)
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -1752,8 +1745,7 @@ test_that("conditional posterior prior overlays propagate context failures", {
     gamma           = gamma_included * seq(-1, 1, length.out = 100),
     gamma_indicator = gamma_included
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, parameters = c("theta", "gamma"), conditional = "gamma")
@@ -1821,8 +1813,7 @@ test_that("conditional PET/PEESE prior overlays do not reintroduce excluded bias
     PET            = c(rep(0, 20), seq(0.1, 1.0, length.out = 20), rep(0, 20)),
     PEESE          = c(rep(0, 20), rep(0, 20), seq(0.2, 1.2, length.out = 20))
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -1893,8 +1884,7 @@ test_that("full PET-PEESE and weightfunction prior overlays follow the bias cond
     "omega[2]"     = ifelse(indicator == 2, seq(.1, .9, length.out = 60), 1),
     PET            = ifelse(indicator == 3, seq(.1, 1.5, length.out = 60), 0)
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -1964,8 +1954,7 @@ test_that("full PET-PEESE prior overlays keep the mu mixture weights", {
     bias_indicator = bias_indicator,
     PET            = ifelse(bias_indicator == 2, seq(.1, 1.5, length.out = 60), 0)
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -2022,8 +2011,7 @@ test_that("full PET-PEESE prior overlays follow a condition on mu", {
     bias_indicator = bias_indicator,
     PET            = ifelse(bias_indicator == 2, seq(.1, 1.5, length.out = 120), 0)
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -2124,8 +2112,7 @@ test_that("weightfunction and individual bias prior overlays follow OR condition
     PET            = ifelse(bias_indicator == 3, seq(.1, 1.5, length.out = 240), 0),
     PEESE          = ifelse(bias_indicator == 4, seq(.1, 1.5, length.out = 240), 0)
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -2234,8 +2221,7 @@ test_that("OR conditions keep the bias columns of every branch in the event", {
     "omega[2]"     = ifelse(bias_indicator == 2, seq(.05, .95, length.out = 180), 1),
     PET            = ifelse(bias_indicator == 3, seq(.1, 1.5, length.out = 180), 0)
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
   omega_columns <- c("omega[0,0.05]", "omega[0.05,1]")
@@ -3372,8 +3358,7 @@ test_that("omega plot helpers use selection components from composed bias priors
     byrow = TRUE
   )
   colnames(model) <- c("omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
-  model <- coda::mcmc(model)
-  class(model) <- c("mcmc", "BayesTools_fit")
+  model <- test_fit_from_chains(coda::mcmc(model))
   attr(model, "prior_list") <- list(bias = bias)
   model <- attach_test_parameter_map(model)
 
@@ -3418,8 +3403,7 @@ test_that("omega plot helpers preserve composed selection branches in bias mixtu
     byrow = TRUE
   )
   colnames(model) <- c("bias_indicator", "omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
-  model <- coda::mcmc(model)
-  class(model) <- c("mcmc", "BayesTools_fit")
+  model <- test_fit_from_chains(coda::mcmc(model))
   attr(model, "prior_list") <- list(bias = bias)
   model <- attach_test_parameter_map(model)
 
@@ -4415,8 +4399,7 @@ test_that("factor posterior plot data aggregates duplicate declared point masses
   set.seed(515)
   posterior <- matrix(rnorm(n_posterior * length(posterior_columns)), nrow = n_posterior)
   colnames(posterior) <- posterior_columns
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
@@ -4463,8 +4446,7 @@ test_that("factor posterior plot data aggregates duplicate declared point masses
   set.seed(616)
   posterior <- matrix(rnorm(n_posterior * length(posterior_columns)), nrow = n_posterior)
   colnames(posterior) <- posterior_columns
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
@@ -4759,7 +4741,7 @@ test_that("ordered factor posterior plots show level effects by level label", {
     samples <- cbind(samples,mu_g_ordered_total=total,gamma)
     fit <- structure(
       list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = 200L),
-      class = c("runjags", "BayesTools_fit", "list")
+      class = "BayesTools_fit"
     )
     attr(fit, "prior_list") <- result$prior_list
     attr(fit, "formula_design") <- list(mu = result$formula_design)
@@ -4815,7 +4797,7 @@ test_that("base posterior legends preserve level colors with grey prior overlays
       values <- cbind(mu_intercept = seq(-1, 1, length.out = 120L),
         matrix(rnorm(120L * length(columns)), 120L, dimnames = list(NULL, columns)))
       fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(values)), sample = 120L),
-        class = c("runjags", "BayesTools_fit", "list"))
+        class = "BayesTools_fit")
       attr(fit, "prior_list") <- info$prior_list
       attr(fit, "formula_design") <- list(mu = info$formula_design)
       samples <- as_mixed_posteriors(attach_test_parameter_map(fit), "mu_g", n_prior_samples = 128L)
@@ -4848,8 +4830,7 @@ test_that("bias mixtures declare the points of their none and fixed weight-funct
     PET = c(rep(0, 24), seq(.1, 1, length.out = 8), rep(0, 8)),
     PEESE = c(rep(0, 32), seq(.2, 2, length.out = 8))
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -4909,8 +4890,7 @@ test_that("bias mixtures declare the points of their none and fixed weight-funct
     PET = c(rep(0, 4), .1, .2, .3, rep(0, 3)),
     PEESE = c(rep(0, 7), .1, .2, .3)
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- list(bias = prior_mixture(list(
     prior_none(), prior_PET("normal", list(0, 1)), prior_PEESE("normal", list(0, 1))
   )))
@@ -4937,8 +4917,7 @@ test_that("restored PET and PEESE columns carry their quantities and support", {
     PET = c(rep(0, 6), seq(.1, 1, length.out = 6), rep(0, 6)),
     PEESE = c(rep(0, 12), seq(.2, 2, length.out = 6))
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -4971,8 +4950,7 @@ test_that("restored PET and PEESE columns carry their quantities and support", {
 
 test_that("the unknown-atoms refusal of posterior plots asks for a refit by class", {
 
-  fit <- coda::mcmc(cbind(m = stats::qnorm(stats::ppoints(50))))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(cbind(m = stats::qnorm(stats::ppoints(50)))))
   attr(fit, "prior_list") <- list(m = prior("normal", list(0, 1)))
   fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, "m")
@@ -5043,8 +5021,7 @@ test_that("plot_models orders the endpoints of intervals mapped by a decreasing 
 test_that("individual omega plots honour density_method and transformations", {
 
   make_fit <- function(values, priors){
-    fit <- coda::mcmc(values)
-    class(fit) <- c("mcmc", "BayesTools_fit")
+    fit <- test_fit_from_chains(coda::mcmc(values))
     attr(fit, "prior_list") <- priors
     fit <- BayesTools:::.bt_attach_parameter_map(fit)
     fit <- BayesTools:::.bt_attach_draw_geometry(fit)
@@ -5133,8 +5110,7 @@ test_that("the y range of PET-PEESE posterior plots with priors collapses only b
     draws <- 300L
     z <- stats::qnorm((seq_len(draws) - .5) / draws)
     posterior <- cbind(mu = mu_mean + mu_sd * z, PET = abs(pet_scale * rev(z)))
-    fit <- coda::mcmc(posterior)
-    class(fit) <- c("mcmc", "BayesTools_fit")
+    fit <- test_fit_from_chains(coda::mcmc(posterior))
     attr(fit, "prior_list") <- list(
       mu  = prior("normal", list(mu_mean, mu_sd)),
       PET = prior_PET("normal", list(0, pet_scale))

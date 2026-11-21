@@ -9,14 +9,14 @@ skip_if_not_test_profile("unit")
 #   .extract_posterior_samples and .remove_auxiliary_parameters.
 #
 # DEPENDENCIES:
-#   - rjags, runjags, coda: For JAGS model handling
+#   - rjags, coda: For JAGS model handling
 #
 # SKIP CONDITIONS:
-#   - skip_if_not_installed("rjags"), skip_if_not_installed("runjags")
+#   - skip_if_not_installed("rjags")
 #   - Note: Creates mock objects, does not need pre-fitted models
 #
 # MODELS/FIXTURES:
-#   - Creates mock runjags objects for testing
+#   - Creates mock BayesTools fits for testing
 #
 # TAGS: @evaluation, @JAGS, @posterior-extraction
 # ============================================================================ #
@@ -37,13 +37,9 @@ skip_if_not_test_profile("unit")
 test_that(".extract_posterior_samples extracts samples correctly", {
 
   skip_if_not_installed("rjags")
-  skip_if_not_installed("runjags")
   
-  # Load runjags to ensure S3 methods are registered
-  suppressPackageStartupMessages(library(runjags))
 
-  # Create a proper runjags object structure for testing
-  # The runjags package has an as.mcmc method that handles mcmc.list objects
+  # Create a proper BayesTools fit structure for testing
   set.seed(123)
   mcmc1 <- coda::mcmc(matrix(rnorm(100), ncol = 1, dimnames = list(NULL, "mu")),
                       start = 1, end = 100, thin = 1)
@@ -51,14 +47,14 @@ test_that(".extract_posterior_samples extracts samples correctly", {
                       start = 1, end = 100, thin = 1)
   mcmc_list <- coda::mcmc.list(mcmc1, mcmc2)
   
-  # Create a minimal runjags object
+  # Create a minimal BayesTools fit
   fit <- structure(
     list(mcmc = mcmc_list),
-    class = c("runjags", "list")
+    class = "BayesTools_fit"
   )
 
   # Test matrix extraction (as_list = FALSE)
-  # This calls coda::as.mcmc on the runjags object which returns an mcmc object
+  # This calls coda::as.mcmc on the BayesTools fit which returns an mcmc object
   samples_matrix <- BayesTools:::.extract_posterior_samples(fit, as_list = FALSE)
   # mcmc objects inherit from matrix
   expect_true(inherits(samples_matrix, "mcmc"))
@@ -543,7 +539,7 @@ test_that("treatment interactions with ordered factors label increments as coeff
 
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = 20L),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -769,7 +765,6 @@ test_that("prior_factor_levels() sets the factor metadata of formula factor term
 
 test_that("factor priors without their factor levels stop instead of being counted", {
 
-  skip_if_not_installed("runjags")
   message <- paste0(
     "The factor prior of 'p1' has no complete factor-level metadata. Set its ",
     "levels with 'prior_factor_levels()', or specify the factor in a formula."
@@ -1210,8 +1205,7 @@ test_that("plain factor priors are canonicalized before mixed posterior transfor
 
   posterior <- matrix(seq_len(20), nrow = 10, ncol = 2)
   colnames(posterior) <- paste0("p1[", 1:2, "]")
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- list(p1 = factor_prior)
   fit <- attach_test_parameter_map(fit)
 
@@ -1268,8 +1262,7 @@ test_that("as_mixed_posteriors propagates multi-factor contrast metadata", {
 
   posterior <- matrix(seq_len(20), nrow = 10, ncol = 2)
   colnames(posterior) <- paste0("mu_a__xXx__b[", 1:2, "]")
-  fit <- coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list)))
   attr(fit, "prior_list") <- formula_result$prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -1332,8 +1325,7 @@ test_that(".filter_parameters keeps point priors with expression locations", {
   # mixed posteriors treat the derived point as having unknown support
   set.seed(10)
   a <- rnorm(50)
-  fit <- coda::mcmc(cbind(a = a, b = a))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(cbind(a = a, b = a)))
   attr(fit, "prior_list") <- prior_list[c("a", "b")]
   fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, c("a", "b"))
@@ -1684,8 +1676,8 @@ test_that("a requested transformation of orthonormal and meandif factors is appl
 
   make_fit <- function(draws, prior_list){
     fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = nrow(draws),
-      summary.pars = list(mutate = NULL), monitor = colnames(draws)),
-      class = c("runjags", "BayesTools_fit", "list"))
+      monitor = colnames(draws)),
+      class = "BayesTools_fit")
     attr(fit, "prior_list") <- prior_list
     attach_test_parameter_map(fit)
   }
@@ -1771,8 +1763,8 @@ test_that("estimates tables report publication weights whatever the draw column 
 
   make_fit <- function(draws, prior_list){
     fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = nrow(draws),
-      summary.pars = list(mutate = NULL), monitor = colnames(draws)),
-      class = c("runjags", "BayesTools_fit", "list"))
+      monitor = colnames(draws)),
+      class = "BayesTools_fit")
     attr(fit, "prior_list") <- prior_list
     attach_test_parameter_map(fit)
   }
@@ -1823,8 +1815,8 @@ test_that("estimates tables report transformed factor levels whatever the draw c
 
   make_fit <- function(draws, prior_list){
     fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = nrow(draws),
-      summary.pars = list(mutate = NULL), monitor = colnames(draws)),
-      class = c("runjags", "BayesTools_fit", "list"))
+      monitor = colnames(draws)),
+      class = "BayesTools_fit")
     attr(fit, "prior_list") <- prior_list
     attach_test_parameter_map(fit)
   }

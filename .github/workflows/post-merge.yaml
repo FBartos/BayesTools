@@ -32,4 +32,5 @@ jobs:
     uses: ./.github/workflows/downstream.yaml
     with:
       source: development
+      jags5: true
       dependents: '["RoBMA", "RoBSA", "RoBTT"]'

@@ -289,24 +289,25 @@ test_that("JAGS restart seeds come from their own stream of the seed", {
   })
 })
 
-test_that("JAGS_fit restarts use the restart-seed stream", {
+test_that("JAGS_fit restarts change the chain seeds and retain generated observations", {
 
-  skip_if_not_installed("runjags")
   recorded_inits <- list()
+  recorded_data <- list()
   recovered_fit <- structure(
     list(mcmc = list(matrix(0, nrow = 2, ncol = 1,
                             dimnames = list(NULL, "mu")))),
-    class = "runjags"
+    class = "BayesTools_fit"
   )
   testthat::local_mocked_bindings(
-    run.jags = function(...){
+    .bt_rjags_fit = function(...){
       recorded_inits[[length(recorded_inits) + 1L]] <<- list(...)[["inits"]]
+      recorded_data[[length(recorded_data) + 1L]] <<- list(...)[["data"]]$y
       if(length(recorded_inits) < 3L){
         stop("backend exploded")
       }
       recovered_fit
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
     .JAGS_require_packages = function(...) invisible(NULL),
@@ -318,7 +319,7 @@ test_that("JAGS_fit restarts use the restart-seed stream", {
   prior_list <- list(mu = prior("normal", list(0, 1)))
 
   JAGS_fit(
-    model_syntax = "model{}",
+    model_syntax = "data { y ~ dnorm(0, 1) } model { observed <- y }",
     prior_list = prior_list,
     chains = 2,
     adapt = 50,
@@ -340,6 +341,9 @@ test_that("JAGS_fit restarts use the restart-seed stream", {
 
   restart_seeds <- .JAGS_restart_seeds(5, 2)
   expect_length(recorded_inits, 3)
+  expect_length(recorded_data, 3)
+  expect_true(is.finite(recorded_data[[1L]]))
+  expect_identical(recorded_data, rep(recorded_data[1L], 3L))
   expect_identical(recorded_inits[[1]], JAGS_get_inits(prior_list, chains = 2, seed = 5))
   for(i in 1:2){
     expect_identical(
@@ -354,7 +358,7 @@ test_that("JAGS_fit restarts use the restart-seed stream", {
 })
 
 test_that("JAGS_extend validates runtime controls before extension", {
-  fit <- structure(list(), class = "BayesTools_fit")
+  fit <- contract_test_backend_fit()
   invalid <- list(
     parallel = NA,
     cores = Inf,
@@ -374,17 +378,14 @@ test_that("JAGS_extend validates runtime controls before extension", {
 
 .jags_extend_test_fit <- function(){
 
-  fit <- structure(
-    list(),
-    class = c("runjags", "BayesTools_fit")
-  )
+  fit <- contract_test_backend_fit()
   attr(fit, "prior_list") <- list()
   attr(fit, "model_syntax") <- "model{}"
   attr(fit, "required_packages") <- character()
   attr(fit, "jags_modules") <- character()
   attr(fit, "add_parameters") <- character()
   attr(fit, "adaptation") <- .bt_adaptation_record(500L)
-  contract_test_backend_fit(fit)
+  fit
 }
 
 .jags_extend_test_control <- function(max_time = list(time = 60, unit = "secs")){
@@ -499,13 +500,12 @@ test_that("JAGS_extend has no seed argument; the chains continue their stored st
 
 test_that("JAGS_extend preserves the last valid fit after a backend error", {
 
-  skip_if_not_installed("runjags")
   fit <- .jags_extend_test_fit()
   testthat::local_mocked_bindings(
-    extend.jags = function(...){
+    .bt_rjags_extend = function(...){
       stop("backend exploded")
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
 
   expect_false("seed" %in% names(formals(JAGS_extend)))
@@ -528,16 +528,14 @@ test_that("JAGS_extend preserves the last valid fit after a backend error", {
 
 test_that("JAGS_fit autofit preserves the last valid fit after a backend error", {
 
-  skip_if_not_installed("runjags")
   initial_fit <- structure(
     list(mcmc = list(matrix(0, nrow = 2, ncol = 1, dimnames = list(NULL, "mu")))),
-    class = "runjags"
+    class = "BayesTools_fit"
   )
   testthat::local_mocked_bindings(
-    run.jags = function(...) initial_fit,
-    extend.jags = function(...) stop("backend exploded"),
-    add.summary = function(x, ...) x,
-    .package = "runjags"
+    .bt_rjags_fit = function(...) initial_fit,
+    .bt_rjags_extend = function(...) stop("backend exploded"),
+    .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
     .bt_check_convergence = function(...) FALSE,
@@ -582,10 +580,8 @@ test_that("JAGS_fit autofit preserves the last valid fit after a backend error",
   )
 })
 
-test_that("fits leave JAGS_fit and JAGS_extend without runjags' compiled model", {
+test_that("fits leave JAGS_fit and JAGS_extend without the compiled rjags model", {
 
-  skip_if_not_installed("runjags")
-  # runjags keeps the compiled rjags model of a run in 'method.options$rjags'.
   # The autofit extensions of one call continue it; the returned fit drops it.
   compiled_model <- function(){
     model_data <- stats::runif(1e4)
@@ -595,25 +591,24 @@ test_that("fits leave JAGS_fit and JAGS_extend without runjags' compiled model",
     structure(
       list(
         mcmc = list(matrix(0, nrow = 2, ncol = 1, dimnames = list(NULL, "mu"))),
-        method.options = list(n.sims = FALSE, cl = FALSE, rjags = compiled_model())
+        live_model = compiled_model()
       ),
-      class = "runjags"
+      class = "BayesTools_fit"
     )
   }
   # a fitted object (built before the fitted-metadata helpers are mocked)
   # that still carries a compiled model
   extended_input <- .jags_extend_test_fit()
-  extended_input$method.options <- backend_fit()$method.options
+  extended_input$live_model <- backend_fit()$live_model
   received_models <- list()
   testthat::local_mocked_bindings(
-    run.jags = function(...) backend_fit(),
-    extend.jags = function(runjags.object, ...){
-      received_models[[length(received_models) + 1L]] <<- runjags.object$method.options["rjags"]
-      runjags.object$method.options$rjags <- compiled_model()
-      runjags.object
+    .bt_rjags_fit = function(...) backend_fit(),
+    .bt_rjags_extend = function(fit, ...){
+      received_models[[length(received_models) + 1L]] <<- fit["live_model"]
+      fit$live_model <- compiled_model()
+      fit
     },
-    add.summary = function(x, ...) x,
-    .package = "runjags"
+    .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
     .bt_check_convergence = function(...) FALSE,
@@ -635,8 +630,8 @@ test_that("fits leave JAGS_fit and JAGS_extend without runjags' compiled model",
   )
   # the extension continued the compiled model of the initial run
   expect_length(received_models, 1L)
-  expect_s3_class(received_models[[1L]]$rjags, "jags")
-  expect_identical(names(fit$method.options), c("n.sims", "cl"))
+  expect_s3_class(received_models[[1L]]$live_model, "jags")
+  expect_null(fit$live_model)
 
   received_models <- list()
   control <- .jags_extend_test_control()
@@ -645,9 +640,9 @@ test_that("fits leave JAGS_fit and JAGS_extend without runjags' compiled model",
   # the first extension recompiles from the stored states; the second
   # continues the model the first one compiled
   expect_length(received_models, 2L)
-  expect_null(received_models[[1L]]$rjags)
-  expect_s3_class(received_models[[2L]]$rjags, "jags")
-  expect_identical(names(extended$method.options), c("n.sims", "cl"))
+  expect_null(received_models[[1L]]$live_model)
+  expect_s3_class(received_models[[2L]]$live_model, "jags")
+  expect_null(extended$live_model)
 })
 
 test_that("JAGS build checks fingerprint loaded R definitions", {
@@ -689,22 +684,21 @@ test_that("JAGS build checks distinguish adjacent numeric literals", {
 
 test_that("JAGS_fit reports and records backend errors recovered by a restart", {
 
-  skip_if_not_installed("runjags")
   backend_calls <- 0L
   recovered_fit <- structure(
     list(mcmc = list(matrix(0, nrow = 2, ncol = 1,
                             dimnames = list(NULL, "mu")))),
-    class = "runjags"
+    class = "BayesTools_fit"
   )
   testthat::local_mocked_bindings(
-    run.jags = function(...){
+    .bt_rjags_fit = function(...){
       backend_calls <<- backend_calls + 1L
       if(backend_calls == 1L){
         stop("backend exploded")
       }
       recovered_fit
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
     .JAGS_require_packages = function(...) invisible(NULL),
@@ -760,14 +754,13 @@ test_that("JAGS_fit reports and records backend errors recovered by a restart", 
 
 test_that("the final failed fitting attempt is not announced as a restart", {
 
-  skip_if_not_installed("runjags")
   backend_calls <- 0L
   testthat::local_mocked_bindings(
-    run.jags = function(...){
+    .bt_rjags_fit = function(...){
       backend_calls <<- backend_calls + 1L
       stop("backend exploded")
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
   inits_drawn <- 0L
   drawn_inits <- BayesTools:::.JAGS_fit_inits
@@ -816,7 +809,6 @@ test_that("the final failed fitting attempt is not announced as a restart", {
 
 test_that("JAGS_extend resets its time budget for every call", {
 
-  skip_if_not_installed("runjags")
   fit <- .jags_extend_test_fit()
   extension_calls <- 0L
   clock_calls <- 0L
@@ -830,11 +822,11 @@ test_that("JAGS_extend resets its time budget for every call", {
     tz = "UTC"
   )
   testthat::local_mocked_bindings(
-    extend.jags = function(runjags.object, ...){
+    .bt_rjags_extend = function(fit, ...){
       extension_calls <<- extension_calls + 1L
-      runjags.object
+      fit
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
     .bt_jags_extend_time = function(){
@@ -860,7 +852,7 @@ test_that("JAGS_extend resets its time budget for every call", {
   set.seed(71)
   draws <- cbind(mu = stats::rnorm(50), theta = stats::rnorm(50))
   fit$mcmc <- coda::mcmc.list(coda::mcmc(draws), coda::mcmc(draws + 0.1))
-  fit$summary.pars <- list(mutate = NULL)
+  fit <- add_test_chain_states(fit)
   attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)))
   attr(fit, "add_parameters") <- "theta"
   attach_test_parameter_map(fit)
@@ -868,14 +860,13 @@ test_that("JAGS_extend resets its time budget for every call", {
 
 test_that("JAGS_extend forwards explicit convergence monitor policy", {
 
-  skip_if_not_installed("runjags")
   fit <- .jags_extend_test_fit_with_draws()
   convergence_arguments <- NULL
   testthat::local_mocked_bindings(
-    extend.jags = function(runjags.object, ...){
-      runjags.object
+    .bt_rjags_extend = function(fit, ...){
+      fit
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
     .bt_check_convergence = function(...){
@@ -895,19 +886,18 @@ test_that("JAGS_extend forwards explicit convergence monitor policy", {
 
 test_that("JAGS_extend keeps the fit's warnings after successful extensions", {
 
-  skip_if_not_installed("runjags")
   fit <- .jags_extend_test_fit()
   previous <- "JAGS fitting attempt 1 failed and was restarted: backend exploded."
   attr(fit, "warnings") <- previous
-  # The backend returns a new runjags object without BayesTools attributes.
+  # The backend returns new draws without BayesTools attributes.
   testthat::local_mocked_bindings(
-    extend.jags = function(runjags.object, ...){
+    .bt_rjags_extend = function(fit, ...){
       structure(
-        list(mcmc = runjags.object$mcmc, summary.pars = list(mutate = NULL)),
-        class = "runjags"
+        list(mcmc = fit$mcmc),
+        class = "BayesTools_fit"
       )
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
   converged <- TRUE
   testthat::local_mocked_bindings(
@@ -933,15 +923,14 @@ test_that("JAGS_extend keeps the fit's warnings after successful extensions", {
 
 test_that("JAGS_extend resolves explicit convergence monitors before extending", {
 
-  skip_if_not_installed("runjags")
   fit <- .jags_extend_test_fit_with_draws()
   extension_calls <- 0L
   testthat::local_mocked_bindings(
-    extend.jags = function(runjags.object, ...){
+    .bt_rjags_extend = function(fit, ...){
       extension_calls <<- extension_calls + 1L
-      runjags.object
+      fit
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
 
   control <- .jags_extend_test_control()
@@ -966,14 +955,13 @@ test_that("a random-block SD source that prior_list samples is monitored once", 
   # F318 (4): the block-level random_sd_source("tau") made the formula monitor
   # 'tau' through add_parameters, which JAGS_fit() refused as a repetition of
   # the 'tau' prior of prior_list
-  skip_if_not_installed("runjags")
   captured <- NULL
   testthat::local_mocked_bindings(
-    run.jags = function(...){
+    .bt_rjags_fit = function(...){
       captured <<- list(...)
       stop("mocked backend", call. = FALSE)
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
     .JAGS_require_packages = function(...) invisible(NULL),
@@ -1031,23 +1019,21 @@ test_that("a random-block SD source that prior_list samples is monitored once", 
 
 test_that("JAGS_fit rejects unknown convergence monitors before sampling", {
 
-  skip_if_not_installed("runjags")
   backend_calls <- 0L
   set.seed(72)
   draws <- cbind(mu = stats::rnorm(50), theta = stats::rnorm(50))
   sampled_fit <- structure(
     list(
-      mcmc = coda::mcmc.list(coda::mcmc(draws), coda::mcmc(draws + 0.1)),
-      summary.pars = list(mutate = NULL)
+      mcmc = coda::mcmc.list(coda::mcmc(draws), coda::mcmc(draws + 0.1))
     ),
-    class = "runjags"
+    class = "BayesTools_fit"
   )
   testthat::local_mocked_bindings(
-    run.jags = function(...){
+    .bt_rjags_fit = function(...){
       backend_calls <<- backend_calls + 1L
       sampled_fit
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
     .JAGS_require_packages = function(...) invisible(NULL),
@@ -1098,7 +1084,6 @@ test_that("JAGS_fit rejects unknown convergence monitors before sampling", {
 
 test_that("autofit treats deterministic user monitors of constants as structural", {
 
-  skip_if_not_installed("runjags")
   # 'theta' is a deterministic model constant; 'eta' is sampled. Both are
   # user monitors, as in BayesTools 0.3.0. Their convergence roles come from
   # the model syntax and are stored in the parameter map.
@@ -1112,8 +1097,8 @@ test_that("autofit treats deterministic user monitors of constants as structural
       coda::mcmc(draws)
     }
     structure(
-      list(mcmc = coda::mcmc.list(chain(), chain()), summary.pars = list(mutate = NULL)),
-      class = "runjags"
+      list(mcmc = coda::mcmc.list(chain(), chain())),
+      class = "BayesTools_fit"
     )
   }
   control <- list(
@@ -1127,15 +1112,18 @@ test_that("autofit treats deterministic user monitors of constants as structural
   extension_calls <- 0L
 
   fit_autofit <- function(eta_constant){
-    sampled <- sampled_fit(eta_constant)
+    sampled <- add_test_chain_states(sampled_fit(eta_constant))
     testthat::local_mocked_bindings(
-      run.jags = function(...) sampled,
-      extend.jags = function(...){
+      .bt_rjags_fit = function(model, data, ...){
+        sampled$model <- model
+        sampled["data"] <- list(data)
+        sampled
+      },
+      .bt_rjags_extend = function(...){
         extension_calls <<- extension_calls + 1L
         sampled
       },
-      add.summary = function(x, ...) x,
-      .package = "runjags"
+      .package = "BayesTools"
     )
     testthat::local_mocked_bindings(
       .JAGS_require_packages = function(...) invisible(NULL),
@@ -1152,10 +1140,10 @@ test_that("autofit treats deterministic user monitors of constants as structural
     )
   }
   extend_autofit <- function(fit, eta_constant){
-    sampled <- sampled_fit(eta_constant)
+    sampled <- add_test_chain_states(sampled_fit(eta_constant))
     testthat::local_mocked_bindings(
-      extend.jags = function(...) sampled,
-      .package = "runjags"
+      .bt_rjags_extend = function(...) sampled,
+      .package = "BayesTools"
     )
     testthat::local_mocked_bindings(
       .JAGS_require_packages = function(...) invisible(NULL),
@@ -1200,7 +1188,6 @@ test_that("autofit treats deterministic user monitors of constants as structural
 
 test_that("autofit checks user and sampled generated monitors but not derived ones", {
 
-  skip_if_not_installed("runjags")
   stem <- "mu__xREx__g_xRE_"
   columns <- c(
     "mu_intercept", "theta", "mu__xREx__g_intercept", "mu__xREx__g_x",
@@ -1230,10 +1217,9 @@ test_that("autofit checks user and sampled generated monitors but not derived on
     }
     structure(
       list(
-        mcmc = coda::mcmc.list(chain(0), chain(10)),
-        summary.pars = list(mutate = NULL)
+        mcmc = coda::mcmc.list(chain(0), chain(10))
       ),
-      class = "runjags"
+      class = "BayesTools_fit"
     )
   }
   control <- list(
@@ -1251,15 +1237,18 @@ test_that("autofit checks user and sampled generated monitors but not derived on
   extension_calls <- 0L
 
   fit_autofit <- function(stuck){
-    sampled <- sampled_fit(stuck)
+    sampled <- add_test_chain_states(sampled_fit(stuck))
     testthat::local_mocked_bindings(
-      run.jags = function(...) sampled,
-      extend.jags = function(...){
+      .bt_rjags_fit = function(model, data, ...){
+        sampled$model <- model
+        sampled["data"] <- list(data)
+        sampled
+      },
+      .bt_rjags_extend = function(...){
         extension_calls <<- extension_calls + 1L
         sampled
       },
-      add.summary = function(x, ...) x,
-      .package = "runjags"
+      .package = "BayesTools"
     )
     testthat::local_mocked_bindings(
       .JAGS_require_packages = function(...) invisible(NULL),
@@ -1315,10 +1304,10 @@ test_that("autofit checks user and sampled generated monitors but not derived on
 
   # JAGS_extend applies the same selection to the stored fit.
   extend_autofit <- function(fit, stuck){
-    sampled <- sampled_fit(stuck)
+    sampled <- add_test_chain_states(sampled_fit(stuck))
     testthat::local_mocked_bindings(
-      extend.jags = function(...) sampled,
-      .package = "runjags"
+      .bt_rjags_extend = function(...) sampled,
+      .package = "BayesTools"
     )
     testthat::local_mocked_bindings(
       .JAGS_require_packages = function(...) invisible(NULL),
@@ -1406,17 +1395,17 @@ test_that("seeds outside the integer range or missing are refused instead of coe
 })
 
 
-# The extension arguments that reach runjags::extend.jags(), one list per call.
+# The extension arguments that reach BayesTools:::.bt_rjags_extend(), one list per call.
 .jags_extension_recorder <- function(live_model = FALSE, warning_message = NULL){
 
   calls <- list()
-  extend <- function(runjags.object, ...){
-    calls[[length(calls) + 1L]] <<- c(list(runjags.object = runjags.object), list(...))
+  extend <- function(fit, ...){
+    calls[[length(calls) + 1L]] <<- c(list(fit = fit), list(...))
     if(!is.null(warning_message)){
-      warning(warning_message, call. = FALSE)
+      warning(warningCondition(warning_message, class = "BayesTools_adaptation_incomplete"))
     }
-    runjags.object$method.options <- if(live_model) list(rjags = structure(list(), class = "jags"))
-    runjags.object
+    fit$live_model <- if(live_model) structure(list(), class = "jags")
+    fit
   }
   list(extend = extend, calls = function() calls)
 }
@@ -1430,11 +1419,10 @@ test_that("seeds outside the integer range or missing are refused instead of coe
 
 test_that("JAGS_extend inherits the initial adaptation and applies an override to its call only", {
 
-  skip_if_not_installed("runjags")
   fit <- .jags_extend_test_fit()
   attr(fit, "adaptation") <- .jags_adaptation_test_record(5000)
   recorder <- .jags_extension_recorder()
-  testthat::local_mocked_bindings(extend.jags = recorder$extend, .package = "runjags")
+  testthat::local_mocked_bindings(.bt_rjags_extend = recorder$extend, .package = "BayesTools")
   testthat::local_mocked_bindings(.bt_check_convergence = function(...) TRUE, .package = "BayesTools")
   control <- .jags_extend_test_control()
 
@@ -1443,13 +1431,13 @@ test_that("JAGS_extend inherits the initial adaptation and applies an override t
   override <- JAGS_extend(fit, autofit_control = control, adapt = 20000)
   after    <- JAGS_extend(override, autofit_control = control)
 
-  # what reached runjags: the adaptation, no burn-in, the stored chain states
+  # what reached the driver: the adaptation, no burn-in, the stored chain states
   calls <- recorder$calls()
   expect_identical(lapply(calls, `[[`, "adapt"), list(5000L, 5000L, 20000L, 5000L))
-  expect_identical(lapply(calls, `[[`, "burnin"), rep(list(0), 4))
+  expect_true(all(vapply(calls, function(call) !"burnin" %in% names(call), logical(1))))
   expect_identical(lapply(calls, `[[`, "sample"), rep(list(1), 4))
   expect_true(all(vapply(calls, function(call) !"inits" %in% names(call), logical(1))))
-  expect_identical(calls[[1L]]$runjags.object$end.state, fit$end.state)
+  expect_identical(calls[[1L]]$fit$end_state, fit$end_state)
 
   # an explicit value equal to the initial one is the omitted value
   expect_identical(omitted, explicit)
@@ -1466,7 +1454,6 @@ test_that("JAGS_extend inherits the initial adaptation and applies an override t
 
 test_that("JAGS_extend adapts only when the backend rebuilds the sampler", {
 
-  skip_if_not_installed("runjags")
   fit <- .jags_extend_test_fit()
   attr(fit, "adaptation") <- .jags_adaptation_test_record(800)
   control <- .jags_extend_test_control()
@@ -1476,21 +1463,21 @@ test_that("JAGS_extend adapts only when the backend rebuilds the sampler", {
   # serially, the second automatic extension continues the compiled model of
   # the first; the returned fit keeps no compiled model
   recorder <- .jags_extension_recorder(live_model = TRUE)
-  testthat::local_mocked_bindings(extend.jags = recorder$extend, .package = "runjags")
+  testthat::local_mocked_bindings(.bt_rjags_extend = recorder$extend, .package = "BayesTools")
   serial <- suppressWarnings(JAGS_extend(fit, autofit_control = control, adapt = 900))
   calls <- recorder$calls()
   expect_identical(lapply(calls, `[[`, "adapt"), list(900L, 900L))
-  expect_null(calls[[1L]]$runjags.object$method.options$rjags)
-  expect_s3_class(calls[[2L]]$runjags.object$method.options$rjags, "jags")
+  expect_null(calls[[1L]]$fit$live_model)
+  expect_s3_class(calls[[2L]]$fit$live_model, "jags")
   expect_identical(
     attr(serial, "adaptation"),
     .jags_adaptation_test_record(800, c(900, 900), c(TRUE, FALSE))
   )
-  expect_null(serial$method.options$rjags)
+  expect_null(serial$live_model)
 
   # parallel workers rebuild the sampler for every extension
   recorder <- .jags_extension_recorder(live_model = TRUE)
-  testthat::local_mocked_bindings(extend.jags = recorder$extend, .package = "runjags")
+  testthat::local_mocked_bindings(.bt_rjags_extend = recorder$extend, .package = "BayesTools")
   testthat::local_mocked_bindings(
     .JAGS_runtime_cluster_start = function(...) list("worker-1", "worker-2"),
     .JAGS_runtime_cluster_stop = function(cl) invisible(NULL),
@@ -1498,9 +1485,9 @@ test_that("JAGS_extend adapts only when the backend rebuilds the sampler", {
   )
   parallel <- suppressWarnings(JAGS_extend(fit, autofit_control = control, parallel = TRUE))
   calls <- recorder$calls()
-  expect_identical(lapply(calls, `[[`, "method"), list("rjparallel", "rjparallel"))
+  expect_identical(vapply(calls, function(call) length(call$cl), integer(1)), c(2L, 2L))
   expect_identical(lapply(calls, `[[`, "adapt"), list(800L, 800L))
-  expect_identical(lapply(calls, `[[`, "burnin"), list(0, 0))
+  expect_true(all(vapply(calls, function(call) !"burnin" %in% names(call), logical(1))))
   expect_identical(
     attr(parallel, "adaptation"),
     .jags_adaptation_test_record(800, c(800, 800), c(TRUE, TRUE))
@@ -1509,15 +1496,14 @@ test_that("JAGS_extend adapts only when the backend rebuilds the sampler", {
 
 test_that("JAGS_extend validates 'adapt' as JAGS_fit does", {
 
-  skip_if_not_installed("runjags")
   fit <- .jags_extend_test_fit()
   extension_calls <- 0L
   testthat::local_mocked_bindings(
-    extend.jags = function(runjags.object, ...){
+    .bt_rjags_extend = function(fit, ...){
       extension_calls <<- extension_calls + 1L
-      runjags.object
+      fit
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
   testthat::local_mocked_bindings(.bt_check_convergence = function(...) TRUE, .package = "BayesTools")
   fit_settings <- function(adapt) JAGS_check_and_list_fit_settings(
@@ -1543,94 +1529,55 @@ test_that("JAGS_extend validates 'adapt' as JAGS_fit does", {
   expect_identical(attr(extended, "adaptation"), .jags_adaptation_test_record(500, 50, TRUE))
 })
 
-test_that("JAGS_extend extends fits without an adaptation record with runjags' default and a warning", {
+test_that("JAGS_extend requires a current fit, chain states and adaptation record", {
 
-  skip_if_not_installed("runjags")
-  legacy <- .jags_extend_test_fit()
-  attr(legacy, "adaptation") <- NULL
-  recorder <- .jags_extension_recorder()
-  testthat::local_mocked_bindings(extend.jags = recorder$extend, .package = "runjags")
-  testthat::local_mocked_bindings(.bt_check_convergence = function(...) TRUE, .package = "BayesTools")
-  control <- .jags_extend_test_control()
-
-  expect_warning(
-    extended <- JAGS_extend(legacy, autofit_control = control),
-    class = "BayesTools_adaptation_unrecorded"
-  )
-  expect_warning(
-    JAGS_extend(legacy, autofit_control = control),
-    paste0(
-      "The fit does not record the adaptation length of its initial fit, so the ",
-      "extension adapts for runjags' default of 1000 iterations. Set 'adapt' to ",
-      "choose the adaptation length."
-    ),
-    fixed = TRUE
-  )
-  expect_identical(attr(extended, "adaptation"), .jags_adaptation_test_record(NA, 1000, TRUE))
-  # the record keeps the initial setting unknown, so later extensions warn again
-  expect_warning(
-    JAGS_extend(extended, autofit_control = control),
-    class = "BayesTools_adaptation_unrecorded"
-  )
-  # an explicit setting needs no fallback
-  expect_silent(explicit <- JAGS_extend(legacy, autofit_control = control, adapt = 300))
-  expect_identical(attr(explicit, "adaptation"), .jags_adaptation_test_record(NA, 300, TRUE))
-  expect_identical(
-    lapply(recorder$calls(), `[[`, "adapt"),
-    list(1000L, 1000L, 1000L, 300L)
-  )
-
-  malformed <- legacy
+  fit <- .jags_extend_test_fit()
+  legacy <- missing_adaptation <- malformed <- missing_state <- fit
+  class(legacy) <- c("runjags", "BayesTools_fit")
+  attr(missing_adaptation, "adaptation") <- NULL
   attr(malformed, "adaptation") <- list(initial = "500")
-  expect_error(
-    JAGS_extend(malformed, autofit_control = control),
-    class = "BayesTools_refit_required"
-  )
+  missing_state$end_state <- NULL
+  for (object in list(legacy, missing_adaptation, malformed, missing_state)) {
+    expect_error(JAGS_extend(object, autofit_control = .jags_extend_test_control()),
+                 class = "BayesTools_refit_required")
+  }
 })
 
 test_that("JAGS_extend issues and keeps incomplete-adaptation warnings", {
 
-  skip_if_not_installed("runjags")
   fit <- .jags_extend_test_fit()
-  message <- paste(
-    "The adaptation phase of the model was not completed in 500 iterations, so the",
-    "current samples may not be optimal - try increasing the number of iterations",
-    "to the \"adapt\" argument"
-  )
+  message <- "The JAGS adaptation phase was incomplete after 500 iterations."
   recorder <- .jags_extension_recorder(warning_message = message)
-  testthat::local_mocked_bindings(extend.jags = recorder$extend, .package = "runjags")
+  testthat::local_mocked_bindings(.bt_rjags_extend = recorder$extend, .package = "BayesTools")
   testthat::local_mocked_bindings(.bt_check_convergence = function(...) TRUE, .package = "BayesTools")
 
   expect_warning(
     extended <- JAGS_extend(fit, autofit_control = .jags_extend_test_control()),
-    "The adaptation phase of the model was not completed in 500 iterations",
-    fixed = TRUE
+    class = "BayesTools_adaptation_incomplete"
   )
   expect_identical(attr(extended, "warnings"), message)
 })
 
 test_that("JAGS_fit forwards its adaptation to automatic extensions", {
 
-  skip_if_not_installed("runjags")
   backend_fit <- function(...){
     structure(
       list(
         mcmc = list(matrix(0, nrow = 2, ncol = 1, dimnames = list(NULL, "mu"))),
-        method.options = list(rjags = structure(list(), class = "jags"))
+        live_model = structure(list(), class = "jags")
       ),
-      class = "runjags"
+      class = "BayesTools_fit"
     )
   }
   run_calls <- list()
   recorder <- .jags_extension_recorder(live_model = TRUE)
   testthat::local_mocked_bindings(
-    run.jags = function(...){
+    .bt_rjags_fit = function(...){
       run_calls[[length(run_calls) + 1L]] <<- list(...)
       backend_fit()
     },
-    extend.jags = recorder$extend,
-    add.summary = function(x, ...) x,
-    .package = "runjags"
+    .bt_rjags_extend = recorder$extend,
+    .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
     .bt_check_convergence = function(...) FALSE,
@@ -1657,7 +1604,7 @@ test_that("JAGS_fit forwards its adaptation to automatic extensions", {
   serial <- fit_with(autofit = TRUE)
   expect_identical(run_calls[[1L]]$adapt, 750)
   expect_identical(lapply(recorder$calls(), `[[`, "adapt"), list(750L, 750L))
-  expect_identical(lapply(recorder$calls(), `[[`, "burnin"), list(0, 0))
+  expect_true(all(vapply(recorder$calls(), function(call) !"burnin" %in% names(call), logical(1))))
   expect_identical(
     attr(serial, "adaptation"),
     .jags_adaptation_test_record(750, c(750, 750), c(FALSE, FALSE))
@@ -1665,9 +1612,9 @@ test_that("JAGS_fit forwards its adaptation to automatic extensions", {
 
   # parallel autofit rebuilds the sampler for every extension
   recorder <- .jags_extension_recorder()
-  testthat::local_mocked_bindings(extend.jags = recorder$extend, .package = "runjags")
+  testthat::local_mocked_bindings(.bt_rjags_extend = recorder$extend, .package = "BayesTools")
   parallel <- fit_with(autofit = TRUE, parallel = TRUE, cores = 2)
-  expect_identical(lapply(recorder$calls(), `[[`, "method"), list("rjparallel", "rjparallel"))
+  expect_identical(vapply(recorder$calls(), function(call) length(call$cl), integer(1)), c(2L, 2L))
   expect_identical(lapply(recorder$calls(), `[[`, "adapt"), list(750L, 750L))
   expect_identical(
     attr(parallel, "adaptation"),
@@ -1676,10 +1623,10 @@ test_that("JAGS_fit forwards its adaptation to automatic extensions", {
 
   # the JASP fitting path samples in five extensions
   recorder <- .jags_extension_recorder()
-  testthat::local_mocked_bindings(extend.jags = recorder$extend, .package = "runjags")
+  testthat::local_mocked_bindings(.bt_rjags_extend = recorder$extend, .package = "BayesTools")
   jasp <- fit_with(autofit = FALSE, parallel = TRUE, cores = 2, is_JASP = TRUE)
   expect_identical(lapply(recorder$calls(), `[[`, "adapt"), rep(list(750L), 5))
-  expect_identical(lapply(recorder$calls(), `[[`, "burnin"), rep(list(0), 5))
+  expect_true(all(vapply(recorder$calls(), function(call) !"burnin" %in% names(call), logical(1))))
   expect_identical(
     attr(jasp, "adaptation"),
     .jags_adaptation_test_record(750, rep(750, 5), rep(TRUE, 5))

@@ -220,7 +220,7 @@ accept semantic selectors \code{"random"}, \code{"random_sd"},
 \code{"random_var_prop"}, \code{"random_var_mult"},
 \code{"random_allocation"}, and \code{"random_sd_mult"}.}
 
-\item{fit}{runjags model fit or a derived-draw view from \code{\link[=JAGS_with_draws]{JAGS_with_draws()}}.
+\item{fit}{model fitted with \code{\link[=JAGS_fit]{JAGS_fit()}} or a derived-draw view from \code{\link[=JAGS_with_draws]{JAGS_with_draws()}}.
 Estimates and inference describe its supplied draws; chain diagnostics use
 the actual retained chain geometry.}
 
@@ -469,8 +469,8 @@ their catalog quantity on the original predictor scale. Subsetting the
 table subsets its quantity table.
 }
 \description{
-Creates model summary based on a model objects or
-provides estimates table for a runjags fit.
+Creates model summaries and parameter estimates tables for fits
+from \code{\link[=JAGS_fit]{JAGS_fit()}}.
 }
 \details{
 For product-space JAGS inclusion Bayes factors, posterior

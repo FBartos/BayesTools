@@ -40,31 +40,6 @@
 }
 
 
-# The JAGS executable passed to runjags::run.jags(). By default runjags
-# searches for it on every call, and twice per call (the 'jags' argument's
-# default and the method options of runjags' model setup both evaluate the
-# 'jagspath' option, whose default findjags() runs a system command). The path
-# is resolved once per session and reused while the 'jagspath' option is
-# unchanged: a path set with runjags::runjags.options(jagspath = ) is used as
-# given, and changing the option resolves the path again. A search that finds
-# no executable is not kept. runjags still tests the executable and its
-# version (runjags::testjags()) on every call.
-.JAGS_backend_path <- function(){
-
-  option <- runjags::runjags.options()[["jagspath"]]
-  cached <- .BayesTools_private$jags_path
-  if(!is.null(cached) && identical(cached[["option"]], option)){
-    return(cached[["path"]])
-  }
-  path <- runjags::runjags.getOption("jagspath")
-  if(!is.character(path) || length(path) != 1L || is.na(path) || !nzchar(path) ||
-     identical(path, "JAGS not found")){
-    return(NULL)
-  }
-  .BayesTools_private$jags_path <- list(option = option, path = path)
-  path
-}
-
 .JAGS_make_cluster <- function(cores, worker_output = NULL, vanilla = FALSE){
 
   arguments <- c(
@@ -75,8 +50,7 @@
   do.call(parallel::makePSOCKcluster, arguments)
 }
 
-# Workers started without the user's startup files receive the calling
-# session's library paths and the given options.
+# Establish the calling session's library paths before loading worker packages.
 .JAGS_initialize_workers <- function(cl, values){
 
   initialize <- function(paths, values){
@@ -115,10 +89,9 @@
   started <- FALSE
   on.exit(if(!started) .JAGS_runtime_cluster_stop(cl), add = TRUE)
 
-  if(vanilla){
-    .JAGS_initialize_workers(cl, options)
-  }
+  .JAGS_initialize_workers(cl, options)
   .JAGS_require_packages(packages, cl, operation = operation)
+  .JAGS_load_modules(jags_modules, warn = warn)
   .JAGS_load_modules(jags_modules, cl, warn = warn)
   runtime$runtime_setup <- runtime_setup
   .JAGS_run_runtime_setup(runtime_setup, chains, cl)
@@ -228,7 +201,7 @@ JAGS_runtime_cluster_stop <- function(cl){
 
   result <- tryCatch(do.call(fun, args), error = identity)
   if(!parallel || !inherits(result, "error")) return(result)
-  # runjags wraps worker conditions in text, so the original socket condition's
+  # PSOCK can wrap worker conditions in text, so the original socket condition's
   # class/call need not survive. These transport failures cannot be repaired by
   # changing JAGS initial values and reusing the same worker connections.
   # Match the connection/socket class rather than a closed list of phrases:
@@ -393,8 +366,8 @@ JAGS_runtime_cluster_stop <- function(cl){
 .JAGS_runtime_context <- function(chains, processes = 1L, parallel = FALSE,
                                   process_id = 1L, phase = "start"){
 
-  # runjags assigns chains round-robin to its simulations, with at most one
-  # simulation per worker. The first workers receive any remaining chains.
+  # The sampler assigns chains round-robin. The first workers receive the
+  # remaining chains when chains do not divide evenly among the workers.
   process_chains <- if(!parallel){
     chains
   }else if(process_id == 0L){
@@ -605,7 +578,9 @@ JAGS_package_builds <- function(packages){
     immutable <- function(value){
 
       if(!typeof(value) %in% c("NULL", "logical", "integer", "double", "complex", "character", "raw", "list")) return(FALSE)
-      if(is.list(value) && !all(vapply(value, immutable, logical(1L)))) return(FALSE)
+      # List classes such as numeric_version can return a new object of the
+      # same class from [[. Walk their underlying elements and attributes.
+      if(is.list(value) && !all(vapply(unclass(value), immutable, logical(1L)))) return(FALSE)
       value_attributes <- attributes(value)
       is.null(value_attributes) || all(vapply(value_attributes, immutable, logical(1L)))
     }

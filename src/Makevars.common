@@ -1,6 +1,3 @@
-PKG_CPPFLAGS=@JAGS_CFLAGS@ -I../inst/include -DR_NO_REMAP
-PKG_LIBS=@JAGS_LIBS@ @JAGS_RPATH@ @JRMATH_LIBS@
-
 $(SHLIB): native-sources.o
 
 native-sources.o: \

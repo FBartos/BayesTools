@@ -2873,8 +2873,7 @@ test_that("bridge posterior resolves only complete singleton coordinate families
   attr(draws, "prior_list") <- ordinary
   carrier <- JAGS_formula_draws(draws, formula, "mu", data, priors,
     prior_random = prior_random, model_data = model_data)
-  fit <- coda::mcmc.list(coda::mcmc(as.matrix(carrier)))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(as.matrix(carrier))))
   for(name in c("prior_list", "formula_design", "formula_scale")) attr(fit, name) <- attr(carrier, name)
   fit <- .bt_attach_parameter_map(fit)
   fit <- .bt_attach_draw_geometry(fit)

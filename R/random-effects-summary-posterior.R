@@ -55,7 +55,7 @@ random_effects_summary_posterior <- function(
     simplify_names = FALSE,
     n_prior_points = 4096){
 
-  if(!.bt_is_jags_analysis_fit(fit) || !inherits(fit, "BayesTools_fit")){
+  if(!inherits(fit, "BayesTools_fit")){
     stop("'fit' must be a BayesTools JAGS fit.", call. = FALSE)
   }
   summary <- match.arg(summary)

@@ -1,2 +1,2 @@
             Alternative:                   Null:     BF error%(BF)
- Month[Jul] > Month[May] Month[Jul] < Month[May] 12.437      1.796
+ Month[Jul] > Month[May] Month[Jul] < Month[May] 12.070      1.773

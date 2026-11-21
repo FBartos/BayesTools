@@ -22,8 +22,7 @@ source(testthat::test_path("common-functions.R"))
   if(is.prior.regularized_term(info$prior_list$mu_Month)){
     draws <- cbind(draws, mu_Month_variance_1 = 1 + x^2)
   }
-  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = nrow(draws)),
-    class = c("runjags", "BayesTools_fit", "list"))
+  fit <- test_fit_from_chains(draws)
   attr(fit, "prior_list") <- info$prior_list
   attr(fit, "formula_design") <- list(mu = info$formula_design)
   attach_test_parameter_map(fit)
@@ -306,8 +305,7 @@ test_that("factor-valued random-slope SDs select the fitted treatment levels", {
   draws <- cbind(seq(0, 1, length.out = 100), seq(.1, .5, length.out = 100),
     seq(.8, 1.6, length.out = 100))
   colnames(draws) <- c("mu_intercept", term$sd_parameter_names)
-  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = nrow(draws)),
-    class = c("runjags", "BayesTools_fit", "list"))
+  fit <- test_fit_from_chains(draws)
   attr(fit, "prior_list") <- spec$prior_list
   attr(fit, "formula_design") <- list(mu = spec$formula_design)
   parameter <- setdiff(names(spec$prior_list), "mu_intercept")

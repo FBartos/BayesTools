@@ -837,8 +837,7 @@ test_that("linear transformation matches expected behavior", {
 # posteriors from standardized to original scale.
 
 .make_fake_scaled_formula_fit <- function(prior_list, posterior_samples, formula_scale) {
-  fit <- coda::mcmc(posterior_samples)
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(posterior_samples))
 
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_scale") <- formula_scale

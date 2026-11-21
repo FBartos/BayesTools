@@ -184,9 +184,8 @@
   }
 
   random_inclusion <- vapply(
-    prior_list[match(parameter_names, names(prior_list))],
-    function(prior) !is.null(prior) &&
-      identical(attr(prior, "random_summary", exact = TRUE), "inclusion"),
+    prior_list,
+    function(prior) identical(attr(prior, "random_summary", exact = TRUE), "inclusion"),
     logical(1)
   )
 
@@ -203,11 +202,12 @@
 
   indicator_columns <- c(
     inclusion_columns,
+    names(prior_list)[random_inclusion],
     .bt_random_variance_allocation_inclusion_indicator_names(formula_design),
     ordered_total_indicators
   )
 
-  unname(random_inclusion | parameter_names %in% indicator_columns)
+  parameter_names %in% indicator_columns
 }
 
 # 'structural' marks rows of structural constants (declared by their priors,

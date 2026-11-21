@@ -392,7 +392,8 @@ parameter_map_cache <- function(map, provider, key, compute){
 # 'data_names' are the names of fully observed model data; they let the
 # convergence roles treat monitored functions of data as constants.
 .bt_attach_parameter_map <- function(fit, monitor_names = NULL,
-                                     data_names = NULL){
+                                     data_names = NULL,
+                                     model_syntax = attr(fit, "model_syntax", exact = TRUE)){
 
   if(inherits(fit, "error")){
     return(fit)
@@ -414,7 +415,7 @@ parameter_map_cache <- function(map, provider, key, compute){
     formula_scale = attr(fit, "formula_scale", exact = TRUE),
     backend_anchor = attr(fit, "backend_anchor", exact = TRUE),
     add_parameters = attr(fit, "add_parameters", exact = TRUE),
-    model_syntax = attr(fit, "model_syntax", exact = TRUE),
+    model_syntax = model_syntax,
     data_names = data_names
   )
   fit

@@ -178,10 +178,7 @@ namespace jags {
           _adapting = false;
         }
 
-        // Correctness never depends on adaptation, but runjags' serial method runs
-        // the requested adaptation phase only when some sampler reports that it
-        // still needs adapting: incomplete until one adaptive update, complete
-        // afterwards (unchanged by adaptOff()).
+        // One adaptive update establishes an axis estimate. adaptOff() keeps it.
         bool checkAdaptation() const
         {
           return _axes.updates() > 0;
@@ -194,8 +191,8 @@ namespace jags {
     {
       std::map<unsigned int, std::vector<StochasticNode *> > blocks;
       for (StochasticNode *node : nodes) {
-        if (node->length() != 1 || node->isDiscreteValued() || node->df() == 0 ||
-            isObserved(node) || !isSupportFixed(node)) continue;
+        if (node->length() != 1 || node->isDiscreteValued() || !node->fullRank() ||
+            !isSupportFixed(node)) continue;
         // A gate declaration takes precedence over a block declaration.
         if (has_gate_marker(node)) continue;
         const unsigned int id = block_id(node);

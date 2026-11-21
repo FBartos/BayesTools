@@ -169,7 +169,6 @@ test_that("JAGS diagnostics work", {
 
 test_that("JAGS diagnostics work (spike and slab)", {
 
-  skip_if_not_installed("RoBMA")
   skip_if_missing_fits("fit_complex_mixed")
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
 
@@ -184,7 +183,6 @@ test_that("JAGS diagnostics work (spike and slab)", {
 
 test_that("JAGS diagnostics work (mixture priors)", {
 
-  skip_if_not_installed("RoBMA")
   skip_if_missing_fits("fit_complex_mixed")
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
 

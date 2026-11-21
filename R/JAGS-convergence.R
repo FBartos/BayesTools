@@ -1,7 +1,7 @@
-#' @title Assess convergence of a runjags model
+#' @title Assess convergence of a BayesTools JAGS fit
 #'
-#' @description Checks whether the supplied \link[runjags]{runjags-package} model
-#' satisfied convergence criteria.
+#' @description Checks whether a fit from [JAGS_fit()] satisfies its convergence
+#' criteria.
 #' Derived-draw views are refused with
 #' \code{BayesTools_draws_view_inference_unavailable} (also
 #' \code{BayesTools_draws_view_unavailable}); assess \code{fit$original_fit}.
@@ -164,8 +164,7 @@ JAGS_check_convergence <- function(
     ))
   }
   # check input
-  if(!inherits(fit, "runjags"))
-    stop("'fit' must be a runjags fit", call. = FALSE)
+  coordinates <- .bt_require_fit_contract(fit)
   check_list(prior_list, "prior_list", allow_NULL = TRUE)
   if(!is.null(prior_list) && any(!vapply(prior_list, is.prior, logical(1))))
     stop("'prior_list' must be a list of priors.", call. = FALSE)
@@ -180,7 +179,6 @@ JAGS_check_convergence <- function(
   check_char(monitor, "monitor", check_length = 0, allow_NULL = TRUE,
              allow_NA = FALSE)
   check_bool(allow_not_assessable, "allow_not_assessable", allow_NA = FALSE)
-  coordinates <- .bt_require_fit_contract(fit)
   if(!is.null(prior_list) &&
      !.bt_convergence_prior_list_matches(prior_list, attr(fit, "prior_list", exact = TRUE))){
     stop(

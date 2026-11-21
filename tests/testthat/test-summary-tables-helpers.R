@@ -316,7 +316,7 @@ test_that("indicator BF diagnostics use indicator MCSE and handle boundaries", {
   )
   fit <- structure(
     list(mcmc = coda::mcmc.list(samples), sample = length(indicator)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- list(
     theta = prior_spike_and_slab(
@@ -331,7 +331,6 @@ test_that("indicator BF diagnostics use indicator MCSE and handle boundaries", {
 
 test_that("runjags_inference_table reports BEAST/BSSVS-style bounds at indicator boundaries", {
 
-  skip_if_not_installed("runjags")
 
   all_included <- runjags_inference_table(.runjags_inference_fit_for_test(rep(1, 10)))
   expect_equal(as.numeric(all_included["theta", "inclusion_BF"]), 9)
@@ -391,7 +390,6 @@ test_that("runjags_inference_table reports BEAST/BSSVS-style bounds at indicator
 
 test_that("runjags_inference_table keeps inclusion Bayes factors beyond the double range in log space", {
 
-  skip_if_not_installed("runjags")
 
   # prior inclusion 1e-320 and posterior inclusion .5: BF = 1 / (1e-320 / (1 - 1e-320)) overflows
   prior_prob <- 1e-320
@@ -429,7 +427,6 @@ test_that("runjags_inference_table keeps inclusion Bayes factors beyond the doub
 
 test_that("runjags_inference_table reports undefined BF at prior probability boundaries", {
 
-  skip_if_not_installed("runjags")
 
   prior_excludes <- runjags_inference_table(
     .runjags_inference_fit_for_test(rep(0, 10), prior_prob = 0),
@@ -695,10 +692,9 @@ test_that("update preserves relative BF MC error percentage across BF scales", {
     list(
       mcmc = coda::mcmc.list(samples),
       sample = nrow(samples),
-      summary.pars = list(mutate = NULL),
       monitor = colnames(samples)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- list(
     theta = prior("normal", list(0, 1)),
@@ -728,7 +724,6 @@ test_that("update preserves relative BF MC error percentage across BF scales", {
 
 test_that("bias summary filtering preserves branch metadata and unrelated draws", {
 
-  skip_if_not_installed("runjags")
   indicator <- rep(1:3, 2)
   samples <- cbind(
     bias_indicator = indicator,
@@ -786,7 +781,6 @@ test_that("bias summary filtering preserves branch metadata and unrelated draws"
 
 test_that("conditional estimates split factor mixtures with named components", {
 
-  skip_if_not_installed("runjags")
   set.seed(61)
   n <- 40L
   indicator <- rep(1:2, length.out = n)
@@ -851,7 +845,6 @@ test_that("conditional estimates split factor mixtures with named components", {
 
 test_that("conditional component transformations store component priors", {
 
-  skip_if_not_installed("runjags")
   set.seed(62)
   n <- 40L
   indicator <- rep(1:2, length.out = n)
@@ -891,7 +884,6 @@ test_that("conditional component transformations store component priors", {
 
 test_that("spike-at-zero coefficients non-zero on the original scale are reported", {
 
-  skip_if_not_installed("runjags")
   set.seed(63)
   data <- data.frame(
     x = c(3, 5, 7, 4, 6, 8),
@@ -975,7 +967,7 @@ test_that("spike-at-zero coefficients non-zero on the original scale are reporte
   }
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = n),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_design") <- formula_design
@@ -984,7 +976,6 @@ test_that("spike-at-zero coefficients non-zero on the original scale are reporte
 
 test_that("estimates tables blank inclusion rows identified from metadata", {
 
-  skip_if_not_installed("runjags")
   set.seed(64)
   blank_columns <- c("SD", "0.025", "0.5", "0.975")
   expect_inclusion_rows <- function(table, rows){
@@ -1245,7 +1236,6 @@ test_that("estimates tables blank inclusion rows identified from metadata", {
 
 test_that("remove_inclusion removes every row flagged as an inclusion row", {
 
-  skip_if_not_installed("runjags")
   set.seed(261)
   removed_rows <- function(fit, ...){
     kept <- runjags_estimates_table(fit, remove_diagnostics = TRUE, remove_inclusion = TRUE, ...)
@@ -1326,7 +1316,6 @@ test_that("remove_inclusion removes every row flagged as an inclusion row", {
 
 test_that("inference tables report the inclusion event of an ordered spike-and-slab total", {
 
-  skip_if_not_installed("runjags")
   set.seed(262)
 
   # 86 of 100 draws include the total
@@ -1396,7 +1385,6 @@ test_that("inference tables report the inclusion event of an ordered spike-and-s
 
 test_that("conditional random-effect SD summaries use the inclusion event of the SD prior", {
 
-  skip_if_not_installed("runjags")
   set.seed(260)
   sd_name <- "mu__xREx__id_x"
   indicator_name <- paste0(sd_name, "_indicator")
@@ -1580,7 +1568,6 @@ test_that("raw correlation labels distinguish backend transforms", {
 
 test_that("estimates tables keep their row labels when display labels collide", {
 
-  skip_if_not_installed("runjags")
 
   # the same coefficients of two formulas, without formula prefixes
   priors <- list(
@@ -1597,7 +1584,7 @@ test_that("estimates tables keep their row labels when display labels collide", 
       ))),
       sample = 4L
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- c(mu$prior_list, sigma$prior_list)
   attr(fit, "formula_design") <- list(mu = mu$formula_design, sigma = sigma$formula_design)
@@ -1651,7 +1638,6 @@ test_that("estimates tables keep their row labels when display labels collide", 
 
 test_that("runjags_estimates_table reports exact sample summaries without snapshots", {
 
-  skip_if_not_installed("runjags")
 
   posterior <- matrix(
     c(
@@ -1754,7 +1740,6 @@ test_that("raw random-effect correlation aliases include logit-scale rho columns
 
 test_that("raw random-effect monitors respect formula filters", {
 
-  skip_if_not_installed("runjags")
 
   posterior <- matrix(
     seq_len(6L * 4L),
@@ -2057,10 +2042,9 @@ test_that("runjags summary helper keeps only requested diagnostics", {
   fit <- structure(
     list(
       mcmc = coda::mcmc.list(coda::mcmc(draws)),
-      sample = nrow(draws),
-      summary.pars = list(mutate = NULL)
+      sample = nrow(draws)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)

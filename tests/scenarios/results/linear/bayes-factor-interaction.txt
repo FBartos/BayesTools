@@ -3,5 +3,5 @@
 2 supp * dose supp + dose        bridge sampling   -0.111     
 3 supp * dose supp + dose bridge sampling (brms)   -0.107     
 4 supp * dose supp + dose  Savage-Dickey (exact)   -0.109     
-5 supp * dose supp + dose          Savage-Dickey   -0.075     
-6 supp * dose supp + dose         spike and slab   -0.127     
+5 supp * dose supp + dose          Savage-Dickey   -0.095     
+6 supp * dose supp + dose         spike and slab   -0.138     

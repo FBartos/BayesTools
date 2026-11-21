@@ -129,7 +129,9 @@
     paste0("loaded-dll/", basename(files))
   )
   input <- c(
-    "BayesTools-fit-backend-schema:2",
+    "BayesTools-fit-backend-schema:3",
+    paste0("JAGS:", as.character(rjags::jags.version())),
+    paste0("rjags:", as.character(getNamespaceVersion("rjags"))),
     paste0(labels, ":", hashes)
   )
   return(rlang::hash(input))
@@ -170,7 +172,8 @@
 #'
 #' @details
 #' The fingerprint covers the package's executable R and native surface and an
-#' explicit fit-backend schema version. It is captured when the namespace loads
+#' explicit fit-backend schema version, the rjags version and the linked JAGS
+#' runtime version. It is captured when the namespace loads
 #' and memoized for the R session so source files edited afterward cannot
 #' silently restamp fits produced by the already loaded implementation.
 #' Development workflows should reload BayesTools after changing its backend.
@@ -178,8 +181,7 @@
 #' The scope is intentionally conservative: any executable R/native or package
 #' build artifact change can change the fingerprint. Installed lazy-load
 #' databases and native libraries make the value build- and platform-local; it
-#' is not a cross-platform cache key. External runtimes and dependencies such as
-#' JAGS are outside this BayesTools implementation fingerprint.
+#' is specific to the build and platform.
 #'
 #' @return A length-one 32-character hexadecimal fingerprint, or `NA_character_` when the
 #' loaded implementation cannot be resolved.

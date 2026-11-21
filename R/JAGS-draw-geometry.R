@@ -233,11 +233,6 @@ JAGS_with_draws <- function(fit, draws){
   out
 }
 
-.bt_is_jags_analysis_fit <- function(fit){
-
-  inherits(fit, c("runjags", "BayesTools_draws_view"))
-}
-
 .bt_draws_view_condition <- function(class, message, ...){
 
   errorCondition(message, class = c(class, "BayesTools_draws_view_unavailable"),
@@ -245,26 +240,46 @@ JAGS_with_draws <- function(fit, draws){
 }
 
 #' @rdname JAGS_draw_geometry
-#' @param x a derived-draw view.
-#' @param ... additional arguments.
+#' @param x a fitted model or a derived-draw view.
+#' @param object a fitted model or a derived-draw view to summarize.
+#' @param ... arguments passed to [JAGS_estimates_table()] by `summary()`.
 #' @exportS3Method coda::as.mcmc.list
-as.mcmc.list.BayesTools_draws_view <- function(x, ...){
+as.mcmc.list.BayesTools_fit <- function(x, ...){
 
   coda::as.mcmc.list(x[["mcmc"]])
 }
 
 #' @rdname JAGS_draw_geometry
 #' @exportS3Method coda::as.mcmc
-as.mcmc.BayesTools_draws_view <- function(x, ...){
+as.mcmc.BayesTools_fit <- function(x, ...){
 
-  chains <- coda::as.mcmc.list(x)
+  chains <- as.mcmc.list.BayesTools_fit(x)
   matrices <- lapply(chains, function(chain){
-    if(ncol(chain) == 0L){
+    if(identical(ncol(chain), 0L)){
       return(unclass(chain))
     }
     as.matrix(chain)
   })
   coda::mcmc(do.call(rbind, matrices), start = 1, thin = 1)
+}
+
+#' @rdname JAGS_draw_geometry
+#' @exportS3Method
+print.BayesTools_fit <- function(x, ...){
+
+  chains <- as.mcmc.list.BayesTools_fit(x)
+  n_chains <- length(chains)
+  n_draws <- sum(vapply(chains, NROW, integer(1)))
+  cat("BayesTools JAGS fit with ", n_chains, ngettext(n_chains, " chain and ", " chains and "),
+      n_draws, ngettext(n_draws, " retained draw.\n", " retained draws.\n"), sep = "")
+  invisible(x)
+}
+
+#' @rdname JAGS_draw_geometry
+#' @exportS3Method
+summary.BayesTools_fit <- function(object, ...){
+
+  JAGS_estimates_table(object, ...)
 }
 
 #' @rdname JAGS_draw_geometry

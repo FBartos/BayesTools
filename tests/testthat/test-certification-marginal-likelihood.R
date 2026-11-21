@@ -1,6 +1,5 @@
 skip_if_not_test_profile("certification")
 skip_if_not_installed("rjags")
-skip_if_not_installed("runjags")
 skip_if_not_installed("bridgesampling")
 
 # Bridge-sampling log marginal likelihoods of Gaussian linear models against

@@ -220,7 +220,7 @@ ensemble_info <- ensemble_inference(models_list, parameters = "x", is_null_list 
 ensemble_inference_table(ensemble_info, parameters = "x")
 ```
 
-We find absence of evidence for either of the hypotheses, $\text{BF}_{10} = 1.180$, with posterior probability of $P(\mathcal{M}_{1} \mid \text{data}) = 0.541$ (asuming equal prior probability specified via `prior_weights` in the `models_inference` function previously).
+With equal prior model probabilities, bridge sampling gives $\text{BF}_{10} = 1.18$ and $P(\mathcal{M}_{1} \mid \text{data}) = 0.542$. The data provide little evidence for choosing between the models.
 
 
 ## Spike and Slab Priors
@@ -270,7 +270,7 @@ The estimates are essentially identical to the estimates from the previous model
 JAGS_inference_table(MS, BF_diagnostics = TRUE)
 ```
 
-As before, we find absence of evidence for either of the hypotheses, $\text{BF}_{10} = 1.199$, with posterior probability of $P(\mathcal{M}_{1} \mid \text{data}) = 0.545$.
+The inclusion indicator gives $\text{BF}_{10} = 1.29$ and $P(\mathcal{M}_{1} \mid \text{data}) = 0.563$, with an estimated Monte Carlo standard error of 0.007 for the probability. Both approaches give only weak support for including the predictor.
 
 
 ### References

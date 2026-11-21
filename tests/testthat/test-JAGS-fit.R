@@ -398,9 +398,7 @@ test_that("JAGS_fit preserves attributes", {
   expect_identical(names(prior_list), c("m", "s"))
   expect_true(all(vapply(prior_list, is.prior, logical(1))))
 
-  # Check class: a BayesTools fit that is also a runjags fit
-  expect_s3_class(fit_simple, "BayesTools_fit")
-  expect_s3_class(fit_simple, "runjags")
+  expect_identical(class(fit_simple), "BayesTools_fit")
   expect_identical(parameter_coordinates(fit_simple)$coordinate_name, c("m", "s"))
 
 })

@@ -59,7 +59,7 @@ test_that("homogeneous diagonal random effects have a shared SD label", {
   )
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -107,7 +107,7 @@ test_that("homogeneous diagonal random effects have a shared SD label", {
   )
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -163,7 +163,7 @@ test_that("homogeneous diagonal random effects have a shared SD label", {
   )
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -173,7 +173,6 @@ test_that("homogeneous diagonal random effects have a shared SD label", {
 
 test_that("random-effect summary posterior extracts mean-variance multipliers", {
 
-  skip_if_not_installed("runjags")
 
   fit <- .random_effects_mean_variance_allocation_fit()
   multipliers <- random_effects_summary_posterior(fit, summary = "var_mult")
@@ -237,7 +236,6 @@ test_that("random-effect summary posterior extracts mean-variance multipliers", 
 
 test_that("random-effect summary posterior extracts SD multipliers", {
 
-  skip_if_not_installed("runjags")
 
   fit <- .random_effects_mean_variance_allocation_fit()
   multipliers <- random_effects_summary_posterior(fit, summary = "sd_mult")
@@ -262,7 +260,6 @@ test_that("random-effect summary posterior extracts SD multipliers", {
 
 test_that("full estimates summaries add SD multipliers to standard quantities", {
 
-  skip_if_not_installed("runjags")
 
   fit <- .random_effects_mean_variance_allocation_fit()
   standard <- JAGS_estimates_table(
@@ -295,7 +292,6 @@ test_that("full estimates summaries add SD multipliers to standard quantities", 
 
 test_that("known group covariance retains its fitted kernel scale", {
 
-  skip_if_not_installed("runjags")
 
   data <- data.frame(study = factor(c("s1", "s1", "s2", "s2")))
   kernel <- matrix(
@@ -324,7 +320,7 @@ test_that("known group covariance retains its fitted kernel scale", {
   )
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -357,7 +353,6 @@ test_that("known group covariance retains its fitted kernel scale", {
 
 test_that("random-effect summary posterior extracts total-variance proportions", {
 
-  skip_if_not_installed("runjags")
 
   fit <- .random_effects_total_variance_allocation_fit()
   proportions <- random_effects_summary_posterior(fit, summary = "var_prop")
@@ -388,7 +383,6 @@ test_that("random-effect summary posterior extracts total-variance proportions",
 
 test_that("gated total-variance summaries use realized totals and proportions", {
 
-  skip_if_not_installed("runjags")
 
   fit <- .random_effects_gated_total_variance_allocation_fit()
   catalog <- parameter_catalog(fit)
@@ -478,7 +472,6 @@ test_that("gated total-variance summaries use realized totals and proportions", 
 
 test_that("random-effect summary posteriors declare atoms from structure", {
 
-  skip_if_not_installed("runjags")
 
   # Summaries whose canonical prior density has no point mass declare no atoms.
   multipliers <- random_effects_summary_posterior(
@@ -532,7 +525,6 @@ test_that("random-effect summary posteriors declare atoms from structure", {
 
 test_that("parameter_mixed_posterior declares gate atoms and conditions on inclusion", {
 
-  skip_if_not_installed("runjags")
 
   # (study, drug) gates are (0, 0), (1, 0), (0, 1), (1, 1) with the total SD 2
   # and weights (1/4, 3/4); both gates have prior probability 1/2
@@ -634,7 +626,6 @@ test_that("parameter_mixed_posterior declares gate atoms and conditions on inclu
 
 test_that("catalog mixed posteriors carry the quantity and label of their catalog quantity", {
 
-  skip_if_not_installed("runjags")
 
   fit <- .random_effects_gated_total_variance_allocation_fit()
   catalog <- parameter_catalog(fit)
@@ -691,7 +682,6 @@ test_that("catalog mixed posteriors carry the quantity and label of their catalo
 
 test_that("parameter_mixed_posterior reads source point masses from the mixture indicator", {
 
-  skip_if_not_installed("runjags")
 
   # a mean-variance SD-component allocation whose scale prior is a spike at
   # 0 or gamma(2, 2) with prior probability 1/2 each; the monitored mixture
@@ -730,7 +720,7 @@ test_that("parameter_mixed_posterior reads source point masses from the mixture 
   )
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -750,7 +740,6 @@ test_that("parameter_mixed_posterior reads source point masses from the mixture 
 
 test_that("parameter_gate_states() gives the allocation gate states of given draws", {
 
-  skip_if_not_installed("runjags")
 
   # (study, drug) gates are (0, 0), (1, 0), (0, 1), (1, 1)
   fit <- .random_effects_gated_total_variance_allocation_fit()
@@ -788,7 +777,6 @@ test_that("parameter_gate_states() gives the allocation gate states of given dra
 
 test_that("catalog quantities declare their exact support and definedness", {
 
-  skip_if_not_installed("runjags")
 
   support_of <- function(fit, name){
     quantities <- parameter_catalog(fit)$quantities
@@ -916,7 +904,6 @@ test_that("inherited gates zero descendant realized allocations", {
 
 test_that("random-effect summary posterior handles singular Dirichlet boundaries", {
 
-  skip_if_not_installed("runjags")
 
   fit <- .random_effects_mean_variance_allocation_fit(alpha = c(0.5, 2))
   multipliers <- random_effects_summary_posterior(
@@ -951,7 +938,6 @@ test_that("random-effect summary posterior handles singular Dirichlet boundaries
 
 test_that("unit-scale Dirichlet summaries keep singular upper bounds off the grid", {
 
-  skip_if_not_installed("runjags")
 
   # With scale 1, the unit reference value is the upper support bound. It is
   # singular when the complementary Dirichlet mass sum(alpha) - alpha_i < 1.
@@ -1097,10 +1083,9 @@ test_that("raw random-slope SD rows keep their own level labels", {
     list(
       mcmc = coda::mcmc.list(coda::mcmc(posterior)),
       sample = nrow(posterior),
-      summary.pars = list(mutate = NULL),
       monitor = colnames(posterior)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -1211,7 +1196,7 @@ test_that("raw group rows require their group level labels", {
   }
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -1265,7 +1250,6 @@ test_that("raw group rows require their group level labels", {
 
 test_that("allocation-derived SDs, variances and totals have exact prior densities", {
 
-  skip_if_not_installed("runjags")
 
   # the structure of RoBMA's BMA.mv_random_components: a two-component
   # allocation with Dirichlet(1, 1) weights, both components gated with
@@ -1355,7 +1339,6 @@ test_that("allocation-derived SDs, variances and totals have exact prior densiti
 
 test_that("allocation prior densities cover partial sets, ungated components and mean-variance shares", {
 
-  skip_if_not_installed("runjags")
 
   # three components with Dirichlet(1, 2, 3); study and drug gated (0.3,
   # 0.6), site always active: the total mixes the sets {site}, {study, site},
@@ -1428,7 +1411,6 @@ test_that("allocation prior densities cover partial sets, ungated components and
 
 test_that("SD components of nested allocations keep a plotting density refused for point tests", {
 
-  skip_if_not_installed("runjags")
 
   data <- data.frame(
     study = factor(c("s1", "s1", "s2", "s2")),
@@ -1460,7 +1442,7 @@ test_that("SD components of nested allocations keep a plotting density refused f
     list(mcmc = coda::mcmc.list(coda::mcmc(matrix(.5, 4L, length(columns),
                                                   dimnames = list(NULL, columns)))),
          sample = 4L),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -1532,7 +1514,7 @@ test_that("SD components of nested allocations keep a plotting density refused f
   }
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = n),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -1567,7 +1549,6 @@ test_that("SD components of nested allocations keep a plotting density refused f
 
 test_that("the total of a nested allocation under a gate has the exact prior of RoBMA's tau_total", {
 
-  skip_if_not_installed("runjags")
 
   # the total SD is T g: 0.5 delta_0 + 0.5 N(0, 0.35)[0, Inf), whose density
   # is 1.14 next to zero (the study and paper SDs split it, g sqrt(w_i) T)
@@ -1661,7 +1642,6 @@ test_that("the total of a nested allocation under a gate has the exact prior of 
 
 test_that("totals of nested allocations include the parent shares and their own active sets", {
 
-  skip_if_not_installed("runjags")
 
   # scale prior T ~ gamma(2, 2); h(y; a, b) is the density of T sqrt(S), S ~
   # Beta(a, b): the one-dimensional integral over the share margin
@@ -1764,7 +1744,6 @@ test_that("totals of nested allocations include the parent shares and their own 
 
 test_that("a nested total with two or more independent shares keeps a plotting density refused for point tests", {
 
-  skip_if_not_installed("runjags")
 
   # a split with its own gates under one of two gated components of a
   # Dirichlet(2, 3) root: T g sqrt(w_1) sqrt(W_A) has two shares when the own
@@ -1842,7 +1821,6 @@ test_that("a nested total with two or more independent shares keeps a plotting d
 
 test_that("gate-only allocations and inclusion indicators have exact priors and declared atoms", {
 
-  skip_if_not_installed("runjags")
 
   # a gate-only allocation: the study SD is T g, T ~ gamma(2, 2), g ~
   # Bernoulli(0.4); the gate draws are (0, 1, 0, 1)
@@ -1863,7 +1841,7 @@ test_that("gate-only allocations and inclusion indicators have exact priors and 
   colnames(samples) <- c(allocation$source_node, gate)
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -1910,7 +1888,6 @@ test_that("gate-only allocations and inclusion indicators have exact priors and 
 
 test_that("totals with an ungated component cannot be conditioned on inclusion", {
 
-  skip_if_not_installed("runjags")
 
   # study and drug gated, site ungated: some component is always active, so
   # the inclusion event of the total is certain; a declared condition on the
@@ -1993,7 +1970,7 @@ test_that("allocation components with equal sanitized labels keep their own draw
     )
     fit <- structure(
       list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-      class = c("runjags", "BayesTools_fit", "list")
+      class = "BayesTools_fit"
     )
     attr(fit, "prior_list") <- compiled$prior_list
     attr(fit, "formula_design") <- list(mu = compiled$formula_design)
@@ -2028,7 +2005,6 @@ test_that("allocation components with equal sanitized labels keep their own draw
 
 test_that("the indicator columns of a logical-by-continuous term are labelled by level", {
 
-  skip_if_not_installed("runjags")
 
   # `flag:x` without the margin `x` in the block is coded by two indicator
   # columns (flagFALSE:x, flagTRUE:x) that share the SD of the term; the
@@ -2079,10 +2055,9 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
       list(
         mcmc = coda::mcmc.list(coda::mcmc(posterior)),
         sample = nrow(posterior),
-        summary.pars = list(mutate = NULL),
         monitor = colnames(posterior)
       ),
-      class = c("runjags", "BayesTools_fit", "list")
+      class = "BayesTools_fit"
     )
     attr(fit, "prior_list") <- result$prior_list
     attr(fit, "formula_design") <- list(mu = result$formula_design)
@@ -2202,10 +2177,9 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
     list(
       mcmc = coda::mcmc.list(coda::mcmc(diagonal_posterior)),
       sample = nrow(diagonal_posterior),
-      summary.pars = list(mutate = NULL),
       monitor = colnames(diagonal_posterior)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(diagonal_fit, "prior_list") <- diagonal$prior_list
   attr(diagonal_fit, "formula_design") <- list(mu = diagonal$formula_design)
@@ -2217,7 +2191,6 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
 
 test_that("conditioning a nested total uses its parent gates and refuses both gate kinds", {
 
-  skip_if_not_installed("runjags")
 
   # RoBMA's structure: a gated parent allocation split into study and paper
   # SDs. A total is conditioned on its parent-allocation gates; a total whose
@@ -2269,7 +2242,6 @@ test_that("conditioning a nested total uses its parent gates and refuses both ga
 
 test_that("inclusion quantities follow the SD and allocation label conventions", {
 
-  skip_if_not_installed("runjags")
 
   data <- data.frame(
     id = factor(rep(paste0("s", 1:4), each = 6L)),
@@ -2291,10 +2263,9 @@ test_that("inclusion quantities follow the SD and allocation label conventions",
       list(
         mcmc = coda::mcmc.list(coda::mcmc(posterior)),
         sample = nrow(posterior),
-        summary.pars = list(mutate = NULL),
         monitor = colnames(posterior)
       ),
-      class = c("runjags", "BayesTools_fit", "list")
+      class = "BayesTools_fit"
     )
     attr(fit, "prior_list") <- result$prior_list
     attr(fit, "formula_design") <- list(mu = result$formula_design)
@@ -2367,7 +2338,7 @@ test_that("inclusion quantities follow the SD and allocation label conventions",
   samples[, gates] <- 1
   allocation <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(allocation, "prior_list") <- result$prior_list
   attr(allocation, "formula_design") <- list(mu = result$formula_design)
@@ -2382,7 +2353,6 @@ test_that("inclusion quantities follow the SD and allocation label conventions",
 
 test_that("spike-and-slab scalar correlations follow the SD inclusion conventions", {
 
-  skip_if_not_installed("runjags")
 
   data <- data.frame(
     id = factor(rep(paste0("s", 1:5), each = 4L)),
@@ -2415,10 +2385,9 @@ test_that("spike-and-slab scalar correlations follow the SD inclusion convention
       list(
         mcmc = coda::mcmc.list(coda::mcmc(posterior)),
         sample = nrow(posterior),
-        summary.pars = list(mutate = NULL),
         monitor = colnames(posterior)
       ),
-      class = c("runjags", "BayesTools_fit", "list")
+      class = "BayesTools_fit"
     )
     attr(fit, "prior_list") <- result$prior_list
     attr(fit, "formula_design") <- list(mu = result$formula_design)
@@ -2806,7 +2775,6 @@ test_that("conditional point-component posteriors declare the support of the res
 
 test_that("conditional gated allocation quantities declare the support of their inclusion event", {
 
-  skip_if_not_installed("runjags")
 
   # (study, drug) gates drawn independently with probability 1/2, so that the
   # draws visit every gate state

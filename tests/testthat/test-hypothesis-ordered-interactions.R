@@ -58,8 +58,8 @@ treatment <- prior_factor("normal", list(0, 1), contrast = "treatment")
   values <- do.call(cbind, unname(columns))
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(values)), sample = n,
-         summary.pars = list(mutate = NULL), monitor = colnames(values)),
-    class = c("runjags", "BayesTools_fit", "list")
+         monitor = colnames(values)),
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list")     <- bound
   attr(fit, "formula_design") <- list(mu = info$formula_design)

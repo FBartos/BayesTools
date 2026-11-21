@@ -303,7 +303,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   formula_scale <- .bt_formula_scale_list_complete(formula_scale, fit)
 
   # Get posterior column names for structure matching
-  if(inherits(fit, "runjags") || inherits(fit, "BayesTools_fit")){
+  if(inherits(fit, "BayesTools_fit")){
     posterior <- as.matrix(.fit_to_posterior(fit))
   }else{
     stop("'fit' must be a fitted model object.", call. = FALSE)

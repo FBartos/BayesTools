@@ -394,9 +394,9 @@ test_that("the contrast coordinates of a unit are refused as selectors", {
     stats::setNames(as.vector(u), term$correlation$primitive_names)
   )
   posterior <- matrix(rep(values, 2L), nrow = 2L, byrow = TRUE, dimnames = list(NULL, names(values)))
-  fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+  fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
               monitor = colnames(posterior), sample = nrow(posterior))
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "formula_scale") <- list(mu = result$formula_scale)
@@ -496,9 +496,9 @@ test_that("the marginal covariance of a unit block is that of its restricted cor
     stats::setNames(as.vector(u), term$correlation$primitive_names)
   )
   posterior <- matrix(rep(values, 2L), nrow = 2L, byrow = TRUE, dimnames = list(NULL, names(values)))
-  fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+  fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
               monitor = colnames(posterior), sample = nrow(posterior))
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "formula_scale") <- list(mu = result$formula_scale)
@@ -507,7 +507,6 @@ test_that("the marginal covariance of a unit block is that of its restricted cor
 
 test_that("original-scale level cells of a unit need its certified SD; cor_total does not", {
 
-  skip_if_not_installed("runjags")
 
   data <- .unit_data()
   m <- mean(data$x)
@@ -644,9 +643,9 @@ test_that("a us() block that is one unit is its diagonal block downstream", {
   expect_null(term$correlation)
   values <- c(mu_intercept = 0, stats::setNames(rep(0, 3L), paste0("mu_f[", 1:3, "]")), mu__xREx__id_f = 0.7)
   posterior <- matrix(rep(values, 2L), nrow = 2L, byrow = TRUE, dimnames = list(NULL, names(values)))
-  fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+  fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
               monitor = colnames(posterior), sample = nrow(posterior))
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "formula_scale") <- list(mu = result$formula_scale)
@@ -782,7 +781,6 @@ test_that("convergence roles mark the constant cells of a unit block as structur
 
 test_that("original-scale level cells need only the unit's own certified SD", {
 
-  skip_if_not_installed("runjags")
 
   set.seed(4)
   data <- data.frame(
@@ -863,9 +861,9 @@ test_that("tables count the defined draws of cor_total", {
       stats::setNames(as.vector(u), term$correlation$primitive_names))
   }
   posterior <- rbind(draw(0.7), draw(0), draw(0.9), draw(0.4))
-  fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+  fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
               monitor = colnames(posterior), sample = nrow(posterior))
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "formula_scale") <- list(mu = result$formula_scale)

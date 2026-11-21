@@ -7,7 +7,6 @@ skip_if_missing_fits(c("fit_formula_draws_scaled_random",
 test_that("JAGS_formula_draws() evaluates draws without a fit through the design of JAGS_fit()", {
 
   skip_if_not_installed("rjags")
-  skip_if_not_installed("runjags")
   fit <- readRDS(file.path(temp_fits_dir, "fit_formula_draws_scaled_random.RDS"))
   inputs <- attr(fit, "formula_draws_inputs", exact = TRUE)
   data <- inputs$data
@@ -96,7 +95,6 @@ test_that("JAGS_formula_draws() evaluates draws without a fit through the design
 test_that("JAGS_formula_draws() rebuilds expression terms that read JAGS model data", {
 
   skip_if_not_installed("rjags")
-  skip_if_not_installed("runjags")
   fit <- readRDS(file.path(temp_fits_dir, "fit_formula_draws_expression_data.RDS"))
   inputs <- attr(fit, "formula_draws_inputs", exact = TRUE)
   data <- inputs$data

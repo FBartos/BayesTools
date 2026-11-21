@@ -1050,8 +1050,7 @@ test_that("bias posterior extraction recognizes composed selection and phacking 
     byrow = TRUE
   )
   colnames(model) <- c("bias_indicator", "omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
-  model <- coda::mcmc(model)
-  class(model) <- c("mcmc", "BayesTools_fit")
+  model <- test_fit_from_chains(coda::mcmc(model))
   attr(model, "prior_list") <- list(bias = bias)
   model <- attach_test_parameter_map(model)
 
@@ -1097,8 +1096,7 @@ test_that("direct p-hacking and bias priors unpack mixed posteriors", {
     byrow = TRUE
   )
   colnames(ph_model) <- c("omega[1]", "alpha", "pi_null", "phack_kind")
-  ph_model <- coda::mcmc(ph_model)
-  class(ph_model) <- c("mcmc", "BayesTools_fit")
+  ph_model <- test_fit_from_chains(coda::mcmc(ph_model))
   attr(ph_model, "prior_list") <- list(ph = phacking)
   ph_model <- attach_test_parameter_map(ph_model)
 
@@ -1114,8 +1112,7 @@ test_that("direct p-hacking and bias priors unpack mixed posteriors", {
     byrow = TRUE
   )
   colnames(bias_model) <- c("omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
-  bias_model <- coda::mcmc(bias_model)
-  class(bias_model) <- c("mcmc", "BayesTools_fit")
+  bias_model <- test_fit_from_chains(coda::mcmc(bias_model))
   attr(bias_model, "prior_list") <- list(pub_bias = bias)
   bias_model <- attach_test_parameter_map(bias_model)
 
@@ -1143,8 +1140,7 @@ test_that("p-hacking report_scale controls public summary coordinates", {
     byrow = TRUE
   )
   colnames(model) <- c("alpha", "pi_null")
-  model <- coda::mcmc(model)
-  class(model) <- c("mcmc", "BayesTools_fit")
+  model <- test_fit_from_chains(coda::mcmc(model))
   model <- attach_test_parameter_map(model)
 
   attr(model, "prior_list") <- list(ph = ph_alpha)

@@ -800,8 +800,7 @@ test_that("simplify_as_mixed_posterior_bias() extracts the scalar bias component
     PET = c(rep(0, 6), seq(.1, 1, length.out = 6), rep(0, 6)),
     PEESE = c(rep(0, 12), seq(.2, 2, length.out = 6))
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, "bias")

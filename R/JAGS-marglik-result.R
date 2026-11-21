@@ -408,8 +408,8 @@
     chain_draws <- vapply(fit, nrow, integer(1))
   }else if(inherits(fit, "mcmc")){
     chain_draws <- nrow(fit)
-  }else if(inherits(fit, "runjags")){
-    chains <- coda::as.mcmc.list(fit)
+  }else if(inherits(fit, "BayesTools_fit")){
+    chains <- .extract_posterior_samples(fit, as_list = TRUE)
     chain_draws <- vapply(chains, nrow, integer(1))
   }else if(is.list(fit) && length(fit) > 0L &&
            all(vapply(fit, inherits, logical(1), what = "mcarray"))){

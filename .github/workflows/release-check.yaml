@@ -28,6 +28,7 @@ jobs:
     uses: ./.github/workflows/downstream.yaml
     with:
       source: cran
+      jags5: true
 
   urls-and-site:
     runs-on: ubuntu-latest
@@ -43,7 +44,7 @@ jobs:
       - uses: r-lib/actions/setup-pandoc@v2
 
       - name: Set up JAGS
-        uses: ./.github/actions/setup-jags
+        uses: ./.github/actions/setup-jags5
 
       - name: Install R dependencies
         uses: r-lib/actions/setup-r-dependencies@v2

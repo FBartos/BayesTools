@@ -204,8 +204,7 @@ source(testthat::test_path("common-functions.R"))
     `mu_x_cont1__xXx__x_fac3md[2]` = seq(0.3, 1.2, length.out = 10)
   )
 
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- formula_result$prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -2966,8 +2965,7 @@ test_that("marginal_posterior uses transformed treatment metadata for simple fac
 
   posterior <- matrix(rnorm(20), ncol = 1)
   colnames(posterior) <- "mu_x_fac2t"
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- formula_result$prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -3017,8 +3015,7 @@ test_that("marginal_posterior handles as_mixed_posteriors multi-factor interacti
 
   posterior <- matrix(seq_len(20), nrow = 10, ncol = 2)
   colnames(posterior) <- paste0("mu_a__xXx__b[", 1:2, "]")
-  fit <- coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list)))
   attr(fit, "prior_list") <- formula_result$prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -3061,8 +3058,7 @@ test_that("marginal_posterior handles one-coefficient as_mixed_posteriors intera
 
   posterior <- matrix(seq_len(10), nrow = 10, ncol = 1)
   colnames(posterior) <- "mu_a__xXx__b"
-  fit <- coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list)))
   attr(fit, "prior_list") <- formula_result$prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -3386,10 +3382,9 @@ test_that("marginal_estimates_table keeps Bayes factor warnings of scalar parame
     list(
       mcmc = coda::mcmc.list(samples),
       sample = nrow(samples),
-      summary.pars = list(mutate = NULL),
       monitor = colnames(samples)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- prior_list
   attach_test_parameter_map(fit)
@@ -3511,8 +3506,7 @@ test_that("marginal inference validates its Savage-Dickey settings before model 
   expect_error(marginal_inference(models, "absent", "mu", list(mu = c(FALSE, FALSE)), NULL,
                                   n_samples = "many"), "'n_samples'", fixed = TRUE)
 
-  fit <- coda::mcmc(cbind(theta = stats::rnorm(100)))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(cbind(theta = stats::rnorm(100))))
   attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
   fit <- attach_test_parameter_map(fit)
   call_as <- function(...) as_marginal_inference(
@@ -3782,8 +3776,7 @@ test_that("Savage-Dickey BFs with the null outside the posterior draws warn once
     mu_intercept = 1.5 + .2 * stats::rnorm(n),
     mu_x         = .3 + .05 * stats::rnorm(n)
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- formula_result$prior_list
   fit <- attach_test_parameter_map(fit)
   level_inference <- .collect_warnings_for_test(as_marginal_inference(
@@ -4016,8 +4009,7 @@ test_that("Savage-Dickey extrapolation warnings use the components supporting th
 
 .single_fit_for_test <- function(posterior, prior_list){
 
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
   fit
@@ -4429,8 +4421,7 @@ test_that("marginal inference gives levels fixed at the null an NA Bayes factor 
   expect_identical(partial_BF[["C"]], bf[["C"]])
 
   # as_marginal_inference on one fit
-  fit <- coda::mcmc(factor_draws())
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(factor_draws()))
   attr(fit, "prior_list") <- list(mu_f = .treatment_factor_prior_for_test(1))
   fit <- attach_test_parameter_map(fit)
   single <- .collect_warnings_for_test(as_marginal_inference(
@@ -4567,7 +4558,7 @@ test_that("use_formula = FALSE prior densities ignore the coefficient's own mult
     mu_x_indicator = indicator,
     sigma = abs(rnorm(n, 2, .1))
   ))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(fit)
   attr(fit, "prior_list") <- list(mu_x = spike_slab, sigma = sigma_prior)
   fit <- attach_test_parameter_map(fit)
   conditional <- as_mixed_posteriors(
@@ -4603,11 +4594,10 @@ test_that("transform_scaled slope stays raw and intercept uses compiled products
   )
   fit <- list(
     mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-    summary.pars = list(mutate = NULL),
     monitor = colnames(posterior),
     sample = n
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- c(formula_result$prior_list, list(sigma = prior("lognormal", list(0, 1))))
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
@@ -4666,8 +4656,7 @@ test_that("marginal_posterior uses log(intercept) for log-intercept formulas", {
   n <- 100
   posterior <- cbind(ls_intercept = stats::rlnorm(n, -1, .2), ls_x = stats::rnorm(n, -.2, .1))
   make_fit <- function(design){
-    fit <- coda::mcmc(posterior)
-    class(fit) <- c("BayesTools_fit", class(fit))
+    fit <- test_fit_from_chains(coda::mcmc(posterior))
     attr(fit, "prior_list") <- formula_result$prior_list
     fit <- attach_test_parameter_map(fit)
     # Only the persisted log(intercept) flag of the design is under test.
@@ -4742,11 +4731,10 @@ test_that("marginal_posterior without prior samples declares scaled log-intercep
   posterior <- cbind(ls_intercept = stats::rlnorm(n, -1, .2), ls_x = stats::rnorm(n, -.2, .1))
   fit <- list(
     mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-    summary.pars = list(mutate = NULL),
     monitor = colnames(posterior),
     sample = n
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(ls = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(ls = formula_result$formula_scale)
@@ -4809,8 +4797,7 @@ test_that("intercept-only formulas give the intercept level", {
 
   indicator <- sample(1:2, n, TRUE)
   draws <- ifelse(indicator == 1L, stats::rnorm(n), rng(truncated, n))
-  fit <- coda::mcmc(cbind(mu_intercept = draws, mu_intercept_indicator = indicator))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(cbind(mu_intercept = draws, mu_intercept_indicator = indicator)))
   attr(fit, "prior_list") <- intercept_only(prior_mixture(
     list(prior("normal", list(0, 1)), truncated), is_null = c(FALSE, FALSE)
   ))
@@ -4860,11 +4847,10 @@ test_that("transform_scaled factor atoms are rescaled for level-labelled columns
   )
   fit <- list(
     mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-    summary.pars = list(mutate = NULL),
     monitor = colnames(posterior),
     sample = n
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
@@ -5027,8 +5013,7 @@ test_that("ordered terms add their derived support to the level support, unknown
   posterior <- cbind(mu_intercept = seq(.1, 2, length.out = 20),
                      "mu_f[1]" = .4*total,"mu_f[2]" = .6*total,
                      mu_f_ordered_total=total)
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- formula_result$prior_list
   fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_f"))
@@ -5146,8 +5131,7 @@ test_that("ordered mixture totals with a spike(0) component declare their point 
   set.seed(12)
   n <- 20000
   prior_draws <- mixture_posterior(sample(1:2, n, TRUE))
-  fit <- coda::mcmc(prior_draws)
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(prior_draws))
   attr(fit, "prior_list") <- list(mu_f = ordered_prior)
   fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, parameters = "mu_f", n_prior_samples = 1000)
@@ -5291,8 +5275,7 @@ test_that("ordered point(0) totals are structural zero coefficients", {
     expect_equal(.bt_meta_get(marginal[[level]], "atoms")$mass, .75, tolerance = 1e-12)
   }
 
-  fit <- coda::mcmc(null)
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(null))
   attr(fit, "prior_list") <- list(mu_f = null_prior)
   fit <- attach_test_parameter_map(fit)
   single <- as_mixed_posteriors(fit, parameters = "mu_f")
@@ -5815,8 +5798,7 @@ test_that("the kernel posterior ordinate refuses degenerate continuous draws", {
 
   # a direct scalar call stops with the classed condition; a scalar marginal of
   # as_marginal_inference() gets an NA Bayes factor with the reason, as a level does
-  fit <- coda::mcmc(cbind(theta = c(.5, rep(0, 99)), theta_indicator = c(1L, rep(0L, 99))))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(cbind(theta = c(.5, rep(0, 99)), theta_indicator = c(1L, rep(0L, 99)))))
   attr(fit, "prior_list") <- list(theta = prior_spike_and_slab(
     prior("normal", list(0, 1)), prior_inclusion = prior("point", list(.5))))
   fit <- attach_test_parameter_map(fit)
@@ -5933,9 +5915,9 @@ test_that("the kernel posterior ordinate refuses constant continuous draws on th
                                             parameters = colnames(posterior)){
   design <- match.arg(design)
   formula_result <- JAGS_formula(formula = formula, parameter = parameter, data = data, prior_list = prior_list)
-  fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+  fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
               monitor = colnames(posterior), sample = nrow(posterior))
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- formula_result$prior_list
   if(identical(design, "full")){
     attr(fit, "formula_design") <- stats::setNames(list(formula_result$formula_design), parameter)
@@ -6144,8 +6126,8 @@ test_that("transforming formula marginals of mixed models records the missing pr
     draws <- cbind(mu_intercept = seq(-.3, .3, length.out = 20))
     if(with_factor) draws <- cbind(draws, mu_g = seq(.2, .5, length.out = 20))
     fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = 20L,
-      summary.pars = list(mutate = NULL), monitor = colnames(draws)),
-      class = c("runjags", "BayesTools_fit", "list"))
+      monitor = colnames(draws)),
+      class = "BayesTools_fit")
     attr(fit, "prior_list") <- spec$prior_list
     attr(fit, "formula_design") <- list(mu = spec$formula_design)
     attr(fit, "formula_scale") <- list(mu = spec$formula_scale)
@@ -6201,8 +6183,7 @@ for(contrast in c("treatment", "meandif", "orthonormal")){
         list(intercept = prior("normal", list(0, 1)), fac = prior_factor_i))
       set.seed(1)
       draws <- cbind(mu_intercept = rnorm(60), "mu_fac[1]" = rnorm(60), "mu_fac[2]" = rnorm(60))
-      fit <- coda::mcmc(draws)
-      class(fit) <- c("mcmc", "BayesTools_fit")
+      fit <- test_fit_from_chains(coda::mcmc(draws))
       attr(fit, "prior_list") <- compiled$prior_list
       fit <- attach_test_parameter_map(fit)
       mixed <- as_mixed_posteriors(fit, c("mu_intercept", "mu_fac"))

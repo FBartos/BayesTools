@@ -123,7 +123,7 @@ test_that("fixture cache metadata rejects stale artifact declarations", {
     marker_file
   )
 
-  catalog <- bayestools_required_fit_catalog()
+  catalog <- bayestools_expected_fit_catalog()
   expect_false(
     .test_cache_metadata_current(
       marker_name,
@@ -151,7 +151,7 @@ test_that("fixture cache metadata rejects stale source declarations", {
     normalizePath(cache_dir, winslash = "/", mustWork = TRUE)
   ))
 
-  catalog <- bayestools_required_fit_catalog()
+  catalog <- bayestools_expected_fit_catalog()
   source_hashes <- helpers$.test_cache_source_hashes("model-fit")
   write_marker <- function(hashes) {
     writeLines(
@@ -207,11 +207,11 @@ test_that("fixture artifact validators reject malformed temporary RDS payloads",
     class = "expectation_failure"
   )
 
-  catalog <- bayestools_required_fit_catalog()
+  catalog <- bayestools_expected_fit_catalog()
   row <- catalog[1L, , drop = FALSE]
   malformed_fit <- structure(
     list(mcmc = NULL),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   saveRDS(malformed_fit, malformed_fit_file)
   expect_error(
@@ -243,7 +243,7 @@ test_that("registry artifact policy matches cached fit and marginal-likelihood f
 })
 
 test_that("cataloged fixture files expose expected monitors and metadata", {
-  catalog <- bayestools_required_fit_catalog()
+  catalog <- bayestools_expected_fit_catalog()
 
   # every check of a fixture is made and its failures are collected, so the
   # test makes one expectation per fixture instead of one per check
@@ -267,6 +267,20 @@ test_that("cataloged fixture files expose expected monitors and metadata", {
           expected_chains = row$expected_chains,
           expected_iterations = row$expected_iterations
         )
+        if(model_name %in% c("fit_autofit_error", "fit_autofit_ess")){
+          # These fixtures start with 100 draws and extend by 100 until their
+          # single stated criterion is met. The stopping batch varies by engine.
+          samples <- coda::as.mcmc.list(fit)
+          batches <- seq_len(1L + nrow(attr(fit, "adaptation")$extensions))
+          expect_identical(vapply(samples, nrow, integer(1L)), rep(100L * max(batches), length(samples)))
+          passed <- vapply(batches, function(batch){
+            prefix <- stats::window(samples, end = stats::start(samples) + (100L * batch - 1L) * coda::thin(samples))
+            if(model_name == "fit_autofit_ess") return(unname(coda::effectiveSize(prefix)) >= 200)
+            se <- summary(prefix, quantiles = NULL)$statistics[["Time-series SE"]]
+            se <= 0.05
+          }, logical(1L))
+          expect_identical(which(passed), max(batches))
+        }
       }
 
       if (isTRUE(row$has_marglik)) {
@@ -280,9 +294,9 @@ test_that("cataloged fixture files expose expected monitors and metadata", {
 test_that("cached fits keep no environment of the code that fitted them", {
   # The fixture fits are created inside the fitting tests: a formula, terms
   # object, or closure stored with such an environment would carry the test
-  # workspace into every saved fit. Fits also leave without runjags' compiled
-  # rjags model, closures over the frame that compiled it.
-  catalog <- bayestools_required_fit_catalog()
+  # workspace into every saved fit. The compiled JAGS model is also
+  # a closure over its compilation frame and must be dropped.
+  catalog <- bayestools_expected_fit_catalog()
 
   for (model_name in catalog$model_name) {
     fit <- readRDS(expect_fit_file_present(model_name, catalog = catalog))

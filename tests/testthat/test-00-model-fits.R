@@ -12,7 +12,7 @@ skip_if_not_test_profile("fit")
 #   case fit-assertions (test-certification-fit-assertions.R), not this file.
 #
 # DEPENDENCIES:
-#   - rjags, runjags, bridgesampling: For model fitting
+#   - rjags, bridgesampling: For model fitting
 #
 # SKIP CONDITIONS:
 #   - skip_on_cran(): Long-running model fitting
@@ -35,7 +35,7 @@ skip_if_not_installed("rjags")
 
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
-fit_cache_catalog <- bayestools_required_fit_catalog()
+fit_cache_catalog <- bayestools_expected_fit_catalog()
 skip_refit_if_cached(
   "model-fit",
   required_fits = fit_cache_catalog$model_name,
@@ -1006,7 +1006,7 @@ test_that("Formula-based interaction models fit correctly", {
     model_syntax = model_syntax, data = data_scale, prior_list = prior_list,
     formula_list = formula_list_scale, formula_data_list = formula_data_list_manual,
     formula_prior_list = formula_prior_list_scale,
-    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+    chains = 2, adapt = 5000, burnin = 5000, sample = 5000, seed = 2)
   # Store scaling info as attribute for comparison
   attr(fit_formula_manual_scaled, "manual_scale") <- list(
     mu_x_cont1 = list(mean = x_cont1_mean, sd = x_cont1_sd),
@@ -1026,7 +1026,7 @@ test_that("Formula-based interaction models fit correctly", {
     formula_list = formula_list_scale, formula_data_list = formula_data_list_auto,
     formula_prior_list = formula_prior_list_scale,
     formula_scale_list = formula_scale_list_auto,
-    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+    chains = 2, adapt = 5000, burnin = 5000, sample = 5000, seed = 2)
   result <- save_fit(fit_formula_auto_scaled, "fit_formula_auto_scaled",
                      formulas = TRUE, interactions = TRUE, simple_priors = TRUE,
                      note = "Automatic scaling of continuous predictors")
@@ -1633,7 +1633,6 @@ test_that("Advanced JAGS_fit features work correctly", {
       }
     }"
 
-  runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
 
   # First fit without autofit (should have poor convergence)
   fit_no_autofit <- JAGS_fit(model_syntax_autofit, data_autofit, priors_autofit,
@@ -1647,7 +1646,7 @@ test_that("Advanced JAGS_fit features work correctly", {
 
   summary_no_autofit <- suppressWarnings(summary(fit_no_autofit))
   # Check that convergence is poor
-  expect_true(summary_no_autofit[1,"MCerr"] > 0.069 || summary_no_autofit[1,"MC%ofSD"] > 8)
+  expect_true(summary_no_autofit[1,"MCMC_error"] > 0.069 || summary_no_autofit[1,"MCMC_SD_error"] > 0.08)
 
   # Now fit with autofit using max_error criterion
   fit_autofit_error <- JAGS_fit(model_syntax_autofit, data_autofit, priors_autofit,
@@ -1662,7 +1661,7 @@ test_that("Advanced JAGS_fit features work correctly", {
 
   summary_autofit_error <- summary(fit_autofit_error)
   # Should have better convergence
-  expect_true(summary_autofit_error[1,"MCerr"] < 0.05)
+  expect_true(summary_autofit_error[1,"MCMC_error"] < 0.05)
 
   # Test autofit with min_ESS criterion
   fit_autofit_ess <- JAGS_fit(model_syntax_autofit, data_autofit, priors_autofit,
@@ -1676,7 +1675,7 @@ test_that("Advanced JAGS_fit features work correctly", {
   fit_autofit_ess <- result$fit
 
   summary_autofit_ess <- summary(fit_autofit_ess)
-  expect_true(summary_autofit_ess[1,"SSeff"] > 200)
+  expect_true(summary_autofit_ess[1,"ESS"] > 200)
 
   # Test 3: parallel - running chains in parallel
   # Note: parallel execution is tested but results should be the same as non-parallel
@@ -1986,8 +1985,6 @@ test_that("Complex models for plotting fit correctly", {
 
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
-  skip_if_not_installed("RoBMA")
-  requireNamespace("RoBMA", quietly = TRUE)
 
   set.seed(1)
 
@@ -2119,8 +2116,6 @@ test_that("Complex models for plotting fit correctly", {
 
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
-  skip_if_not_installed("RoBMA")
-  requireNamespace("RoBMA", quietly = TRUE)
 
   set.seed(1)
 
@@ -2270,7 +2265,6 @@ test_that("Dual parameter regression with log(intercept) and formula_scale fits 
 test_that("Deterministic-node parity models fit correctly", {
 
   skip_if_not_installed("rjags")
-  skip_if_not_installed("runjags")
 
   dnode_data <- function(){
     set.seed(11)
@@ -2680,7 +2674,6 @@ test_that("Deterministic-node parity models fit correctly", {
 test_that("Parameter-label models fit correctly", {
 
   skip_if_not_installed("rjags")
-  skip_if_not_installed("runjags")
 
   syntax <- "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}"
   sd_prior <- prior("normal", list(0, 1), list(0, Inf))
@@ -2855,7 +2848,6 @@ test_that("Parameter-label models fit correctly", {
 test_that("Random-effect summary posterior models fit correctly", {
 
   skip_if_not_installed("rjags")
-  skip_if_not_installed("runjags")
 
   syntax <- "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}"
 
@@ -3002,7 +2994,6 @@ test_that("Random-effect summary posterior models fit correctly", {
 test_that("Convergence-role and LKJ-diagonal models fit correctly", {
 
   skip_if_not_installed("rjags")
-  skip_if_not_installed("runjags")
 
   # Monitored data: 'N' and 'x' are fully observed, 'y' partly.
   set.seed(50)
@@ -3101,7 +3092,6 @@ test_that("Convergence-role and LKJ-diagonal models fit correctly", {
 test_that("Structured-correlation models for fit-level hypotheses fit correctly", {
 
   skip_if_not_installed("rjags")
-  skip_if_not_installed("runjags")
 
   # One heterogeneous compound-symmetry and one continuous-time AR(1) block,
   # each with a sampled scalar correlation (default prior) that
@@ -3232,7 +3222,6 @@ test_that("Compiled coefficient multiplier states have isolated current-format f
 test_that("Formula draws scaled random fixture is cached", {
 
   skip_if_not_installed("rjags")
-  skip_if_not_installed("runjags")
   set.seed(11)
   data <- data.frame(
     x = stats::rnorm(24, 5, 3),
@@ -3277,7 +3266,6 @@ test_that("Formula draws scaled random fixture is cached", {
 test_that("Formula draws expression data fixture is cached", {
 
   skip_if_not_installed("rjags")
-  skip_if_not_installed("runjags")
   set.seed(3)
   n <- 20
   data <- data.frame(x = stats::rnorm(n))
@@ -3384,9 +3372,9 @@ test_that("JAGS_extend works correctly", {
   )
   extended <- list(serial = fit_extended, parallel = fit_extended2)
 
-  # Check that the extended fits are still BayesTools_fit runjags objects
+  # Extensions preserve the owned fit class.
   expect_true(all(vapply(extended, inherits, logical(1), what = "BayesTools_fit")))
-  expect_true(all(vapply(extended, inherits, logical(1), what = "runjags")))
+  expect_false(any(vapply(extended, inherits, logical(1), what = "runjags")))
 
   # Check that attributes are preserved: the design and the parameter map
   # identical to the fit's
@@ -3407,36 +3395,41 @@ test_that("JAGS_extend works correctly", {
     c(serial = expected_draws, parallel = expected_draws)
   )
 
-  # The adaptation of the fit (adapt = 100) reaches runjags for every
+  # The adaptation of the fit (adapt = 100) reaches the driver for every
   # extension without 'adapt'; an override applies to its call only.
-  original_extend <- runjags::extend.jags
+  extend_with <- function(fit, ...) JAGS_extend(fit, autofit_control = extend_control, silent = TRUE, ...)
+  # Compare genuine installations across processes before replacing the
+  # coordinator's driver to record calls in the following serial checks.
+  parallel_override <- extend_with(fit_formula, adapt = 400, parallel = TRUE, cores = 2)
+  expect_identical(
+    attr(parallel_override, "adaptation")$extensions,
+    data.frame(adapt = 400L, rebuilt = TRUE)
+  )
+  original_extend <- BayesTools:::.bt_rjags_extend
   backend_calls <- list()
   testthat::local_mocked_bindings(
-    extend.jags = function(runjags.object, ...){
+    .bt_rjags_extend = function(fit, ...){
       arguments <- list(...)
       backend_calls[[length(backend_calls) + 1L]] <<- c(
-        arguments[c("adapt", "burnin", "method")],
-        list(end.state = runjags.object$end.state)
+        arguments["adapt"],
+        list(workers = length(arguments$cl), end_state = fit$end_state)
       )
-      original_extend(runjags.object, ...)
+      original_extend(fit, ...)
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
-  extend_with <- function(fit, ...) JAGS_extend(fit, autofit_control = extend_control, silent = TRUE, ...)
   explicit <- extend_with(fit_formula, adapt = 100)
   override <- extend_with(fit_formula, adapt = 400)
   after    <- extend_with(override)
-  parallel_override <- extend_with(fit_formula, adapt = 400, parallel = TRUE, cores = 2)
 
-  expect_identical(lapply(backend_calls, `[[`, "adapt"), list(100L, 400L, 100L, 400L))
-  expect_identical(lapply(backend_calls, `[[`, "burnin"), rep(list(0), 4))
+  expect_identical(lapply(backend_calls, `[[`, "adapt"), list(100L, 400L, 100L))
   expect_identical(
-    lapply(backend_calls, `[[`, "method"),
-    list("rjags", "rjags", "rjags", "rjparallel")
+    vapply(backend_calls, `[[`, integer(1), "workers"),
+    c(0L, 0L, 0L)
   )
   # the stored chain and generator states start each extension
-  expect_identical(backend_calls[[1L]]$end.state, fit_formula$end.state)
-  expect_identical(backend_calls[[3L]]$end.state, override$end.state)
+  expect_identical(backend_calls[[1L]]$end_state, fit_formula$end_state)
+  expect_identical(backend_calls[[3L]]$end_state, override$end_state)
 
   no_extensions <- data.frame(adapt = integer(), rebuilt = logical())
   expect_identical(attr(fit_formula, "adaptation"), list(initial = 100L, extensions = no_extensions))

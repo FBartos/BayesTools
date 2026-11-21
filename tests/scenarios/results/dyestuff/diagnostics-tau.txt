@@ -1,5 +1,5 @@
        data parameterization   ESS R_hat ESS_tail_log_tau ESS_tau_below_0.05 P_tau_below_0.05 chain_min chain_max  exact
-1  Dyestuff      noncentered  7373 1.000            11561              26192           0.0036    0.0026    0.0043 0.0038
-2  Dyestuff    mean-centered  6629 1.001             3754               1430           0.0021    0.0005    0.0054 0.0038
-3 Dyestuff2      noncentered 16400 1.000            20430              31481           0.1226    0.1197    0.1287 0.1241
-4 Dyestuff2    mean-centered  1746 1.004              889                996           0.1248    0.1109    0.1415 0.1241
+1  Dyestuff      noncentered  7606 1.000            11676              20513           0.0034    0.0027    0.0043 0.0038
+2  Dyestuff    mean-centered  6055 1.001             3053               2386           0.0037    0.0021    0.0071 0.0038
+3 Dyestuff2      noncentered 16395 1.000            20457              32147           0.1253    0.1227    0.1270 0.1241
+4 Dyestuff2    mean-centered  1774 1.004             1230               1260           0.1213    0.1102    0.1312 0.1241
