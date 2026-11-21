@@ -153,12 +153,16 @@ parameter_map_schema <- function(){
                               "Refit the model with the current BayesTools version.")
     }
     .bt_validate_fit_contract_object(contract)
+    # Only a matching pair of version-22 declarations can be upgraded.
+    if(!is.list(map) || !identical(map[["schema_version"]], 22L) ||
+       !identical(contract[["parameter_map_version"]], 22L)){
+      .bt_unsupported_parameter_map()
+    }
     supported <- .bt_supported_fit_contract()
     supported$parameter_map <- 22L
     if(!identical(unname(contract[-1L]), unname(supported)) ||
-       !inherits(map, "BayesTools_parameter_map") || !is.list(map) ||
-       !identical(names(map), c("schema_version", "coordinates", "quantities", "aliases")) ||
-       !identical(map$schema_version, 22L)) refuse()
+       !inherits(map, "BayesTools_parameter_map") ||
+       !identical(names(map), c("schema_version", "coordinates", "quantities", "aliases"))) refuse()
 
     tryCatch({
       .bt_validate_parameter_coordinates(map$coordinates)
@@ -421,14 +425,17 @@ parameter_map_cache <- function(map, provider, key, compute){
     identical(map$schema_version, .bt_parameter_map_version)
 }
 
+.bt_unsupported_parameter_map <- function(){
+
+  .bt_stop_refit_required(
+    "Parameter-map metadata are missing, malformed, or unsupported. ",
+    "Refit the model with the current BayesTools version."
+  )
+}
+
 .bt_validate_parameter_map <- function(map){
 
-  if(!.bt_parameter_map_header_valid(map)){
-    .bt_stop_refit_required(
-      "Parameter-map metadata are missing, malformed, or unsupported. ",
-      "Refit the model with the current BayesTools version."
-    )
-  }
+  if(!.bt_parameter_map_header_valid(map)) .bt_unsupported_parameter_map()
 
   .bt_validate_parameter_coordinates(map$coordinates)
   .bt_validate_parameter_catalog_tables(map$quantities, map$aliases)

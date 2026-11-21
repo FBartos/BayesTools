@@ -1095,6 +1095,16 @@ test_that("complete pre-R2 map 22 fits have a coherent metadata-only read view",
   expect_identical(parameter_relationships(saved), owners)
   expect_identical(JAGS_fit_contract(.bt_parameter_fitted_fit(saved))$parameter_map_version, 23L)
 
+  unsupported <- paste0("Parameter-map metadata are missing, malformed, or unsupported. ",
+                        "Refit the model with the current BayesTools version.")
+  for(map_version in c(22L, 23L)){
+    mismatched <- updated
+    attr(mismatched, "parameter_map")$schema_version <- map_version
+    attr(mismatched, "fit_contract")$parameter_map_version <- if(map_version == 22L) 23L else 22L
+    expect_error(parameter_map(mismatched), unsupported, fixed = TRUE, class = "BayesTools_refit_required")
+    expect_error(JAGS_fit_contract(mismatched), unsupported, fixed = TRUE, class = "BayesTools_refit_required")
+  }
+
   refuses <- function(x){
     expect_error(parameter_map(x), class = "BayesTools_refit_required")
     expect_error(JAGS_validate_fit_contract(x, "parameter_map"), class = "BayesTools_refit_required")
