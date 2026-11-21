@@ -18,7 +18,7 @@ prepare small argument lists for native selected-normal backends."><meta name="r
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9010</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9011</span>
       </span>
     </div>
 
@@ -185,8 +185,9 @@ p-hacking severity, in [0, 1)), the integer codes <code>phack_kind</code> (0 to 
 <code>bias_indicator</code> (the index of the branch of each row, from 1 to the
 number of branches), and the logical <code>use_normal</code>. The observation
 fields share one length: <code>obs_bin</code> (the integer selection bin of each
-observation, from 1 to the number of bins), <code>yi</code> (finite effect sizes)
-and <code>sei</code> (positive standard errors). A fractional or missing integer
+observation, from 1 to the number of bins), <code>yi</code> (finite effect sizes),
+<code>sei</code> (positive standard errors), and optional logical <code>bias_exempt</code>
+(observations exempt from the publication-bias model). A fractional or missing integer
 code is an error, never rounded or truncated onto another code.
 Native caches are reused only when effective static geometry and complete
 row-routing inputs are unchanged. Explicit segments take precedence over
