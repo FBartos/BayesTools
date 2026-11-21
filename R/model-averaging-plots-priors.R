@@ -191,10 +191,18 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   prior_list
 }
-.plot_prior_list.both             <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE, ...){
+.plot_prior_scaled_overlay <- function(renderer, plot_data, axis_data, par_name, dots){
 
-  # get default plot settings
-  dots      <- list(...)
+  # The receiving plot is known only when ggplot2 adds these layers.
+  args <- c(list(plot_data = plot_data, axis_data = axis_data, par_name = par_name,
+                 plot_type = "ggplot", add = TRUE), dots)
+  .bt_ggplot_prior_overlay(function(scale){
+    args$scale_y2 <- scale
+    do.call(renderer, args)$geoms
+  }, plot_data, scale_y2 = .plot_scale_y2_resolve(axis_data, dots))
+}
+
+.plot_prior_axes <- function(plot_data, par_name, dots){
 
   xlim      <- range(as.vector(sapply(plot_data, attr, which = "x_range")))
 
@@ -237,6 +245,18 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.null(dots[["xlim"]]))  dots$xlim  <-  xlim
   if(is.null(dots[["ylim"]]))  dots$ylim  <-  ylim
   if(is.null(dots[["ylim2"]])) dots$ylim2 <-  ylim2
+  list(dots = dots, type = type)
+}
+.plot_prior_list.both <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE,
+                                  axis_data = plot_data, ...){
+
+  if(plot_type == "ggplot" && add && is.null(scale_y2)){
+    return(.plot_prior_scaled_overlay(.plot_prior_list.both, plot_data, axis_data, par_name, list(...)))
+  }
+
+  axes <- .plot_prior_axes(axis_data, par_name, list(...))
+  dots <- axes$dots
+  type <- axes$type
 
   scale_y2_supplied <- !is.null(scale_y2)
   scale_y2_state    <- NULL
@@ -261,10 +281,6 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
     if(!add){
       .plot.prior_empty(type, dots)
-      .plot_scale_y2_remember(
-        if(type == "both") scale_y2 else NULL,
-        if(type == "both") dots[["ylim2"]] else NULL
-      )
     }
 
     for(i in seq_along(plot_data)){
@@ -410,6 +426,12 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   attr(plot_data, "factor_level_universe") <- universe
   plot_data
 }
+.plot_factor_palette <- function(n_levels){
+
+  colors <- grDevices::palette.colors(palette = "Okabe-Ito")[-1L]
+  if(n_levels <= length(colors)) return(colors[seq_len(n_levels)])
+  c(colors, grDevices::hcl.colors(n_levels - length(colors), palette = "Dark 3"))
+}
 .plot_ordered_overlay_styles <- function(dots_prior, plot_data, dots){
 
   universe <- attr(plot_data, "factor_level_universe", exact = TRUE)
@@ -420,7 +442,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.null(dots_prior[["col"]])){
     dots_prior[["col"]] <- if(!is.null(dots[["col"]])) dots[["col"]] else if(
       is.null(dots[["lty"]]) || is.null(dots[["linetype"]])){
-      grDevices::palette.colors(n = nrow(universe) + 1L)[-1L]
+      .plot_factor_palette(nrow(universe))
     }else .plot.prior_settings()[["col"]]
   }
   if(is.null(dots_prior[["lty"]]) && is.null(dots_prior[["linetype"]])) dots_prior[["lty"]] <- 2
@@ -434,7 +456,10 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   if(length(values) == 1L){
     value <- values[[1L]]
-  }else if(length(values) == n_levels && length(level_id) == 1L && !is.na(level_id) && is.finite(level_id) && level_id >= 1L && length(values) >= level_id){
+  }else if(length(values) <= n_levels && length(level_id) == 1L && !is.na(level_id)){
+    # A short level palette leaves later levels at their default, including
+    # when a selected level is the first component being drawn.
+    if(level_id > length(values)) return(default)
     value <- values[[level_id]]
   }else if(length(component_id) == 1L && !is.na(component_id) && is.finite(component_id) && component_id >= 1L && length(values) >= component_id){
     value <- values[[component_id]]
@@ -474,52 +499,16 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   out
 }
-.plot_prior_list.factor           <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE, ...){
+.plot_prior_list.factor <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE,
+                                  axis_data = plot_data, ...){
 
-  # get default plot settings
-  dots      <- list(...)
-
-  xlim      <- range(as.vector(sapply(plot_data, attr, which = "x_range")))
-
-  main      <- ""
-  xlab      <- if(!is.null(par_name)) par_name else ""
-
-  has_simple <- any(sapply(plot_data, inherits, what = "density.prior.simple"))
-  has_point  <- any(sapply(plot_data, inherits, what = "density.prior.point"))
-
-  if(has_simple && (has_point || !is.null(dots[["ylim2"]]))){
-    type  <- "both"
-    ylab  <- "Density"
-    ylab2 <- "Probability"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range", exact = TRUE)))
-    ylim2 <- if(has_point){
-      range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")], attr, which = "y_range", exact = TRUE)))
-    }else{
-      dots[["ylim2"]]
-    }
-  }else if(has_simple){
-    type  <- "simple"
-    ylab  <- "Density"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range", exact = TRUE)))
-    ylab2 <- NULL
-    ylim2 <- NULL
-  }else if(has_point){
-    type  <- "point"
-    ylab  <- "Probability"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range", exact = TRUE)))
-    ylab2 <- NULL
-    ylim2 <- NULL
+  if(plot_type == "ggplot" && add && is.null(scale_y2)){
+    return(.plot_prior_scaled_overlay(.plot_prior_list.factor, plot_data, axis_data, par_name, list(...)))
   }
 
-
-  # add it to the user input if desired
-  if(is.null(dots[["main"]]))  dots$main  <-  main
-  if(is.null(dots[["xlab"]]))  dots$xlab  <-  xlab
-  if(is.null(dots[["ylab"]]))  dots$ylab  <-  ylab
-  if(is.null(dots[["ylab2"]])) dots$ylab2 <-  ylab2
-  if(is.null(dots[["xlim"]]))  dots$xlim  <-  xlim
-  if(is.null(dots[["ylim"]]))  dots$ylim  <-  ylim
-  if(is.null(dots[["ylim2"]])) dots$ylim2 <-  ylim2
+  axes <- .plot_prior_axes(axis_data, par_name, list(...))
+  dots <- axes$dots
+  type <- axes$type
 
   scale_y2_supplied <- !is.null(scale_y2)
   scale_y2_state    <- NULL
@@ -564,8 +553,12 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       }, logical(1))
     ]
   }
+  visible <- attr(plot_data, "visible_levels", exact = TRUE)
+  if(is.null(visible)) visible <- seq_along(level_names)
   plot_data_points     <- plot_data_normalized[["points"]]
   plot_data_factors    <- plot_data_normalized[["densities"]]
+  curve_levels         <- vapply(plot_data_factors, attr, integer(1), "level_id")
+  ordered              <- isTRUE(attr(plot_data_normalized$universe, "ordered", exact = TRUE))
   style_components     <- if(length(plot_data_factors) > 0L) plot_data_factors else plot_data_points
 
 
@@ -582,7 +575,14 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   dots[["legend"]] <- draw_legend
 
   if(is.null(dots[["col"]]) & (is.null(dots[["lty"]]) | is.null(dots[["linetype"]]))){
-    dots$col <- grDevices::palette.colors(n = length(level_names) + 1)[-1]
+    dots$col <- .plot_factor_palette(length(level_names))
+  }
+  # Posterior styles index the fitted levels. A longer palette must not be
+  # interpreted as one colour per density or spike after selecting a subset.
+  if(!is.null(plot_data_normalized$universe)){
+    for(style in c("col", "lty", "linetype")){
+      if(length(dots[[style]]) > length(level_names)) dots[[style]] <- dots[[style]][seq_along(level_names)]
+    }
   }
   if(length(dots[["col"]]) == 1)      dots[["col"]]      <- rep(dots[["col"]],      length(level_names))
   if(length(dots[["lty"]]) == 1)      dots[["lty"]]      <- rep(dots[["lty"]],      length(level_names))
@@ -612,10 +612,6 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
     if(!add){
       .plot.prior_empty(type, dots)
-      .plot_scale_y2_remember(
-        if(type == "both") scale_y2 else NULL,
-        if(type == "both") dots[["ylim2"]] else NULL
-      )
     }
 
     # plot points
@@ -656,9 +652,9 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     if(draw_legend && length(level_names) > 0){
       graphics::legend(
         if(is.null(dots[["legend_position"]])) "topright" else dots[["legend_position"]],
-        legend = level_names,
-        col    = level_col,
-        lty    = level_lty,
+        legend = level_names[visible],
+        col    = level_col[visible],
+        lty    = level_lty[visible],
         lwd    = if(!is.null(dots[["lwd"]])) dots[["lwd"]] else rep(.plot.prior_settings()[["lwd"]], length(level_names)),
         title  = dots[["legend_title"]],
         bty    = "n")
@@ -691,21 +687,21 @@ plot_prior_list <- function(prior_list, plot_type = "base",
         n_levels     = length(level_names),
         default      = .plot.prior_settings()[["lty"]]
       )
-      args$.factor_level_mapped <- isTRUE(attr(plot_data_normalized$universe, "ordered", exact = TRUE)) &&
-        !isTRUE(args$hardcode) && !is.na(point_level)
+      args$.factor_level_mapped <- !isTRUE(args$hardcode) && !is.na(point_level) &&
+        (ordered || (!is.null(plot_data_normalized$universe) && !point_level %in% curve_levels))
       plot           <- c(plot, do.call(.geom_prior.point, args))
     }
 
     if(length(plot_data_factors) == 0L &&
-       isTRUE(attr(plot_data_normalized$universe, "ordered", exact = TRUE)) &&
+       !is.null(plot_data_normalized$universe) &&
        !isTRUE(dots$hardcode)){
       plot <- c(plot, list(
         ggplot2::scale_color_manual(name = dots$legend_title,
-          values = stats::setNames(level_col, level_names), breaks = level_names,
-          labels = level_names, limits = level_names, drop = FALSE),
+          values = stats::setNames(level_col[visible], level_names[visible]), breaks = level_names[visible],
+          labels = level_names[visible], limits = level_names[visible], drop = FALSE),
         ggplot2::scale_linetype_manual(name = dots$legend_title,
-          values = stats::setNames(level_lty, level_names), breaks = level_names,
-          labels = level_names, limits = level_names, drop = FALSE)))
+          values = stats::setNames(level_lty[visible], level_names[visible]), breaks = level_names[visible],
+          labels = level_names[visible], limits = level_names[visible], drop = FALSE)))
     }
 
     # plot factor levels
@@ -723,12 +719,12 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       )
 
       args             <- dots
-      args$level_names <- level_names
+      args$level_names <- level_names[visible]
       args$plot_data   <- plot_data_factors
-      args$col         <- level_col
-      args$lty         <- if(!is.null(dots[["linetype"]])) level_linetype else level_lty
-      args$linetype    <- if(!is.null(dots[["linetype"]])) level_linetype else NULL
-      args$.factor_universe_ordered <- isTRUE(attr(plot_data_normalized$universe, "ordered", exact = TRUE))
+      args$col         <- level_col[visible]
+      args$lty         <- if(!is.null(dots[["linetype"]])) level_linetype[visible] else level_lty[visible]
+      args$linetype    <- if(!is.null(dots[["linetype"]])) level_linetype[visible] else NULL
+      args$.factor_universe_ordered <- ordered
 
       plot <- c(plot, do.call(.geom_prior.factors, args))
     }

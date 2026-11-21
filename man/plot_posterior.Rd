@@ -29,7 +29,8 @@ plot_posterior(
   legend_labels = NULL,
   legend_position = NULL,
   ...,
-  density_method = c("KDE", "precomputed")
+  density_method = c("KDE", "precomputed"),
+  level = NULL
 )
 }
 \arguments{
@@ -68,8 +69,10 @@ points do not sample, store draws, or advance the RNG when
 original seeded draws are attached without replacing the analytic measure.
 Other ordered families retain their existing sampling fallback.}
 
-\item{individual}{should individual densities be returned
-(e.g., in case of weightfunction)}
+\item{individual}{for factors, draw one base figure per selected level or
+return a named list of ggplots, including for a single level. To add levels
+to an existing factor plot, use \code{individual = FALSE}. For weight
+functions, plot individual weights. For PET or PEESE, plot its coefficient.}
 
 \item{show_figures}{which figures should be returned in case of
 multiple plots are generated. Useful when priors for the omega
@@ -137,7 +140,8 @@ Supports \code{col}/\code{color}, \code{alpha}, \code{lwd}/\code{linewidth},
 
 \item{legend_title}{optional title for factor legends.}
 
-\item{legend_labels}{optional labels for factor legend levels.}
+\item{legend_labels}{optional display labels in full fitted plot order.
+Select levels by their original labels even when relabelling the legend.}
 
 \item{legend_position}{optional legend position for factor legends.}
 
@@ -154,10 +158,15 @@ continuous curve stops with a remedy to supply matching metadata or use
 \code{"KDE"}. Pure-atom targets need no continuous curve. A precomputed density is the
 continuous part of the posterior; atoms are drawn from the declared
 posterior atoms with either method.}
+
+\item{level}{optional character vector of original factor level labels, in
+display order. The default uses all plotted levels in fitted order. For
+interactions, use the joint cell label shown in the default legend.}
 }
 \value{
-\code{plot_posterior} returns either \code{NULL} or
-an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+Base graphics draws the figures and returns invisibly. With
+\code{plot_type = "ggplot"}, a combined factor plot is a ggplot and
+individual factor plots are a list of ggplots named by original level.
 }
 \description{
 Plot samples from the mixed posterior distributions
@@ -224,12 +233,25 @@ corresponding posterior colors and dashed lines; explicit \code{dots_prior}
 \code{col}, \code{lty}, or \code{linetype} override these defaults. The
 posterior owns the legend.
 
+For a factor-valued random-slope SD with fitted level cells, select the
+slope term and its level. A study-specific intercept or slope requires its
+grouping level and coefficient. Scalar SDs and correlations are selected
+by parameter name.
+
 For base plots, the initial call establishes the density-to-probability
 mapping. Calls with \code{add = TRUE} reuse that mapping so point masses from
 separate prior or posterior objects remain comparable. Point masses outside
 the active \code{ylim2} are clipped with a warning; redraw the initial plot
 with wider limits to display them.
 }
+\examples{
+\dontrun{
+months <- as_mixed_posteriors(fit, parameters = "mu_Month")
+plot_posterior(months, "mu_Month", level = c("May", "Jul"), prior = TRUE)
+figures <- plot_posterior(months, "mu_Month", individual = TRUE, plot_type = "ggplot")
+figures[["Jul"]]
+}
+}
 \seealso{
-\code{\link[=prior]{prior()}} \code{\link[=lines_prior_list]{lines_prior_list()}}  \code{\link[=geom_prior_list]{geom_prior_list()}}
+\code{\link[=posterior_factor_columns]{posterior_factor_columns()}} \code{\link[=prior]{prior()}} \code{\link[=lines_prior_list]{lines_prior_list()}} \code{\link[=geom_prior_list]{geom_prior_list()}}
 }

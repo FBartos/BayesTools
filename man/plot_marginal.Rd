@@ -21,7 +21,9 @@ plot_marginal(
   legend_labels = NULL,
   legend_position = NULL,
   ...,
-  density_method = c("KDE", "precomputed")
+  density_method = c("KDE", "precomputed"),
+  level = NULL,
+  individual = FALSE
 )
 }
 \arguments{
@@ -78,7 +80,8 @@ parameter that needs to be transformed.}
 
 \item{legend_title}{optional title for factor legends.}
 
-\item{legend_labels}{optional labels for factor legend levels.}
+\item{legend_labels}{optional display labels in full fitted plot order.
+Select levels by their original labels even when relabelling the legend.}
 
 \item{legend_position}{optional legend position for factor legends.}
 
@@ -93,10 +96,19 @@ continuous curve stops with a remedy to supply matching metadata or use
 \code{"KDE"}. Pure-atom targets need no continuous curve. A precomputed density is the
 continuous part of the posterior; atoms are drawn from the declared
 posterior atoms with either method.}
+
+\item{level}{optional character vector of original factor level labels, in
+display order. The default uses all plotted levels in fitted order. For
+interactions, use the joint cell label shown in the default legend.}
+
+\item{individual}{whether to draw a separate figure for each selected factor
+level. With \code{plot_type = "ggplot"}, return a list named by level.
+To add levels to an existing plot, use \code{individual = FALSE}.}
 }
 \value{
-\code{plot_marginal} returns either \code{NULL} or
-an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+Base graphics draws the figures and returns invisible \code{NULL}.
+With \code{plot_type = "ggplot"}, returns a ggplot or, for individual factor
+plots, a named list of ggplots even when one level is selected.
 }
 \description{
 Plot samples from the marginal posterior distributions
