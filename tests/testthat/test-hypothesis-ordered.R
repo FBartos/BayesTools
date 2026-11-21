@@ -344,6 +344,24 @@ test_that("spike-and-slab and mixture totals refuse point tests of the null with
   expect_true(is.finite(.ordered_hypothesis_bf(expression_total, "f[share: mid] > 0.5")$BF))
 })
 
+test_that("indicator traces of a spike-and-slab total use the total's indicator", {
+
+  n <- 200L
+  spike <- prior_spike_and_slab(N01, prior("point", list(.5)))
+  included <- as.numeric(seq_len(n) <= 75L)
+  fit <- .ordered_hypothesis_single(total = spike, n = n, modify = function(sources){
+    sources[, "mu_f_ordered_total_indicator"] <- included
+    sources[, "mu_f_ordered_total_variable"]  <- stats::rnorm(n, .8, .5)
+    sources[, "mu_f_ordered_total"] <- included * sources[, "mu_f_ordered_total_variable"]
+    sources
+  })
+  trace <- function(statistic) ggplot2::ggplot_build(JAGS_diagnostics_trace(
+    fit, "mu_f", plot_type = "ggplot", statistic = statistic, batch_size = 50))$data[[1L]]$y
+  expect_equal(trace("inclusion"), c(1, .5, 0, 0))
+  expect_equal(trace("component"), c(1, .5, 0, 0))
+  expect_equal(trace("switching"), c(0, 1/49, 0, 0))
+})
+
 test_that("shares under a spike-and-slab total follow the prior outside the inclusion event", {
 
   # the shares of the draws without the total follow the prior (uniform), those
