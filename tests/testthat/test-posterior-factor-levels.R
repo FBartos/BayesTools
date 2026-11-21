@@ -62,6 +62,7 @@ test_that("a selected centered level retains its curve, prior, atoms and colour"
     expect_equal(selected[[4L]]$x, layers[[4L]]$x[july_rows])
     expect_equal(selected[[4L]]$y, layers[[4L]]$y[july_rows])
     expect_equal(unique(selected[[4L]]$colour), july_colour)
+    expect_equal(unique(selected[[3L]]$colour), july_colour)
     expect_identical(july$scales$get_scales("colour")$breaks, "July")
     # An overlay is built against the receiving ggplot's probability scale.
     overlay <- plot_posterior(samples, "mu_Month", level = "Jul", add = TRUE,
@@ -111,6 +112,7 @@ test_that("base individual plots follow level order and overlays keep the active
   on.exit(grDevices::dev.off(), add = TRUE)
   legends <- list()
   mass_tips <- numeric()
+  spike_colours <- character()
   original_new <- graphics::plot.new
   pages <- 0L
   testthat::local_mocked_bindings(
@@ -123,10 +125,12 @@ test_that("base individual plots follow level order and overlays keep the active
     },
     arrows = function(x0, y0, x1 = x0, y1 = y0, ...){
       mass_tips <<- c(mass_tips, y1)
+      spike_colours <<- c(spike_colours, list(...)$col)
     }, .package = "graphics")
   plot_posterior(samples, "mu_Month", individual = TRUE, n_points = 64L)
   expect_identical(pages, 3L)
   expect_equal(unlist(lapply(legends, "[[", "labels"), use.names = FALSE), c("May", "Jun", "Jul"))
+  expect_equal(unname(spike_colours), unlist(lapply(legends, "[[", "col"), use.names = FALSE))
   plot_posterior(samples, "mu_Month", level = "Jul", prior = TRUE,
     n_points = 64L, ylim = c(0, 3), ylim2 = c(0, 1))
   expect_identical(pages, 4L)
@@ -141,6 +145,56 @@ test_that("base individual plots follow level order and overlays keep the active
   expect_equal(legends[[5L]]$col, legends[[3L]]$col)
 })
 
+test_that("mixed factor overlays scale prior and posterior spikes to the receiving axes", {
+  slab <- prior_factor("mnormal", list(0, .5), contrast = "meandif")
+  spike_slab <- prior_spike_and_slab(slab, prior("point", list(.65)))
+  mixed <- as_mixed_posteriors(.month_level_fit(spike_slab), "mu_Month", n_prior_samples = 128L)
+  continuous <- as_mixed_posteriors(.month_level_fit(slab), "mu_Month", n_prior_samples = 128L)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  tips <- numeric()
+  testthat::local_mocked_bindings(
+    arrows = function(x0, y0, x1 = x0, y1 = y0, ...) tips <<- c(tips, y1),
+    .package = "graphics")
+  for(level in list(NULL, "Jul")){
+    draw <- function(samples, ...){
+      plot_posterior(samples, "mu_Month", n_points = 64L, level = level, ...)
+    }
+    draw(mixed, prior = TRUE)
+    standalone_scale <- .plot_scale_y2_state_current()$scale_y2
+    expected <- c(.35, .25) * standalone_scale
+    expect_equal(tips, expected)
+    draw(continuous)
+    expect_null(.plot_scale_y2_state_current())
+    tips <- numeric()
+    draw(mixed, prior = TRUE, add = TRUE)
+    expect_equal(tips, expected)
+    tips <- numeric()
+
+    full <- draw(mixed, prior = TRUE, plot_type = "ggplot")
+    first <- draw(continuous, plot_type = "ggplot")
+    expect_null(first$bt_scale_y2_state)
+    combined <- first + draw(mixed, prior = TRUE, add = TRUE, plot_type = "ggplot")
+    layers <- ggplot2::ggplot_build(combined)$data
+    spikes <- Filter(function(layer) "yend" %in% names(layer), layers)
+    expect_equal(unname(vapply(spikes, function(spike) unique(spike$yend), numeric(1))),
+      c(.35, .25) * full$bt_scale_y2_state$scale_y2)
+  }
+  # On a pure-point receiver, the primary y axis is already probability.
+  point <- list(prior("point", list(0)))
+  plot_prior_list(point, xlim = c(-3, 3))
+  expect_identical(.plot_scale_y2_state_current()$scale_y2, 1)
+  tips <- numeric()
+  plot_posterior(mixed, "mu_Month", level = "Jul", prior = TRUE, add = TRUE, n_points = 64L)
+  expect_equal(tips, c(.35, .25))
+  first <- plot_prior_list(point, xlim = c(-3, 3), plot_type = "ggplot")
+  combined <- first + plot_posterior(mixed, "mu_Month", level = "Jul", prior = TRUE,
+    add = TRUE, plot_type = "ggplot", n_points = 64L)
+  expect_identical(combined$bt_scale_y2_state$scale_y2, 1)
+  spikes <- Filter(function(layer) "yend" %in% names(layer), ggplot2::ggplot_build(combined)$data)
+  expect_equal(unname(vapply(spikes, function(spike) unique(spike$yend), numeric(1))), c(1, .35, .25))
+})
+
 test_that("mixture, regularized, model-averaged and ordered effects use their fitted level labels", {
   slab <- prior_factor("mnormal", list(0, .5), contrast = "meandif")
   spike <- prior_factor("point", list(0), contrast = "meandif")
@@ -152,7 +206,13 @@ test_that("mixture, regularized, model-averaged and ordered effects use their fi
       individual = TRUE, level = "Jul", n_points = 64L)
     expect_named(figures, "Jul")
     expect_s3_class(figures[["Jul"]], "ggplot")
-    expect_gt(length(ggplot2::ggplot_build(figures[["Jul"]])$data), 1L)
+    full <- plot_posterior(samples, "mu_Month", plot_type = "ggplot", prior = TRUE, n_points = 64L)
+    full_curve <- utils::tail(ggplot2::ggplot_build(full)$data, 1L)[[1L]]
+    july_curve <- utils::tail(ggplot2::ggplot_build(figures[["Jul"]])$data, 1L)[[1L]]
+    july_colour <- full$scales$get_scales("colour")$palette(3)[["Jul"]]
+    july_rows <- full_curve$colour == july_colour
+    expect_equal(july_curve$x, full_curve$x[july_rows])
+    expect_equal(july_curve$y, full_curve$y[july_rows])
   }
   models <- lapply(c(0, 1), function(shift){
     list(fit = .month_level_fit(slab, shift), marglik = bridgesampling_object(0), prior_weights = 1)
@@ -164,6 +224,35 @@ test_that("mixture, regularized, model-averaged and ordered effects use their fi
   expect_named(plot_posterior(ordered, "mu_f", plot_type = "ggplot", individual = TRUE,
     n_points = 64L), c("Jun", "Jul"))
   expect_error(plot_posterior(ordered, "mu_f", level = "May"), "Jun.*Jul")
+})
+
+test_that("factor-valued random-slope SDs select the fitted treatment levels", {
+  months <- c("May", "Jun", "Jul")
+  data <- data.frame(f = factor(rep(months, 4L), levels = months),
+    g = factor(rep(LETTERS[1:4], each = 3L)))
+  spec <- JAGS_formula(~1 + diag(0 + f | g), "mu", data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(g = random_block(sd = prior("gamma", list(2, 2)))))
+  term <- spec$formula_design$random_effects[[1L]]
+  draws <- cbind(seq(0, 1, length.out = 100), seq(.1, .5, length.out = 100),
+    seq(.8, 1.6, length.out = 100))
+  colnames(draws) <- c("mu_intercept", term$sd_parameter_names)
+  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = nrow(draws)),
+    class = c("runjags", "BayesTools_fit", "list"))
+  attr(fit, "prior_list") <- spec$prior_list
+  attr(fit, "formula_design") <- list(mu = spec$formula_design)
+  parameter <- setdiff(names(spec$prior_list), "mu_intercept")
+  samples <- as_mixed_posteriors(attach_test_parameter_map(fit), parameter)
+  draw <- function(...){
+    plot_posterior(samples, parameter, plot_type = "ggplot", n_points = 64L, ...)
+  }
+  full <- ggplot2::ggplot_build(draw())$data[[1L]]
+  selected <- ggplot2::ggplot_build(draw(level = "Jul"))$data[[1L]]
+  expect_named(draw(individual = TRUE), months[-1L])
+  expect_error(draw(level = "May"), "Jun.*Jul")
+  rows <- full$colour == selected$colour[[1L]]
+  expect_equal(selected$x, full$x[rows])
+  expect_equal(selected$y, full$y[rows])
 })
 
 test_that("factor marginal plots select the original cells and their stored curves", {

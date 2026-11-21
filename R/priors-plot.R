@@ -986,6 +986,8 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
     plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = range(pretty(ylim)), oob = scales::oob_keep)
 
     attr(plot, "sec_axis") <- FALSE
+    plot$bt_scale_y2_state <- list(scale_y2 = 1, ylim2 = ylim,
+      usr = c(NA_real_, NA_real_, range(pretty(ylim))))
 
   }else if(type == "simple"){
 
@@ -1303,7 +1305,7 @@ ggplot_add.BayesTools_prior_overlay <- function(object, plot, object_name){
   scale_y2 <- object[["scale_y2"]]
   geoms <- object[["geoms"]]
   if(is.function(geoms)){
-    geoms <- geoms(if(is.null(state)) 1 else state[["scale_y2"]])
+    geoms <- geoms(if(is.null(state)) scale_y2 else state[["scale_y2"]])
   }
   if(is.null(scale_y2) && !is.null(state) &&
      is.list(object[["point_builders"]]) &&

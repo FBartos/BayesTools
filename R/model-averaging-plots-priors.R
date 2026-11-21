@@ -267,8 +267,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     if(!add){
       .plot.prior_empty(type, dots)
       .plot_scale_y2_remember(
-        if(type == "both") scale_y2 else NULL,
-        if(type == "both") dots[["ylim2"]] else NULL
+        if(type == "both") scale_y2 else if(type == "point") 1,
+        if(type == "both") dots[["ylim2"]] else if(type == "point") dots[["ylim"]]
       )
     }
 
@@ -580,8 +580,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     if(!add){
       .plot.prior_empty(type, dots)
       .plot_scale_y2_remember(
-        if(type == "both") scale_y2 else NULL,
-        if(type == "both") dots[["ylim2"]] else NULL
+        if(type == "both") scale_y2 else if(type == "point") 1,
+        if(type == "both") dots[["ylim2"]] else if(type == "point") dots[["ylim"]]
       )
     }
 

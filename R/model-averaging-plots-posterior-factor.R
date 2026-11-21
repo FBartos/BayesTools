@@ -405,13 +405,25 @@ posterior_factor_columns <- function(samples, parameter, level = NULL){
 
   draw <- function(visible, overlay_scale = NULL){
     posterior <- .plot_factor_visible_data(data, visible)
+    if(length(visible) == 1L){
+      # A shared posterior spike belongs to the displayed level on a single-level figure.
+      universe <- attr(data, "factor_level_universe", exact = TRUE)
+      for(i in seq_along(posterior)){
+        if(inherits(posterior[[i]], "density.prior.point") &&
+           is.null(attr(posterior[[i]], "level", exact = TRUE))){
+          attr(posterior[[i]], "level") <- visible
+          attr(posterior[[i]], "level_name") <- universe$name[visible]
+        }
+      }
+    }
     dots$plot_data <- posterior
     prior <- .plot_factor_visible_data(prior_data, visible)
     axes <- c(prior, posterior)
     if(isTRUE(dots$add) && plot_type == "ggplot"){
       if(is.null(overlay_scale)){
         # The receiving ggplot supplies its probability-axis mapping at addition.
-        return(.bt_ggplot_prior_overlay(function(scale) draw(visible, scale), axes))
+        return(.bt_ggplot_prior_overlay(function(scale) draw(visible, scale), axes,
+          scale_y2 = .plot_scale_y2_resolve(axes, dots)))
       }
       dots$hardcode <- TRUE
       dots$legend <- FALSE
@@ -428,7 +440,8 @@ posterior_factor_columns <- function(samples, parameter, level = NULL){
     dots_prior$add <- isTRUE(dots$add)
     # A fresh figure scales the combined measures. A base overlay takes
     # its scaling from the active figure through the renderer.
-    if(!isTRUE(dots$add)){
+    if(!isTRUE(dots$add) ||
+       (plot_type == "base" && is.null(.plot_scale_y2_state_current()))){
       scale <- .plot_scale_y2_resolve(axes, dots)
       dots_prior$scale_y2 <- scale
       dots$scale_y2 <- scale

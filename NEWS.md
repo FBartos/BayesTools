@@ -1,10 +1,11 @@
 # development version
 ### Breaking changes
+- `individual = TRUE` on a factor in `plot_posterior()` now draws one figure per level or returns a named list of ggplots; RoBMA 4.1.1 users need the matching RoBMA update for its default whole-factor plots.
 - `hypothesis_BF()` and `hypothesis_BF_model()` replace `columns` with `include_densities`, `include_probabilities`, and `include_method`; the `prior` and `posterior` columns are replaced by point densities and region probabilities, and table labels keep the notation of the hypothesis, with a constant on the right of a single relation
 - hypothesis statements cannot contain `#` comments
 
 ### Features
-- `plot_posterior()` and `plot_marginal()` select factor levels by name and can draw a separate plot for each level.
+- `plot_posterior()` and `plot_marginal()` accept factor level names, and `plot_marginal()` can draw individual level plots.
 - `hypothesis_BF()` accepts interval hypotheses such as `"-0.1 <= mu <= 0.1"` and explicit comparisons with `unconstrained`
 - `hypothesis_BF()` can display the method, prior and posterior point densities, and region probabilities with separate switches
 - `prior_regularized()` adds ridge, lasso and horseshoe priors with joint shrinkage for centered factors

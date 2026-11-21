@@ -205,7 +205,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   posterior_samples <- .plot_data_marginal_level_samples(samples, parameter, levels)
   prior_densities <- lapply(levels, .bt_meta_get, field = "prior_density")
   if(prior){
-    for(level in levels) .bt_formula_measure_check(level, "prior_density")
+    for(leaf in levels) .bt_formula_measure_check(leaf, "prior_density")
     missing <- vapply(prior_densities, is.null, logical(1))
     # levels that declare no prior (prior_none()) have no prior curve; any
     # other level without a prior density was created without one
