@@ -716,6 +716,9 @@ JAGS_package_builds <- function(packages){
   if(isTRUE(prior[["distribution"]] %in% c("invgamma", "moment", "invmoment"))){
     return(TRUE)
   }
+  if(is.prior.regularized_term(prior)){
+    return(.JAGS_prior_list_uses_BayesTools_module(.bt_regularized_primitives(prior)))
+  }
 
   if(is.prior.ordered(prior)){
     return(.JAGS_prior_uses_BayesTools_module(prior$total))

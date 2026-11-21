@@ -90,7 +90,7 @@ endif
 JAGS_LINK := $(patsubst lib%,%,$(patsubst %.dll.a,%,$(patsubst %.dll,%,$(JAGS_LIB_NAME))))
 JR_MATH_LINK := $(patsubst lib%,%,$(patsubst %.dll.a,%,$(patsubst %.dll,%,$(JR_MATH_LIB_NAME))))
 
-PKG_CPPFLAGS=-I"$(JAGS_INCLUDE_DIR)" -DR_NO_REMAP
+PKG_CPPFLAGS=-I"$(JAGS_INCLUDE_DIR)" -I../inst/include -DR_NO_REMAP
 PKG_LIBS=-L"$(JAGS_LIB_DIR)" -l$(JAGS_LINK) -l$(JR_MATH_LINK)
 
 $(SHLIB): native-sources.o
@@ -111,7 +111,8 @@ native-sources.o: \
 	distributions/DBTSamplerMarker.h \
 	samplers/BTSamplerDeclarations.cc samplers/BTSamplerDeclarations.h \
 	samplers/BTGatedSlice.cc samplers/BTGatedSlice.h \
-	samplers/BTFactorSlice.cc samplers/BTFactorSlice.h
+	samplers/BTFactorSlice.cc samplers/BTFactorSlice.h \
+	../inst/include/BayesTools/factor_slice_kernel.h
 
 BayesTools.o: distributions/DBTLKJCPC.h distributions/DBTInvGamma.h \
 	distributions/DBTMoment.h distributions/DBTInvMoment.h functions/BTLKJCholesky.h \

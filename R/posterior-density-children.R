@@ -259,11 +259,12 @@
   }
 
   return(list(
-    x           = values[["value"]][index],
-    y           = values[["ordinate"]][index],
-    log_y       = if(is.null(values$log_ordinate)) NULL else values$log_ordinate[index],
-    method      = posterior_ordinate[["method"]],
-    diagnostics = .posterior_ordinate_subset_diagnostics(
+    x              = values[["value"]][index],
+    y              = values[["ordinate"]][index],
+    log_y          = if(is.null(values$log_ordinate)) NULL else values$log_ordinate[index],
+    method         = posterior_ordinate[["method"]],
+    density_method = posterior_ordinate[["density_method"]],
+    diagnostics    = .posterior_ordinate_subset_diagnostics(
       posterior_ordinate[["diagnostics"]],
       index
     )

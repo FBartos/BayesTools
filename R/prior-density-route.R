@@ -570,6 +570,9 @@
     if(!is.null(cause)){
       provenance$cause <- cause
     }
+    if(any(vapply(prior_list, function(p) isTRUE(attr(p, "regularized_lasso_direction", exact = TRUE)), logical(1)))){
+      provenance$unverified_lasso_grid <- TRUE
+    }
     .prior_density_route_unknown(
       reason     = reason,
       provenance = provenance,
@@ -842,6 +845,28 @@
         source_transforms = .prior_density_ordinate_compact(source_transforms)
       )
     ))
+  }
+
+  regularized <- .bt_regularized_linear_plan(prior_list, weights, source_transforms)
+  if(!is.null(regularized)){
+    if(!is.null(regularized$reason)){
+      # A factor's inclusion indicator still defines a known atom when the
+      # joint continuous contrast of its active units has no density route.
+      expansion <- .prior_density_route_mixture_expansion(prior_list, regularized$sources, n_grid)
+      if(!is.null(expansion)) return(.prior_density_route_expand(expansion, weights, source_transforms, n_grid))
+      route <- .prior_density_route_unknown(regularized$reason,
+        list(kind = "regularized_combination_unavailable", sources = regularized$sources, atom_free = regularized$atom_free))
+      if(regularized$atom_free){
+        route$additive_measure <- list(type = "atom_free",
+          support = .posterior_support_new(c(-Inf, Inf), source = "formula_contribution"))
+      }
+      return(route)
+    }
+    prior_list <- regularized$prior_list
+    if(!is.null(regularized$weights)){
+      weights <- regularized$weights
+      source_transforms <- stats::setNames(source_transforms[names(weights)], names(weights))
+    }
   }
 
   ordered <- .prior_density_route_ordered_terms(prior_list, weights, source_transforms)
@@ -1975,6 +2000,7 @@
   switch(
     route$type,
     "unknown" = {
+      if(isTRUE(route$provenance$unverified_lasso_grid)) return(TRUE)
       if(is.null(route$recipe)){
         return(FALSE)
       }

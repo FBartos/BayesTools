@@ -1,0 +1,13 @@
+       source parameter estimate median    lCI    uCI
+1  BayesTools       May   -0.268 -0.265 -0.599  0.049
+2       RStan       May   -0.268 -0.266 -0.594  0.051
+3  BayesTools       Jun   -0.038 -0.038 -0.467  0.390
+4       RStan       Jun   -0.039 -0.040 -0.459  0.400
+5  BayesTools       Jul    0.256  0.253 -0.058  0.586
+6       RStan       Jul    0.258  0.255 -0.055  0.582
+7  BayesTools       Aug    0.282  0.279 -0.032  0.612
+8       RStan       Aug    0.282  0.279 -0.041  0.617
+9  BayesTools       Sep   -0.232 -0.230 -0.545  0.070
+10      RStan       Sep   -0.233 -0.231 -0.544  0.068
+11 BayesTools      Wind   -0.481 -0.481 -0.669 -0.294
+12      RStan      Wind   -0.481 -0.482 -0.670 -0.296

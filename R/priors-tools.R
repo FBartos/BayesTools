@@ -358,12 +358,16 @@
   return(prior)
 }
 
-#' @title Reports whether x is a a prior object
+#' @title Reports whether x is a prior object
 #'
-#' @description Reports whether x is a a prior object. Note that
-#' point priors inherit the prior.simple property
+#' @description Reports whether x is a prior object. Point priors inherit the
+#' prior.simple property. `is.prior.regularized()` identifies a regularization
+#' group declaration. `is.prior.regularized_term()` identifies a coefficient
+#' prior carrying its group's shrinkage model. Fixed-scale ridge and lasso
+#' coefficients represented by ordinary normal and Laplace priors retain
+#' their ordinary prior types.
 #'
-#' @param x an object of test
+#' @param x An object to test.
 #'
 #' @examples
 #' # create some prior distributions
@@ -401,6 +405,8 @@
 #' @export is.prior.ordered
 #' @export is.prior.spike_and_slab
 #' @export is.prior.mixture
+#' @export is.prior.regularized
+#' @export is.prior.regularized_term
 #' @name is.prior
 NULL
 
@@ -489,6 +495,14 @@ is.prior.meandif         <- function(x){
 is.prior.mixture         <- function(x){
   inherits(x, "prior.mixture")
 }
+#' @rdname is.prior
+is.prior.regularized      <- function(x){
+  inherits(x, "prior.regularized")
+}
+#' @rdname is.prior
+is.prior.regularized_term <- function(x){
+  inherits(x, "prior.regularized_term")
+}
 
 .validate_centered_factor_prior <- function(prior, name = "prior"){
 
@@ -505,6 +519,8 @@ is.prior.mixture         <- function(x){
   if(!is.prior.orthonormal(prior) && !is.prior.meandif(prior)){
     return(invisible(TRUE))
   }
+  # Every regularized factor kernel is centered at zero by construction.
+  if(is.prior.regularized_term(prior)) return(invisible(TRUE))
 
   center_name <- switch(
     prior[["distribution"]],
@@ -620,10 +636,13 @@ is.prior.mixture         <- function(x){
   fail()
 }
 
-.check_prior <- function(prior, name = "prior", allow_expressions = FALSE){
+.check_prior <- function(prior, name = "prior", allow_expressions = FALSE, allow_regularized = FALSE){
 
   if(!is.prior(prior))
     stop(paste0("The '", name, "' argument must be a valid prior object."), call. = FALSE)
+
+  if(is.prior.regularized(prior) && !allow_regularized)
+    stop("Place the regularization group in the named 'prior_list' of a formula.", call. = FALSE)
 
   if(!allow_expressions && .is_prior_expression(prior))
     stop(paste0("The '", name, "' argument must not contain parameter expressions."), call. = FALSE)

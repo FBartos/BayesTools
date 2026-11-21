@@ -319,6 +319,9 @@
   }, priors)
   available <- vapply(names(priors), function(name){
     prior <- priors[[name]]
+    if(is.prior.regularized_term(prior)){
+      return(all(.JAGS_prior_coefficient_names(name, prior) %in% sample_names))
+    }
     if(!is.null(.bt_formula_numeric_point(prior))) return(TRUE)
     if(is.prior.simplex(prior) && identical(prior$distribution, "dirichlet")){
       eta_names <- paste0(.JAGS_prior_dirichlet_eta_name(name),

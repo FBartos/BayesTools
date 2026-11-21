@@ -32,14 +32,27 @@
     ), allow_unavailable), alternative = left, null = right))
   }
 
-  if(identical(left[["type"]], "region") &&
-     identical(right[["type"]], "region")){
+  if(left$type %in% c("region", "unconstrained") && right$type %in% c("region", "unconstrained")){
     return(.hypothesis_BF_result_labels(
       .hypothesis_BF_available(.hypothesis_region_odds_BF(
         quantity, left, right, explicit = explicit), allow_unavailable),
       alternative = left,
       null        = right
     ))
+  }
+
+  if((left$type == "point" && right$type == "unconstrained") ||
+     (left$type == "unconstrained" && right$type == "point")){
+    point_left <- left$type == "point"
+    result <- .hypothesis_BF_available(.hypothesis_point_BF(
+      quantity, if(point_left) left else right, density_method, inverse = !point_left
+    ), allow_unavailable)
+    if(point_left){
+      result$prior_prob_null <- result$posterior_prob_null <- 1
+    }else{
+      result$prior_prob_alt <- result$posterior_prob_alt <- 1
+    }
+    return(.hypothesis_BF_result_labels(result, alternative = left, null = right))
   }
 
   if(identical(left[["type"]], "point") &&
@@ -166,9 +179,10 @@
     density_source <- attr(inclusion_BF, "posterior_density_source", exact = TRUE)
     fallback_warnings <- attr(inclusion_BF, "posterior_density_fallback_warnings", exact = TRUE)
     if(length(fallback_warnings) > 0L) warning(paste(unique(fallback_warnings), collapse = " "), call. = FALSE)
-    method <- if(identical(density_source, "normal")) "Savage-Dickey (normal)" else
-      if(identical(density_method, "precomputed") && identical(density_source, "precomputed"))
-        "Savage-Dickey (precomputed)" else "Savage-Dickey"
+    estimator <- attr(inclusion_BF, "posterior_density_estimator", exact = TRUE)
+    if(is.null(estimator)){
+      estimator <- if(identical(density_source, "exact_support_exclusion")) "exact support exclusion" else density_source
+    }
   }else{
     posterior <- if(is.null(linear)){
       .hypothesis_eval_expression(.hypothesis_side_expression(side), quantity$posterior_draws)
@@ -197,8 +211,9 @@
     numerical_diagnostics <- ratio$diagnostics
     bf_warnings <- NULL
     BF_error <- NA_real_
-    method <- if(identical(density_method, "normal")) "Savage-Dickey (normal)" else "kernel Savage-Dickey"
+    estimator <- density_method
   }
+  method <- paste0("Savage-Dickey (", estimator, ")")
   if(inverse) log_BF <- -log_BF
   log_prior <- as.numeric(log_prior)
   log_posterior <- as.numeric(log_posterior)
@@ -211,6 +226,7 @@
   numerical_diagnostics$log_jacobian <- log_jacobian
   list(BF = exp(log_BF), log_BF = log_BF, prior = exp(log_prior),
     posterior = exp(log_posterior), log_prior_height = log_prior,
+    prior_density = exp(log_prior), posterior_density = exp(log_posterior),
     log_posterior_height = log_posterior, numerical_diagnostics = numerical_diagnostics,
     method = method, BF_error = if(is.null(BF_error)) NA_real_ else as.numeric(BF_error),
     warning = .hypothesis_collapse_warning(bf_warnings), inexact_prior = inexact_prior)
@@ -601,38 +617,38 @@
                                allow_one = explicit || isTRUE(is.finite(prior_left) && prior_left > 0))
 
   if(posterior_left == 0 && posterior_right == 0){
-    return(list(
-      BF        = NA_real_,
-      prior     = prior_left / prior_right,
-      posterior = NA_real_,
-      prior_numerical_diagnostics = list(left = attr(prior_left, "numerical_diagnostics"),
-        right = attr(prior_right, "numerical_diagnostics")),
-      method    = "prior-posterior odds",
-      BF_error  = NA_real_,
-      warning   = "Both posterior region masses are zero; region-odds BF is undefined."
-    ))
-  }
-
-  prior_left_log <- attr(prior_left, "log_mass", exact = TRUE)
-  prior_right_log <- attr(prior_right, "log_mass", exact = TRUE)
-  if(is.null(prior_left_log)) prior_left_log <- log(prior_left)
-  if(is.null(prior_right_log)) prior_right_log <- log(prior_right)
-  log_BF   <- log(posterior_left) - log(posterior_right) - prior_left_log + prior_right_log
-  BF       <- exp(log_BF)
-  BF_error <- .hypothesis_region_odds_BF_error_percent(quantity, left, right, prior_left, prior_right)
-  warning  <- NULL
-  if(posterior_left == 0 || posterior_right == 0){
-    warning <- "Posterior region mass is zero; reported BF is boundary-valued."
+    posterior_ratio <- log_BF <- BF_error <- NA_real_
+    warning <- "Both posterior region masses are zero; region-odds BF is undefined."
+  }else{
+    prior_left_log <- attr(prior_left, "log_mass", exact = TRUE)
+    prior_right_log <- attr(prior_right, "log_mass", exact = TRUE)
+    if(is.null(prior_left_log)) prior_left_log <- log(prior_left)
+    if(is.null(prior_right_log)) prior_right_log <- log(prior_right)
+    posterior_ratio <- posterior_left / posterior_right
+    log_BF <- log(posterior_left) - log(posterior_right) - prior_left_log + prior_right_log
+    BF_error <- .hypothesis_region_odds_BF_error_percent(quantity, left, right, prior_left, prior_right)
+    warning <- NULL
+    if(posterior_left == 0 || posterior_right == 0){
+      warning <- "Posterior region mass is zero; reported BF is boundary-valued."
+    }
   }
 
   return(list(
-    BF        = BF,
+    BF        = exp(log_BF),
     prior     = prior_left / prior_right,
-    posterior = posterior_left / posterior_right,
+    posterior = posterior_ratio,
+    prior_prob_alt      = prior_left,
+    posterior_prob_alt  = posterior_left,
+    prior_prob_null     = prior_right,
+    posterior_prob_null = posterior_right,
     log_BF    = log_BF,
     prior_numerical_diagnostics = list(left = attr(prior_left, "numerical_diagnostics"),
       right = attr(prior_right, "numerical_diagnostics")),
-    method    = "prior-posterior odds",
+    method    = if(left$type == "unconstrained" || right$type == "unconstrained"){
+      "encompassing prior"
+    }else{
+      "prior-posterior odds"
+    },
     BF_error  = BF_error,
     warning   = warning
   ))
@@ -684,10 +700,16 @@
     BF        = BF,
     prior     = NA_real_,
     posterior = NA_real_,
+    prior_density       = point_BF$prior_density,
+    posterior_density   = point_BF$posterior_density,
+    prior_prob_alt      = if(inverse) region_prior else NA_real_,
+    posterior_prob_alt  = if(inverse) region_posterior else NA_real_,
+    prior_prob_null     = if(inverse) NA_real_ else region_prior,
+    posterior_prob_null = if(inverse) NA_real_ else region_posterior,
     log_BF    = log_BF,
     numerical_diagnostics = point_BF$numerical_diagnostics,
     prior_numerical_diagnostics = list(region = attr(region_prior, "numerical_diagnostics")),
-    method    = "transitive Savage-Dickey",
+    method    = paste("transitive", point_BF$method),
     BF_error  = .hypothesis_combine_BF_error_percent(
       point_BF[["BF_error"]],
       region_BF_error

@@ -451,6 +451,10 @@ prior_density_has_provenance <- function(x){
 
 .prior_density_ordinate_prior_provenance <- function(prior){
 
+  if(is.prior.regularized_term(prior)){
+    return(list(kind = "regularized_coefficient", family = prior$regularization$family,
+                regularization = prior$regularization, truncation = prior$truncation))
+  }
   list(
     kind       = "primitive",
     family     = if(!is.null(prior$distribution)) prior$distribution else "unknown",
@@ -584,9 +588,18 @@ prior_density_has_provenance <- function(x){
 .prior_density_ordinate_primitive <- function(prior, value){
 
   provenance <- .prior_density_ordinate_prior_provenance(prior)
+  if(is.prior.regularized_term(prior)){
+    height <- if(value == 0) .regularized_zero_log_density(prior) else tryCatch(
+      .regularized_marginal(prior, value, density = TRUE, log = TRUE),
+      BayesTools_regularized_marginal_unavailable = function(e) NA_real_)
+    behavior <- if(is.infinite(value)) "zero" else if(isTRUE(height == Inf)) "infinite" else
+      if(value == 0 && is.na(height)) "unknown" else "regular"
+    return(.prior_density_ordinate_result(value, behavior, height, exact = !is.na(height),
+      method = "scale_mixture", provenance = provenance))
+  }
   family <- prior$distribution
   supported <- c(
-    "normal", "lognormal", "t", "gamma", "invgamma", "beta", "exp",
+    "normal", "laplace", "lognormal", "t", "gamma", "invgamma", "beta", "exp",
     "uniform", "moment", "invmoment", "point", "bernoulli"
   )
   if(!is.character(family) || length(family) != 1L || !family %in% supported ||
@@ -648,6 +661,7 @@ prior_density_has_provenance <- function(x){
   behavior <- switch(
     family,
     "normal" = "regular",
+    "laplace" = "regular",
     "t" = "regular",
     "uniform" = "regular",
     "exp" = "regular",
@@ -1509,6 +1523,18 @@ prior_density_has_provenance <- function(x){
     return(NULL)
   }
 
+  # A learned ridge coefficient is Normal conditional on its global scale.
+  # Integrate over that scale directly, keeping the independent Gaussian
+  # contribution in the conditional variance.
+  if(is.prior.regularized_term(prior) && identical(prior$regularization$family, "ridge")){
+    spec <- prior$regularization
+    return(list(
+      additive_mean = normal$provenance$mean, additive_sd = normal$provenance$sd,
+      product_mean = 0, product_sd = abs(.prior_linear_fold_scale(other$weights[[1L]], spec$multiplier)),
+      multiplier = spec$scale, bounds = unlist(spec$scale$truncation[c("lower", "upper")], use.names = FALSE),
+      sources = list(additive = names(groups)[gaussian], multiplied = other$parameter, multiplier = spec$global_name)
+    ))
+  }
   list(
     additive_mean = normal$provenance$mean,
     additive_sd   = normal$provenance$sd,
@@ -1618,7 +1644,10 @@ prior_density_has_provenance <- function(x){
   kind <- provenance$kind
   constant <- .prior_density_ordinate_provenance_constant(provenance)
   if(!is.null(constant)) return(c(lower = constant, upper = constant))
-  if(identical(kind, "primitive")){
+  if(identical(kind, "regularized_combination_unavailable") && isTRUE(provenance$atom_free)){
+    return(c(lower = -Inf, upper = Inf))
+  }
+  if(identical(kind, "primitive") || identical(kind, "regularized_coefficient")){
     truncation <- provenance$truncation
     if(is.list(truncation)){
       lower <- truncation$lower
@@ -1750,6 +1779,10 @@ prior_density_has_provenance <- function(x){
   kind <- provenance$kind
   constant <- .prior_density_ordinate_provenance_constant(provenance)
   if(!is.null(constant)) return(constant)
+  # Conditional on its positive scales every active shrinkage coefficient is
+  # continuous, including a horseshoe whose marginal density diverges at zero.
+  if(identical(kind, "regularized_coefficient")) return(numeric())
+  if(identical(kind, "regularized_combination_unavailable") && isTRUE(provenance$atom_free)) return(numeric())
   if(identical(kind, "linear_normal") ||
      (identical(kind, "scale_mixture") && !is.null(provenance$support))){
     # a scale-product route multiplies two continuous terms
@@ -2028,6 +2061,7 @@ prior_density_has_provenance <- function(x){
     "beta"    = parameters$alpha,
     "gamma"   = parameters$shape,
     "normal"  = 1,
+    "laplace" = 1,
     "t"       = 1,
     "exp"     = 1,
     "uniform" = 1,
@@ -2136,7 +2170,7 @@ prior_density_has_provenance <- function(x){
     return("zero")
   }
   exponent <- if(b > 0){
-    if(family %in% c("normal", "t")) 1 - b else
+    if(family %in% c("normal", "laplace", "t")) 1 - b else
       if(identical(family, "gamma")) parameters$shape - b else
         if(identical(family, "exp")) 1 - b else
           if(identical(family, "beta")) parameters$alpha - b else

@@ -699,7 +699,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   check_int(n_samples, "n_samples")
   if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
-  if(!all(sapply(priors, is.prior.vector) | sapply(priors, is.prior.point)))
+  vector_prior <- vapply(priors, function(p){
+    is.prior.vector(p) || (is.prior.regularized_term(p) && is.prior.factor(p))
+  }, logical(1))
+  if(!all(vector_prior | sapply(priors, is.prior.point)))
     stop("'priors' must be a list of vector priors")
 
   # When seed is NULL, continue using the current RNG state so mix_posteriors()
@@ -709,7 +712,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   }
 
   # prepare output objects
-  K <- unique(sapply(priors[sapply(priors, is.prior.vector)], function(p) p$parameters[["K"]]))
+  K <- unique(sapply(priors[vector_prior], function(p) p$parameters[["K"]]))
   if(length(K) != 1)
     stop("all vector priors must be of the same length")
 

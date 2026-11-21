@@ -19,7 +19,9 @@
 \alias{is.prior.spike_and_slab}
 \alias{is.prior.meandif}
 \alias{is.prior.mixture}
-\title{Reports whether x is a a prior object}
+\alias{is.prior.regularized}
+\alias{is.prior.regularized_term}
+\title{Reports whether x is a prior object}
 \usage{
 is.prior(x)
 
@@ -56,17 +58,25 @@ is.prior.spike_and_slab(x)
 is.prior.meandif(x)
 
 is.prior.mixture(x)
+
+is.prior.regularized(x)
+
+is.prior.regularized_term(x)
 }
 \arguments{
-\item{x}{an object of test}
+\item{x}{An object to test.}
 }
 \value{
 returns a boolean indicating whether the test object
 is a prior (of specific type).
 }
 \description{
-Reports whether x is a a prior object. Note that
-point priors inherit the prior.simple property
+Reports whether x is a prior object. Point priors inherit the
+prior.simple property. \code{is.prior.regularized()} identifies a regularization
+group declaration. \code{is.prior.regularized_term()} identifies a coefficient
+prior carrying its group's shrinkage model. Fixed-scale ridge and lasso
+coefficients represented by ordinary normal and Laplace priors retain
+their ordinary prior types.
 }
 \examples{
 # create some prior distributions

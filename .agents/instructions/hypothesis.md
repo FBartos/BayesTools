@@ -10,8 +10,9 @@ metadata are in [jags-formula.md](jags-formula.md).
 ## Files
 
 - `R/hypothesis-BF.R`: `hypothesis_BF()` generic; `.default` (draws, marginal
-  posteriors, marginal inference; unchanged signature, unknown arguments stop;
-  the statements may be a `hypothesis_parse()` object) and `.BayesTools_fit`
+  posteriors, marginal inference; unknown arguments stop;
+  the statements may be a `hypothesis_parse()` object), the shared draw
+  evaluator `.hypothesis_BF_draws()`, and `.BayesTools_fit`
   (calls the engine; unused `...` warn; the statements are character strings,
   a parsed hypothesis stops with `BayesTools_hypothesis_statement`).
 - `R/hypothesis-model.R`: entry `hypothesis_BF_model()`, group execution,
@@ -34,6 +35,20 @@ metadata are in [jags-formula.md](jags-formula.md).
 - `R/hypothesis-model-backends.R`: backend constructor and registry.
 - `R/hypothesis-model-quantities.R`: `hypothesis_quantities()`.
 
+Interval chains such as `-0.1 <= mu < 0.1` use the same Boolean region and
+complement as their two inequalities joined by `&`. The operators determine
+which region receives an endpoint atom. An explicit `vs unconstrained`
+comparison uses the encompassing distribution under the same scale and
+conditioning as the constrained side. Its mass is one. The three optional display switches are `include_densities`,
+`include_probabilities`, and `include_method`. Point ordinates and region
+probabilities use the selected prior and posterior distributions. Region
+probabilities follow the displayed sides. Table labels and refusal messages
+preserve the user's spelling and normalize whitespace; a single relation with a
+constant on the left reads parameter-left (`0 > x` as `x < 0`), while chains,
+`a = b`, and `a - b = 0` keep their form (maintainer decision, 2026-11-20).
+Messages name the statement as written, not its rendered rewrite. For precomputed densities, the method
+label uses the estimator recorded with the ordinate or density used.
+
 ## Stages of `hypothesis_BF_model()`
 
 `namespace` selects the provider component (a formula parameter) and
@@ -49,7 +64,8 @@ factor term without a level stands for the token's level (`x = 0.1` with
    a control is supplied).
 2. Every statement is parsed with the provider catalog (`simplify_names =
    TRUE`) and planned (resolve, select the entry, rewrite onto the tested
-   parameter, route, targets with `prior_ordinate_status()`). The draws of a
+   parameter, route, targets with `prior_ordinate_status()`). The display
+   columns are selected across all parsed statements before grouping. The draws of a
    statement are extracted while it is planned, before its point targets
    classify their prior ordinates, and without the public `seed`.
 3. Every plan is checked against the requested backend
@@ -73,7 +89,7 @@ factor term without a level stands for the token's level (`x = 0.1` with
    Point statements under an ordinate backend: stored ordinates at the requested
    values are dropped unless `reuse()` accepts them, `attach()` computes the
    missing ones, the engine checks them with `posterior_ordinate_supports_bf()`,
-   the group is evaluated as `"precomputed"` by `hypothesis_BF.default()`, and
+   the group is evaluated as `"precomputed"` by `.hypothesis_BF_draws()`, and
    warnings and diagnostics are lifted. Region statements use the draws.
 6. Results are bound in statement order: labels as written, `label (i)` row
    names, `raw_log_BF`-based BF formatting, merged footnotes, row-keyed
@@ -82,7 +98,7 @@ factor term without a level stands for the token's level (`x = 0.1` with
 ## Random numbers
 
 Draws and prior densities are built during planning without the public `seed`
-(the fit-level methods never reseed); `seed` reaches `hypothesis_BF.default()`
+(the fit-level methods never reseed); `seed` reaches `.hypothesis_BF_draws()`
 and the prior-draw route of random-effect region tests only. The plan cache
 does not contain `seed`.
 
@@ -195,7 +211,7 @@ clear_cache, method, policy, advertised, package)`; registry in the package
 environment (`register_hypothesis_density_backend(backend, overwrite)`,
 `unregister_hypothesis_density_backend(name)`,
 `hypothesis_density_backends()`). Built-ins: `KDE` and `normal` (type `draws`,
-evaluated by `hypothesis_BF.default()`; `normal` is not advertised) and
+evaluated by `.hypothesis_BF_draws()`; `normal` is not advertised) and
 `precomputed` (type `stored`, draw inputs only). Names must not differ only by
 case; built-ins are not replaceable. Types: `draws` (method `KDE`/`normal`),
 `ordinate` (needs `attach`), `stored`.

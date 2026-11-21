@@ -1,20 +1,28 @@
 
 
+.hypothesis_BF_evidence_columns <- c(
+  "prior_density", "posterior_density",
+  "prior_prob_alt", "posterior_prob_alt", "prior_prob_null", "posterior_prob_null"
+)
+
 .hypothesis_BF_row <- function(quantity, result) {
 
-  data.frame(
+  row <- data.frame(
     Alternative  = result[["alternative"]],
     Null         = result[["null"]],
     BF           = as.numeric(result[["BF"]]),
     BF_error     = as.numeric(result[["BF_error"]]),
-    prior        = as.numeric(result[["prior"]]),
-    posterior    = as.numeric(result[["posterior"]]),
     method       = result[["method"]],
     warning      = .hypothesis_collapse_warning(result[["warning"]]),
     row.names    = quantity[["label"]],
     check.names  = FALSE,
     stringsAsFactors = FALSE
   )
+  for(column in .hypothesis_BF_evidence_columns){
+    value <- result[[column]]
+    row[[column]] <- if(is.null(value)) NA_real_ else as.numeric(value)
+  }
+  row
 }
 
 
@@ -31,35 +39,27 @@
 }
 
 
-.hypothesis_BF_output_columns <- function(columns) {
+# Resolve the schema once per request, before splitting a fit into groups.
+# Even an unavailable ordinate keeps its columns when a point was requested.
+.hypothesis_BF_output_columns <- function(hypothesis, include_densities,
+                                          include_probabilities, include_method) {
 
-  default <- c("Alternative", "Null", "BF", "BF_error")
-  extra   <- c("prior", "posterior", "method")
+  check_bool(include_densities, "include_densities", allow_NA = FALSE)
+  check_bool(include_probabilities, "include_probabilities", allow_NA = FALSE)
+  check_bool(include_method, "include_method", allow_NA = FALSE)
 
-  if(any(columns == "all")){
-    if(length(columns) > 1L){
-      stop("'columns = \"all\"' cannot be combined with other column names.",
-           call. = FALSE)
-    }
-    return(c(default, extra))
+  columns <- c("Alternative", "Null", "BF", "BF_error")
+  types <- unlist(lapply(hypothesis$statements, function(statement) {
+    c(statement$left$type, statement$right$type)
+  }), use.names = FALSE)
+  if(include_densities && "point" %in% types){
+    columns <- c(columns, "prior_density", "posterior_density")
   }
-  if(any(columns == "default")){
-    columns <- setdiff(columns, "default")
-    if(length(columns) == 0L){
-      return(default)
-    }
+  if(include_probabilities && any(types %in% c("region", "unconstrained"))){
+    columns <- c(columns, "prior_prob_alt", "posterior_prob_alt", "prior_prob_null", "posterior_prob_null")
   }
-
-  unknown <- setdiff(columns, c(default, extra))
-  if(length(unknown) > 0L){
-    stop("Unknown 'columns' value: ",
-         paste0("'", unknown, "'", collapse = ", "),
-         ". Columns are selected by their names: ",
-         paste0("'", c(default, extra), "'", collapse = ", "),
-         ", or 'default' or 'all'.", call. = FALSE)
-  }
-
-  unique(c(default, columns))
+  if(include_method) columns <- c(columns, "method")
+  columns
 }
 
 
@@ -70,26 +70,11 @@
     Null        = "hypothesis_label",
     BF          = "BF",
     BF_error    = "BF_error",
-    prior       = "estimate",
-    posterior   = "estimate",
     method      = "string"
   )
+  type[.hypothesis_BF_evidence_columns] <- "estimate"
 
   unname(type[columns])
-}
-
-
-.hypothesis_BF_table_footnotes <- function(columns) {
-
-  if(any(c("prior", "posterior") %in% columns)){
-    return(paste0(
-      "Note: 'prior' and 'posterior' are diagnostic values, not always ",
-      "probabilities. Point tests report density heights, region tests report ",
-      "odds, and transitive point-vs-region tests report NA."
-    ))
-  }
-
-  return(NULL)
 }
 
 

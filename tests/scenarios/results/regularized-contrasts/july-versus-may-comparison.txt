@@ -1,0 +1,2 @@
+  BayesTools_BF RStan_BF
+1         12.44     11.9

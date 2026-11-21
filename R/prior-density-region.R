@@ -269,7 +269,8 @@
     }
     return(.prior_region_atoms(images, probability, region))
   }
-  if(!.prior_region_primitive_supported(prior)){
+  regularized <- is.prior.regularized_term(prior)
+  if(!regularized && !.prior_region_primitive_supported(prior)){
     return(.prior_region_unavailable())
   }
   if(!is.null(source_transform) &&
@@ -303,6 +304,14 @@
   }
   intervals <- .prior_region_check_inverse_intervals(region$intervals, intervals)
   intervals <- .prior_region_intervals(intervals[, 1L], intervals[, 2L])
+  if(regularized){
+    log_masses <- vapply(seq_len(nrow(intervals)), function(i){
+      .regularized_region_log_mass(prior, intervals[i, 1L], intervals[i, 2L])
+    }, numeric(1))
+    if(anyNA(log_masses)) .regularized_numerical_unavailable("region probability")
+    log_mass <- .model_probability_log_sum(log_masses)
+    return(.prior_region_result(exp(log_mass), log_mass = log_mass))
+  }
   .prior_region_result(.prior_region_prior_mass(prior, intervals))
 }
 
@@ -311,7 +320,7 @@
 .prior_region_primitive_supported <- function(prior){
 
   supported <- c(
-    "normal", "lognormal", "t", "gamma", "invgamma", "beta", "exp",
+    "normal", "laplace", "lognormal", "t", "gamma", "invgamma", "beta", "exp",
     "uniform", "moment", "invmoment"
   )
   truncation <- prior$truncation

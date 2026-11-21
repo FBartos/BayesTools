@@ -29,6 +29,24 @@ plot_scenario_times("penicillin", unit = "m")
 plot_scenario_times(functions = c("JAGS_fit", "JAGS_bridgesampling"))
 ```
 
+For a BayesTools–RStan comparison, run `test_scenarios(filter = "^regularized$")`
+for Swiss fertility, or `test_scenarios(filter = "^regularized-contrasts$")` for
+monthly ozone. Each prior has a BayesTools fit and a matching RStan program
+in [`stan/`](stan/). Alongside the estimate table and interval plot, the
+distribution plot overlays the BayesTools prior and both engines' posteriors.
+The Swiss example shows the five fertility slopes. The ozone example shows the
+five month deviations and the wind slope under each factor coding.
+
+The model-comparison tables report each engine's bridge-sampled log marginal
+likelihood and log Bayes factor for each prior relative to ridge on the same
+data and coding. A positive log Bayes factor favors the listed prior.
+The tables include approximate Monte Carlo standard errors. The two month
+codings use the same coded-coefficient scale and imply different prior
+widths for the month deviations, so each has its own ridge reference.
+The `regularized-priors`
+certification case checks the normalized Stan densities, cross-engine agreement,
+and the ridge results against independent numerical integration.
+
 Minimal scenario:
 
 ```r
@@ -50,9 +68,11 @@ testthat::test_that("Example analysis remains stable", {
 })
 ```
 
-Sourcing a scenario file directly in an interactive session also reuses fit
-caches, but shows artifact output and immediately creates or replaces its text
-and SVG baselines.
+When you step through a scenario directly in an interactive R console, tables
+and figures appear as you run them. A changed output is saved beside its
+baseline as a `.new.txt` or `.new.svg` candidate and the analysis continues.
+Missing baselines are created by default in this mode. The managed scenario
+runner reports snapshot differences as test failures.
 
 - `scenario_fit()` caches a fit under the ignored `cache/` directory, keyed by
   its normalized fitting call; a changed call refits. The key covers only the
@@ -83,12 +103,20 @@ and SVG baselines.
   relabels draws for it, `scenario_bf_table()` and `scenario_log_bf_bridge()`
   tabulate log Bayes factors by method, and `scenario_prediction_table()`
   merges point predictions and prediction draws with their data rows.
+  For RStan, `scenario_stan_model("ridge.stan")` compiles the file in
+  `stan/` once and reuses it across designs in the same analysis.
+  Passing `scenario_stan_version("ridge.stan")` as the fit's `cache_version`
+  also refits after edits to that Stan program. Use `--refit` after changing
+  data, priors, or fitting functions defined outside the fitting block.
   `scenario_gaussian_logml()` gives a reference log marginal likelihood for
   Gaussian mixed models with N(0, 1) coefficient and half-normal SD priors by
   integrating the coefficients and random effects analytically and
   importance-sampling the variance parameters.
-  Scenarios that compare with brms, metafor, or ape need those packages
-  installed.
+  Scenarios that compare with brms, metafor, ape, or bain need those packages
+  installed. The `bain` scenario prints the hypothesis tables from both packages
+  for an intercept-only model and a formula regression on the attitude survey.
+  The BayesTools fits use bain's fractional prior on the tested coefficients,
+  including the prior correlation between the two regression slopes.
 
 `scenario_text()` and `scenario_plot()` each reset the random seed to 1 before
 evaluating an artifact. Text under `results/`, SVG files under `_snaps/`, and

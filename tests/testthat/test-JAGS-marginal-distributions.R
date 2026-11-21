@@ -3924,9 +3924,9 @@ test_that("Savage-Dickey mixes per-model ordinates when model supports differ", 
 
   # direct point hypotheses use the same ordinate
   bf <- Savage_Dickey_BF(simple, null_hypothesis = .001)
-  hypothesis <- hypothesis_BF(simple, hypothesis = "mu_intercept = 0.001", columns = "all")
+  hypothesis <- hypothesis_BF(simple, hypothesis = "mu_intercept = 0.001", include_densities = TRUE)
   expect_equal(
-    hypothesis$posterior,
+    hypothesis$posterior_density,
     as.numeric(BayesTools:::.prior_linear_density_height(.bt_meta_get(simple, "prior_density"), .001)) /
       as.numeric(bf),
     tolerance = 1e-12
@@ -4238,23 +4238,23 @@ test_that("linear level hypotheses use the exact support of the combination", {
 
   # B - A is the half-normal coefficient: support [0, Inf) although each level
   # alone is supported on [0, Inf); the null 0 lies on the bound
-  difference <- hypothesis_BF(levels, hypothesis = "mu_f[B] - mu_f[A] = 0", columns = "all", seed = 1)
-  expect_identical(difference$method, "Savage-Dickey")
-  expect_equal(as.numeric(difference$prior), 2 * stats::dnorm(0), tolerance = 1e-6)
+  difference <- hypothesis_BF(levels, hypothesis = "mu_f[B] - mu_f[A] = 0", include_densities = TRUE, include_method = TRUE, seed = 1)
+  expect_identical(difference$method, "Savage-Dickey (KDE)")
+  expect_equal(as.numeric(difference$prior_density), 2 * stats::dnorm(0), tolerance = 1e-6)
   moments <- .reflected_kde_moments_for_test(
     0, h = stats::bw.nrd0(posterior[, "mu_f[1]"]), density = half_normal,
     lower = 0, n = n, n_source = Inf
   )
   # the reflected ordinate (the unreflected KDE gave about half of it)
-  expect_lte(abs(difference$posterior - moments[["mean"]]), 4 * sqrt(moments[["variance"]]))
+  expect_lte(abs(difference$posterior_density - moments[["mean"]]), 4 * sqrt(moments[["variance"]]))
 
   # 2 A + B = 3 intercept + coefficient: [0, Inf); prior by quadrature
-  combination <- hypothesis_BF(levels, hypothesis = "2*mu_f[A] + mu_f[B] = 1", columns = "all", seed = 1)
-  expect_identical(combination$method, "Savage-Dickey")
+  combination <- hypothesis_BF(levels, hypothesis = "2*mu_f[A] + mu_f[B] = 1", include_densities = TRUE, include_method = TRUE, seed = 1)
+  expect_identical(combination$method, "Savage-Dickey (KDE)")
   convolution <- stats::integrate(
     function(t) half_normal(t / 3) / 3 * half_normal(1 - t), 0, 1, rel.tol = 1e-10
   )$value
-  expect_equal(as.numeric(combination$prior), convolution, tolerance = 1e-4)
+  expect_equal(as.numeric(combination$prior_density), convolution, tolerance = 1e-4)
 
   # an unbounded linear expression also uses the exact joint-prior density:
   # B - C = f1 - f2 is the difference of two half-normals, with density
@@ -4263,11 +4263,11 @@ test_that("linear level hypotheses use the exact support of the combination", {
   draws <- data.frame(check.names = FALSE,
                       "mu_f[B]" = as.numeric(levels[["B"]]), "mu_f[C]" = as.numeric(levels[["C"]]),
                       "mu_f[A]" = as.numeric(levels[["A"]]))
-  unbounded <- hypothesis_BF(levels, hypothesis = "mu_f[B] - mu_f[C] = 0", columns = "all", seed = 1)
-  expect_identical(unbounded$method, "Savage-Dickey")
-  expect_equal(as.numeric(unbounded$prior), 1 / sqrt(pi), tolerance = 1e-8)
+  unbounded <- hypothesis_BF(levels, hypothesis = "mu_f[B] - mu_f[C] = 0", include_densities = TRUE, include_method = TRUE, seed = 1)
+  expect_identical(unbounded$method, "Savage-Dickey (KDE)")
+  expect_equal(as.numeric(unbounded$prior_density), 1 / sqrt(pi), tolerance = 1e-8)
   expect_equal(
-    as.numeric(unbounded$posterior),
+    as.numeric(unbounded$posterior_density),
     as.numeric(BayesTools:::.hypothesis_sample_density_height(
       draws[["mu_f[B]"]] - draws[["mu_f[C]"]], 0, "posterior"
     )),
@@ -4324,14 +4324,14 @@ test_that("linear level hypotheses mix per-component ordinates of mixture terms"
 
   # A + B = 2 intercept + coefficient: the real line with the unbounded
   # intercept component, [0, Inf) with the bounded one
-  out <- hypothesis_BF(levels, hypothesis = "mu_f[A] + mu_f[B] = 0.2", columns = "all", seed = 1)
-  expect_identical(out$method, "Savage-Dickey")
+  out <- hypothesis_BF(levels, hypothesis = "mu_f[A] + mu_f[B] = 0.2", include_densities = TRUE, include_method = TRUE, seed = 1)
+  expect_identical(out$method, "Savage-Dickey (KDE)")
   values <- 2 * posterior[, "mu_intercept"] + posterior[, "mu_f[1]"]
   heights <- c(
     .kernel_height_for_test(values[indicator == 1L], .2),
     .kernel_height_for_test(values[indicator == 2L], .2, lower = 0)
   )
-  expect_equal(as.numeric(out$posterior), sum(tabulate(indicator, 2) / n * heights), tolerance = 1e-12)
+  expect_equal(as.numeric(out$posterior_density), sum(tabulate(indicator, 2) / n * heights), tolerance = 1e-12)
 })
 
 test_that("linear level hypotheses treat a structurally fixed level as a constant", {
@@ -4355,10 +4355,10 @@ test_that("linear level hypotheses treat a structurally fixed level as a constan
     parameters = c("mu_intercept", "mu_f")
   )
   levels <- marginal_posterior(mixed, "mu_f", use_formula = FALSE, prior_samples = TRUE)
-  contrast <- hypothesis_BF(levels, hypothesis = "mu_f[B] - mu_f[A] = 0", columns = "all", seed = 1)
-  direct <- hypothesis_BF(levels, hypothesis = "mu_f[B] = 0", columns = "all", seed = 1)
-  expect_identical(contrast$method, "Savage-Dickey")
-  expect_equal(as.numeric(contrast$prior), stats::dnorm(0), tolerance = 1e-12)
+  contrast <- hypothesis_BF(levels, hypothesis = "mu_f[B] - mu_f[A] = 0", include_densities = TRUE, include_method = TRUE, seed = 1)
+  direct <- hypothesis_BF(levels, hypothesis = "mu_f[B] = 0", include_densities = TRUE, seed = 1)
+  expect_identical(contrast$method, "Savage-Dickey (KDE)")
+  expect_equal(as.numeric(contrast$prior_density), stats::dnorm(0), tolerance = 1e-12)
   expect_equal(attr(contrast, "raw_BF"), attr(direct, "raw_BF"), tolerance = 1e-10)
 })
 

@@ -143,8 +143,10 @@
 #'   principal directions of their posterior covariance learned during
 #'   adaptation. A block may contain simple continuous scalar priors, treatment
 #'   and independent factor priors, a single weight function, PET and PEESE
-#'   priors, and the allocation SD and Dirichlet allocation weights of a
-#'   random-effect variance allocation; a prior may be in one block only. A
+#'   priors, direct random-effect SDs and scalar correlations with simple
+#'   continuous scalar priors, and the allocation SD and Dirichlet allocation
+#'   weights of a random-effect variance allocation; a prior may be in one block
+#'   only. A
 #'   block that expands to fewer than two parameters is not declared and is
 #'   recorded as declined. \code{sampler_blocks} may also be a function of one
 #'   argument, the combined prior list (formula priors under their final names
@@ -1232,6 +1234,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     }
     JAGS_formula_name_map(fit)
     for(parameter in names(formula_design)){
+      .bt_regularized_check_fitted_priors(formula_design[[parameter]], attr(fit, "prior_list", exact = TRUE))
       .bt_validate_formula_design_replay_schema(
         formula_design[[parameter]],
         context = paste0("JAGS_extend() formula '", parameter, "'")

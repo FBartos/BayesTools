@@ -29,6 +29,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
     stop("'prior_list' must be a list of priors.")
   .check_prior_list_unique_names(prior_list)
   .bt_validate_ordered_shared_allocations(prior_list)
+  .bt_regularized_validate_roots(prior_list)
 
   # identify parts of the syntax
   opening_bracket <- .JAGS_model_block_opening(syntax)
@@ -51,7 +52,11 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
   for(i in seq_along(prior_list)){
 
-    if(is.prior.weightfunction(prior_list[[i]])){
+    if(is.prior.regularized(prior_list[[i]])){
+      stop("Bind a regularization group in a formula prior list before generating JAGS priors.", call. = FALSE)
+    }else if(is.prior.regularized_term(prior_list[[i]])){
+      syntax_priors <- paste(syntax_priors, .bt_regularized_jags(prior_list[[i]], names(prior_list)[i]))
+    }else if(is.prior.weightfunction(prior_list[[i]])){
 
       syntax_priors <- paste(syntax_priors, .JAGS_prior.weightfunction(prior_list[[i]]))
 
@@ -135,6 +140,15 @@ JAGS_add_priors           <- function(syntax, prior_list){
     prior[["distribution"]],
     "point"     = paste0(parameter_name," = ",number(prior$parameter[["location"]])),
     "normal"    = paste0(parameter_name," ~ dnorm(",number(prior$parameter[["mean"]]),",", number(.JAGS_parameter_to_precision(prior$parameter[["sd"]], "normal")),")"),
+    "laplace"   = {
+      scale <- prior$parameters$scale
+      if(is.numeric(scale) && !is.finite(1 / scale)){
+        .prior_numerical_signal("JAGS syntax", "laplace", "finite", 1L,
+          "The reciprocal Laplace scale exceeds the largest representable JAGS rate", error = TRUE)
+      }
+      rate <- if(is.numeric(scale)) number(1 / scale) else paste0("1/(", scale, ")")
+      paste0(parameter_name, " ~ ddexp(", number(prior$parameters$location), ",", rate, ")")
+    },
     "lognormal" = paste0(parameter_name," ~ dlnorm(",number(prior$parameter[["meanlog"]]),",", number(.JAGS_parameter_to_precision(prior$parameter[["sdlog"]], "lognormal")),")"),
     "t"         = paste0(parameter_name," ~ dt(",number(prior$parameter[["location"]]),",", number(.JAGS_parameter_to_precision(prior$parameter[["scale"]], "t")),",", number(prior$parameter[["df"]]),")"),
     "gamma"     = paste0(parameter_name," ~ dgamma(",number(prior$parameter[["shape"]]),",",number(prior$parameter[["rate"]]),")"),

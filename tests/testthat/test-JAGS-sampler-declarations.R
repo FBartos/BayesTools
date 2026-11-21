@@ -378,13 +378,41 @@ test_that("blocks refuse guarded priors with the declaration error class", {
       inclusion = list(g = prior("beta", list(1, 1)))
     ))
   )$prior_list
-  block_sd <- JAGS_formula(
-    formula = ~ 1 + (1 + x | g), parameter = "mu", data = formula_data,
+  # random-effect priors that are not simple continuous scalars: a factor SD,
+  # point, spike-and-slab and mixture SDs, a point correlation, a vector prior
+  # with random-effect metadata, and a summary prior
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  factor_sd <- JAGS_formula(
+    formula = ~ 1 + diag(1 + d | g), parameter = "mu", data = formula_data,
     prior_list = list(intercept = prior("normal", list(0, 1))),
-    prior_random = prior_random(g = random_block(sd = prior("normal", list(0, 1), list(0, Inf)), cor = prior_lkj(eta = 1)))
+    prior_random = prior_random(g = random_block(sd = sd_prior))
   )$prior_list
+  random_prior <- function(prior, type = "random_sd"){
+    attr(prior, type) <- TRUE
+    attr(prior, "random_factor") <- "g"
+    prior
+  }
+  summary_sd <- random_prior(sd_prior)
+  attr(summary_sd, "random_summary") <- "sd"
+  # simple scalar priors of a variance allocation that are neither its plain SD
+  # nor its Dirichlet weights, with only the allocation metadata or also that of
+  # a direct SD: only the direct SDs and correlations outside an allocation join
+  allocation_only <- sd_prior
+  attr(allocation_only, "random_allocation") <- "tot"
+  allocation_sd_metadata <- random_prior(sd_prior)
+  attr(allocation_sd_metadata, "random_allocation") <- "tot"
+  random_guarded <- list(
+    re_allocation = allocation_only,
+    re_allocation_sd_metadata = allocation_sd_metadata,
+    re_point = random_prior(prior("point", list(0.3))),
+    re_s_s = random_prior(prior_spike_and_slab(sd_prior)),
+    re_mix = random_prior(prior_mixture(list(sd_prior, prior("gamma", list(2, 2))))),
+    re_cor_point = random_prior(prior("spike", list(0.3)), "random_correlation"),
+    re_vector = random_prior(prior("mnormal", list(mean = 0, sd = 1, K = 2))),
+    re_summary = summary_sd
+  )
 
-  prior_list <- c(inclusion, block_sd[setdiff(names(block_sd), "mu_intercept")], list(
+  prior_list <- c(inclusion, factor_sd[setdiff(names(factor_sd), "mu_intercept")], random_guarded, list(
     mu = prior("normal", list(0, 1)),
     s_s = prior_spike_and_slab(prior("normal", list(0, 1))),
     mix = prior_mixture(list(prior("normal", list(0, 1)), prior("normal", list(1, 1)))),
@@ -411,8 +439,17 @@ test_that("blocks refuse guarded priors with the declaration error class", {
   }
   expect_block_error("mu__xRE_ALLOCx_tot__allocation_sd", "it is a spike-and-slab prior")
   expect_block_error("mu__xRE_ALLOCx_tot__include_g_prob", "it is an inclusion prior")
-  expect_block_error("mu__xREx__g_intercept",
-                     "it is a random-effect prior other than a plain allocation SD or Dirichlet allocation weights")
+  random_other <- paste0("it is a random-effect prior other than a simple continuous scalar prior, ",
+                         "a plain allocation SD or Dirichlet allocation weights")
+  expect_block_error("mu__xREx__g_d", random_other)
+  expect_block_error("re_vector", random_other)
+  expect_block_error("re_summary", random_other)
+  expect_block_error("re_allocation", random_other)
+  expect_block_error("re_allocation_sd_metadata", random_other)
+  expect_block_error("re_point", "it is a point prior")
+  expect_block_error("re_s_s", "it is a spike-and-slab prior")
+  expect_block_error("re_mix", "it is a mixture prior")
+  expect_block_error("re_cor_point", "it is a point prior")
   expect_block_error("s_s", "it is a spike-and-slab prior")
   expect_block_error("mix", "it is a mixture prior")
   expect_block_error("bias", "it is a mixture prior")
@@ -424,9 +461,12 @@ test_that("blocks refuse guarded priors with the declaration error class", {
   expect_block_error("dir", "it is a vector prior")
   expect_block_error("phack", "its prior type is not supported in a block")
 
-  # the allocation weights stay allowed next to a spike-and-slab allocation SD
+  # the allocation weights stay allowed next to a spike-and-slab allocation SD,
+  # and the scalar SD of a factor block's intercept next to its factor SD
   expect_identical(.blocks(list(c("mu", "mu__xRE_ALLOCx_tot__weight")))$declared$node,
                    c("mu", paste0("prior_par_eta_mu__xRE_ALLOCx_tot__weight[", 1:2, "]")))
+  expect_identical(.blocks(list(c("mu", "mu__xREx__g_intercept")))$declared$node,
+                   c("mu", "mu__xREx__g_intercept"))
 
   expect_error(.blocks(list(c("mu", "nope"))),
                "Prior 'nope' in 'sampler_blocks' is not in the combined prior list of the model.", fixed = TRUE,
@@ -439,6 +479,42 @@ test_that("blocks refuse guarded priors with the declaration error class", {
   expect_error(.blocks(list(c("mu", "mu"))),
                "Prior 'mu' appears more than once in 'sampler_blocks'; a prior may be in one block only.", fixed = TRUE,
                class = "BayesTools_sampler_declaration_error")
+})
+
+test_that("blocks take random-effect SDs and scalar correlations with simple continuous priors", {
+
+  set.seed(1)
+  formula_data <- data.frame(x = stats::rnorm(24), g = factor(rep(1:4, 6)), s = factor(rep(1:6, each = 4)),
+                             t = rep(1:3, 8))
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  prior_list <- JAGS_formula(
+    formula = ~ 1 + x + (1 + x | g) + cs(t | s), parameter = "mu", data = formula_data,
+    prior_list = list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      g = random_block(sd = sd_prior, cor = prior_lkj(eta = 1)),
+      s = random_block(sd = prior("gamma", list(2, 2)), covariance = random_covariance(
+        cor = prior("uniform", list(0, 0.9)), cor_scale = "cor"))
+    )
+  )$prior_list
+  random_names <- c("mu__xREx__g_intercept", "mu__xREx__g_x", "mu__xREx__s_sd", "mu__xREx__s_rho")
+  expect_true(all(random_names %in% names(prior_list)))
+  expect_true(all(vapply(prior_list[random_names], BayesTools:::.bt_is_random_effect_prior, logical(1))))
+  expect_true(isTRUE(attr(prior_list[["mu__xREx__s_rho"]], "random_correlation")))
+
+  # each prior is a leaf under its own name, in a block with fixed coefficients
+  out <- .declare(prior_list, sampler_blocks = list(c("mu_intercept", random_names[1:2]), c(random_names[3:4], "mu_x")))
+  blocks <- out$declarations$blocks
+  expect_identical(blocks$node, c("mu_intercept", random_names, "mu_x"))
+  expect_identical(blocks$prior, blocks$node)
+  expect_identical(blocks$block, rep(1:2, each = 3L))
+  expect_identical(nrow(out$declarations$declined), 0L)
+  expect_true(grepl("BayesTools_block_5 ~ dbt_block(mu__xREx__s_rho, 2)", out$model, fixed = TRUE))
+  expect_true(out$uses_module)
+
+  # a block of a single random-effect SD is declined like any other single leaf
+  single <- .declare(prior_list, sampler_blocks = list("mu__xREx__s_sd"))
+  expect_identical(nrow(single$declarations$blocks), 0L)
+  expect_identical(single$declarations$declined$nodes, "mu__xREx__s_sd")
 })
 
 test_that("a block of fewer than two sampled nodes is declined, not declared", {

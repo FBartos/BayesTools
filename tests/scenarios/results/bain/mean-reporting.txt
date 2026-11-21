@@ -1,0 +1,22 @@
+BayesTools
+    Alternative:                 Null:    BF error%(BF) prior_density posterior_density prior_prob_alt posterior_prob_alt prior_prob_null posterior_prob_null               method
+          mu = 0         unconstrained 3.969         NA         0.463             1.839             NA                 NA           1.000               1.000  Savage-Dickey (KDE)
+          mu > 0               mu <= 0 0.783      1.425            NA                NA          0.500              0.439           0.500               0.561 prior-posterior odds
+ -0.1 < mu < 0.1         unconstrained 3.817      0.957            NA                NA          0.092              0.353           1.000               1.000   encompassing prior
+ -0.1 < mu < 0.1 not (-0.1 < mu < 0.1) 5.353      1.480            NA                NA          0.092              0.353           0.908               0.647 prior-posterior odds
+
+bain
+Bayesian informative hypothesis testing for an object of class lm (continuous predictors):
+
+   Fit   Com   BF.u  BF.c  PMPa  PMPb 
+H1 1.771 0.463 3.821 3.821 0.464 0.414
+H2 0.434 0.500 0.869 0.768 0.105 0.094
+H3 0.348 0.098 3.547 4.907 0.431 0.384
+Hu                               0.108
+
+Hypotheses:
+  H1: Intercept=0
+  H2: Intercept>0
+  H3: -0.1<Intercept<0.1
+
+Note: BF.u denotes the Bayes factor of the hypothesis at hand versus the unconstrained hypothesis Hu. BF.c denotes the Bayes factor of the hypothesis at hand versus its complement. PMPa contains the posterior model probabilities of the hypotheses specified. PMPb adds Hu, the unconstrained hypothesis. PMPc adds Hc, the complement of the union of the hypotheses specified.
