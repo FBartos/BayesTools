@@ -484,16 +484,20 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       yend = plot_data$y[plot_data$y != 0] * scale_y2)
     mapping <- ggplot2::aes(x = .data[["x"]], xend = .data[["xend"]],
       y = .data[["y"]], yend = .data[["yend"]])
+    show_legend <- NA
     if(level_mapped){
       point_data$level <- attr(plot_data, "level_label", exact = TRUE)
       mapping$colour <- ggplot2::aes(colour = .data[["level"]])$colour
       mapping$linetype <- ggplot2::aes(linetype = .data[["level"]])$linetype
+      if(identical(dots$legend, FALSE) || isTRUE(attr(plot_data, "shared_levels", exact = TRUE))){
+        show_legend <- isTRUE(dots$legend)
+      }
     }
     geom <- ggplot2::geom_segment(
       data = point_data,
       mapping = mapping,
       arrow     = ggplot2::arrow(length = ggplot2::unit(0.5, "cm")),
-      linewidth = 2*lwd, show.legend = if(level_mapped && identical(dots$legend, FALSE)) FALSE else NA)
+      linewidth = 2*lwd, show.legend = show_legend)
     if(!level_mapped){
       geom$aes_params$linetype <- lty
       geom$aes_params$colour <- col
