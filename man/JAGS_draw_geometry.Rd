@@ -5,8 +5,10 @@
 \alias{JAGS_draw_geometry_schema}
 \alias{JAGS_materialize_draws}
 \alias{JAGS_with_draws}
-\alias{as.mcmc.list.BayesTools_draws_view}
-\alias{as.mcmc.BayesTools_draws_view}
+\alias{as.mcmc.list.BayesTools_fit}
+\alias{as.mcmc.BayesTools_fit}
+\alias{print.BayesTools_fit}
+\alias{summary.BayesTools_fit}
 \alias{print.BayesTools_draws_view}
 \title{JAGS draw geometry and deterministic materialization}
 \usage{
@@ -18,9 +20,13 @@ JAGS_materialize_draws(fit, parameters = NULL, include_internal = FALSE)
 
 JAGS_with_draws(fit, draws)
 
-\method{as.mcmc.list}{BayesTools_draws_view}(x, ...)
+\method{as.mcmc.list}{BayesTools_fit}(x, ...)
 
-\method{as.mcmc}{BayesTools_draws_view}(x, ...)
+\method{as.mcmc}{BayesTools_fit}(x, ...)
+
+\method{print}{BayesTools_fit}(x, ...)
+
+\method{summary}{BayesTools_fit}(object, ...)
 
 \method{print}{BayesTools_draws_view}(x, ...)
 }
@@ -34,9 +40,11 @@ JAGS_with_draws(fit, draws)
 
 \item{draws}{replacement draws coercible to a \code{coda::mcmc.list}.}
 
-\item{x}{a derived-draw view.}
+\item{x}{a fitted model or a derived-draw view.}
 
-\item{...}{additional arguments.}
+\item{...}{arguments passed to \code{\link[=JAGS_estimates_table]{JAGS_estimates_table()}} by \code{summary()}.}
+
+\item{object}{a fitted model or a derived-draw view to summarize.}
 }
 \value{
 \code{JAGS_draw_geometry()} returns a \code{BayesTools_draw_geometry} list.

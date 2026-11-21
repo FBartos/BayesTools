@@ -494,7 +494,7 @@ test_that("one-component random-effect gates do not create artificial weights", 
       mcmc = coda::mcmc.list(coda::mcmc(samples)),
       sample = nrow(samples)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
@@ -3980,7 +3980,6 @@ test_that("JAGS_formula independent random-effect design matches lme4 lFormula o
 
 test_that("random slopes of a two-level factor name the scalar SD node of their prior", {
 
-  testthat::skip_if_not_installed("runjags")
 
   # one contrast column is a scalar node of the SD prior, not an indexed element
   df <- data.frame(
@@ -4036,9 +4035,8 @@ test_that("random slopes of a two-level factor name the scalar SD node of their 
     posterior <- matrix(rep(values, 2L), nrow = 2L, byrow = TRUE,
                         dimnames = list(NULL, names(values)))
     fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-                summary.pars = list(mutate = NULL),
                 monitor = colnames(posterior), sample = nrow(posterior))
-    class(fit) <- c("runjags", "BayesTools_fit")
+    class(fit) <- "BayesTools_fit"
     attr(fit, "prior_list") <- result$prior_list
     attr(fit, "formula_design") <- list(mu = result$formula_design)
     attr(fit, "formula_scale") <- list(mu = result$formula_scale)
@@ -4101,7 +4099,6 @@ test_that("random slopes of a two-level factor name the scalar SD node of their 
 
 test_that("structured random-effect indexes with a single level compile", {
 
-  testthat::skip_if_not_installed("runjags")
 
   # one index level is one indicator column and has no correlation parameter
   one_level <- data.frame(g = factor(c("a", "a", "b", "b")), time = 0)
@@ -4127,9 +4124,8 @@ test_that("structured random-effect indexes with a single level compile", {
     posterior <- matrix(c(0, 0.5), nrow = 2L, ncol = 2L, byrow = TRUE,
                         dimnames = list(NULL, c("mu_intercept", sd_name)))
     fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-                summary.pars = list(mutate = NULL),
                 monitor = colnames(posterior), sample = nrow(posterior))
-    class(fit) <- c("runjags", "BayesTools_fit")
+    class(fit) <- "BayesTools_fit"
     attr(fit, "prior_list") <- result$prior_list
     attr(fit, "formula_design") <- list(mu = result$formula_design)
     attr(fit, "formula_scale") <- list(mu = result$formula_scale)
@@ -4321,9 +4317,8 @@ test_that("car() refuses an explicit intercept and accepts the redundant 0 and -
   posterior <- matrix(rep(values, 2L), nrow = 2L, byrow = TRUE,
                       dimnames = list(NULL, names(values)))
   fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-              summary.pars = list(mutate = NULL),
               monitor = colnames(posterior), sample = nrow(posterior))
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "formula_scale") <- list(mu = result$formula_scale)
@@ -4333,7 +4328,6 @@ test_that("car() refuses an explicit intercept and accepts the redundant 0 and -
 
 test_that("random factor interactions match factors to terms by their exact names", {
 
-  testthat::skip_if_not_installed("runjags")
 
   # factors named x_g and g (and g and age_g) coexist in one term
   df <- data.frame(
@@ -4413,7 +4407,6 @@ test_that("random factor interactions match factors to terms by their exact name
 
 test_that("SD components of mixed-contrast random interactions are level cells only when the column is that cell", {
 
-  testthat::skip_if_not_installed("runjags")
 
   df <- data.frame(
     study = factor(rep(paste0("s", 1:6), each = 12)),

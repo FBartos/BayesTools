@@ -1115,7 +1115,6 @@ test_that("posterior plot functions (meandif) work", {
 
 test_that("posterior plot model averaging based on complex single JAGS models (formulas + spike factors + mixture)", {
 
-  skip_if_not_installed("RoBMA")
   skip_if_missing_fits("fit_complex_mixed")
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
@@ -1357,7 +1356,6 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
 
 test_that("posterior plot model averaging based on simple single JAGS models  (formulas)", {
 
-  skip_if_not_installed("RoBMA")
   skip_if_missing_fits("fit_simple_formula_mixed")
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
@@ -1408,7 +1406,6 @@ test_that("posterior plot model averaging based on simple single JAGS models  (f
 
 test_that("posterior plot model averaging based on complex bias mixture model (PET + PEESE + weightfunction)", {
 
-  skip_if_not_installed("RoBMA")
   skip_if_missing_fits("fit_complex_bias")
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
@@ -1563,7 +1560,6 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
 
 test_that("posterior plot based on as_mixed_posteriors (weightfunction) work", {
 
-  skip_if_not_installed("RoBMA")
   skip_if_missing_fits(c("fit_wf_twosided", "fit_wf_onesided"))
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
@@ -1643,7 +1639,6 @@ test_that("posterior plot based on as_mixed_posteriors (weightfunction) work", {
 # multivariate-normal sampler, which differs across OSes.
 test_that("posterior plot based on as_mixed_posteriors (weightfunction in a factor model) work", {
 
-  skip_if_not_installed("RoBMA")
   skip_if_missing_fits("fit_complex_mixed")
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")

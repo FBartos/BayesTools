@@ -376,8 +376,7 @@ test_that("formula coefficient transforms expose the sample transformation", {
     list(formula_result$formula_scale),
     parameter
   )
-  fit <- coda::mcmc(samples)
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(samples))
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_scale") <- formula_scale
   attr(fit, "formula_design") <- formula_design

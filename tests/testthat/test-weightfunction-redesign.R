@@ -868,7 +868,7 @@ test_that("JAGS fits full bias mixtures with PET, PEESE, and heterogeneous weigh
 
 test_that("omega diagnostics reject bias mixtures without weightfunctions", {
 
-  fit <- structure(list(), class = c("runjags", "BayesTools_fit"))
+  fit <- structure(list(), class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(
     bias = prior_mixture(list(
       prior_PET("normal", list(0, 1), prior_weights = 1),

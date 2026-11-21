@@ -45,7 +45,7 @@ test_that("a singleton conditional shrinkage law keeps its event and defers its 
 test_that("dependency-only expression points retain the existing fresh-sampling refusal", {
   info <- JAGS_formula(~x, "mu", data.frame(x = c(10, 20, 30)),
     list(intercept = prior("normal", list(0, 1)), x = prior("point", list(location = expression(2 * mu_intercept)))), formula_scale = TRUE)
-  fit <- structure(coda::mcmc(cbind(mu_intercept = c(1, 2), mu_x = c(2, 4))), class = c("mcmc", "BayesTools_fit"))
+  fit <- test_fit_from_chains(coda::mcmc(cbind(mu_intercept = c(1, 2), mu_x = c(2, 4))))
   attr(fit, "prior_list") <- info$prior_list
   attr(fit, "formula_design") <- list(mu = info$formula_design)
   attr(fit, "formula_scale") <- list(mu = info$formula_scale)
@@ -116,7 +116,7 @@ test_that("complete declarations certify absent terms with a valid empty source 
     list(intercept = prior("normal", list(0, 1))))
   fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(cbind(mu_intercept = c(1, 2, 3)))),
     compiled$prior_list, list(mu = compiled$formula_design))
-  state <- .bt_formula_state_new(fit, as.matrix(fit), "mu_g")
+  state <- .bt_formula_state_new(fit, as.matrix(fit$mcmc), "mu_g")
   expect_identical(dim(state$values), c(3L, 0L))
   expect_identical(names(state$models[[1L]]$declaration_priors), "mu_intercept")
   expect_null(.bt_formula_state_validate(state))
@@ -127,7 +127,7 @@ test_that("complete declarations certify absent terms with a valid empty source 
   design <- attr(broken, "formula_design")
   design$mu$prior_list <- list()
   attr(broken, "formula_design") <- design
-  expect_error(.bt_formula_state_new(broken, as.matrix(broken), "mu_g"), class = "BayesTools_formula_transform_unavailable")
+  expect_error(.bt_formula_state_new(broken, as.matrix(broken$mcmc), "mu_g"), class = "BayesTools_formula_transform_unavailable")
 })
 
 .formula_state_test_fit <- function(multiplier = "sigma", mean = 20, sd = 10,
@@ -347,7 +347,7 @@ test_that("fitted and original formula values and measures use fitted rows", {
 test_that("public at values preserve fitted SD and original data units", {
 
   fit <- .formula_state_test_fit(multiplier = NULL, extra_priors = list(),
-    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2)))
+    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2))
   fitted <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"))
   original <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), transform_scaled = TRUE)
   for(at in c(0, 1, 20, 30)){
@@ -578,18 +578,10 @@ test_that("multiple prefixes use one original fitted snapshot", {
   expect_identical(source[, "nu_z"], c(2, 4))
 })
 
-.formula_state_runjags_transport <- function(fit){
-
-  out <- structure(list(mcmc = fit, sample = nrow(as.matrix(fit)), monitor = colnames(as.matrix(fit)),
-    summary.pars = list(mutate = NULL)), class = c("runjags", "BayesTools_fit", "list"))
-  for(field in c("prior_list", "formula_design", "formula_scale", "parameter_map")) attr(out, field) <- attr(fit, field, exact = TRUE)
-  .bt_attach_fit_contract(.bt_attach_draw_geometry(out))
-}
-
 test_that("formula model ownership retains unrepresentable prior probabilities", {
-  fit1 <- .formula_state_runjags_transport(.formula_state_test_fit())
-  fit2 <- .formula_state_runjags_transport(.formula_state_test_fit(extra_priors = list(sigma = prior("point", list(0))),
-    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2), sigma = c(0, 0))))
+  fit1 <- .formula_state_test_fit()
+  fit2 <- .formula_state_test_fit(extra_priors = list(sigma = prior("point", list(0))),
+    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2), sigma = c(0, 0)))
   models <- list(list(fit = fit1, marglik = bridgesampling_object(1000), prior_weights = 1e-300),
     list(fit = fit2, marglik = bridgesampling_object(0), prior_weights = 1e100))
   mixed <- mix_posteriors(models, c("mu_intercept", "mu_x"),
@@ -616,8 +608,8 @@ test_that("formula model ownership retains unrepresentable prior probabilities",
 })
 
 test_that("equal compiled point contribution laws do not require representable model weights", {
-  fit <- .formula_state_runjags_transport(.formula_state_test_fit(multiplier = NULL, extra_priors = list(),
-    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2))))
+  fit <- .formula_state_test_fit(multiplier = NULL, extra_priors = list(),
+    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2)))
   models <- list(list(fit = fit, marglik = bridgesampling_object(0), prior_weights = 1e-300),
     list(fit = fit, marglik = bridgesampling_object(0), prior_weights = 1e100))
   mixed <- mix_posteriors(models, c("mu_intercept", "mu_x"), list(c(FALSE, FALSE), c(FALSE, FALSE)), seed = 47, n_samples = 20)
@@ -629,9 +621,9 @@ test_that("equal compiled point contribution laws do not require representable m
 
 test_that("positive posterior models without selected rows keep their atoms", {
 
-  fit1 <- .formula_state_runjags_transport(.formula_state_test_fit())
-  fit2 <- .formula_state_runjags_transport(.formula_state_test_fit(extra_priors = list(sigma = prior("point", list(0))),
-    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2), sigma = c(0, 0))))
+  fit1 <- .formula_state_test_fit()
+  fit2 <- .formula_state_test_fit(extra_priors = list(sigma = prior("point", list(0))),
+    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2), sigma = c(0, 0)))
   model_list <- list(list(fit = fit1, marglik = bridgesampling_object(0), prior_weights = .95),
     list(fit = fit2, marglik = bridgesampling_object(0), prior_weights = .05))
   mixed <- mix_posteriors(model_list, c("mu_intercept", "mu_x"),
@@ -647,9 +639,9 @@ test_that("positive posterior models without selected rows keep their atoms", {
 
 test_that("heterogeneous model contributions retain foreign NA holes and leaf laws", {
 
-  fit1 <- .formula_state_runjags_transport(.formula_state_test_fit())
-  fit2 <- .formula_state_runjags_transport(.formula_state_test_fit(multiplier = -3, extra_priors = list(),
-    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2))))
+  fit1 <- .formula_state_test_fit()
+  fit2 <- .formula_state_test_fit(multiplier = -3, extra_priors = list(),
+    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2)))
   mixed <- mix_posteriors(list(list(fit = fit1, marglik = bridgesampling_object(0), prior_weights = .6),
     list(fit = fit2, marglik = bridgesampling_object(0), prior_weights = .4)),
     c("mu_intercept", "mu_x"), list(c(FALSE, FALSE), c(FALSE, FALSE)), seed = 74, n_samples = 10)

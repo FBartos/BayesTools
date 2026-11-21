@@ -29,8 +29,7 @@ skip_if_not_test_profile("unit")
     ncol = length(columns),
     dimnames = list(NULL, columns)
   )
-  fit <- coda::mcmc.list(coda::mcmc(draws))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(draws)))
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "parameter_map") <- .bt_build_parameter_map(
@@ -140,8 +139,7 @@ test_that("marginal update plans propagate invalid transformation metadata", {
     ncol = length(columns),
     dimnames = list(NULL, columns)
   )
-  fit <- coda::mcmc.list(coda::mcmc(draws))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(draws)))
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "parameter_map") <- .bt_build_parameter_map(
@@ -210,8 +208,7 @@ test_that("marginal update plans propagate invalid transformation metadata", {
   }else{
     list(mu = result$formula_scale)
   }
-  fit <- coda::mcmc.list(coda::mcmc(draws))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(draws)))
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "formula_scale") <- scale
@@ -527,7 +524,7 @@ test_that("a source-coordinate plan lists every block that uses the source", {
     )
   }
   change <- function(fit, blocks, tau_value){
-    posterior <- as.matrix(fit)
+    posterior <- as.matrix(fit$mcmc)
     reference <- random_effects_marginal_vcov(
       fit, parameter = "mu", blocks = blocks, posterior_samples = posterior
     )$samples[1L, , ]
@@ -628,8 +625,7 @@ test_that("interaction SD labels keep backslashes and levels that differ by a ch
   term <- result$formula_design$random_effects[[1L]]
   columns <- unique(c("mu_intercept", term$sd_parameter_names))
   draws <- matrix(0.5, 2L, length(columns), dimnames = list(NULL, columns))
-  fit <- coda::mcmc.list(coda::mcmc(draws))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(draws)))
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "parameter_map") <- .bt_build_parameter_map(
@@ -753,7 +749,7 @@ test_that("non-affine update grids reproduce compiled factor states", {
       current$role,
       current$component
     )
-    posterior <- as.matrix(fit)
+    posterior <- as.matrix(fit$mcmc)
     grid <- random_effects_marginal_update_grid(
       fit = fit,
       update = plan,
@@ -844,7 +840,7 @@ test_that("the update of an SD shared by several columns drives all of them", {
   # the grid replaces the scale of every column of the shared SD: its factor
   # states are those of the posterior with the SD coordinate replaced
   plan <- .random_update_test_plan(fit, "random_sd", "flag:z")
-  posterior <- as.matrix(fit)
+  posterior <- as.matrix(fit$mcmc)
   values <- c(0.25, 0.8)
   grid <- random_effects_marginal_update_grid(
     fit = fit, update = plan, values = values, posterior_samples = posterior
@@ -947,7 +943,7 @@ test_that("every random covariance structure declares an exact update route", {
         fit = fit,
         update = update,
         values = values,
-        posterior_samples = as.matrix(fit)
+        posterior_samples = as.matrix(fit$mcmc)
       )
       expect_identical(grid$family, update$family, info = structure)
       expect_identical(nrow(grid$coefficient_scale), 2L, info = structure)
@@ -1025,7 +1021,7 @@ test_that("correlated component allocations retain nonlinear covariances", {
   expect_identical(.random_update_test_plan(fit, "random_sd_total")$family,
                    "affine")
 
-  posterior <- as.matrix(fit)[rep(1L, 3L), , drop = FALSE]
+  posterior <- as.matrix(fit$mcmc)[rep(1L, 3L), , drop = FALSE]
   weight <- "mu__xRE_ALLOCx_allocation__weight"
   values <- c(.1, .5, .9)
   posterior[, paste0(weight, "[1]")] <- values
@@ -1062,7 +1058,7 @@ test_that("correlated component allocations retain nonlinear covariances", {
     fit = fit,
     update = component_sd,
     values = c(0.25, 0.75),
-    posterior_samples = as.matrix(fit)
+    posterior_samples = as.matrix(fit$mcmc)
   )
   expect_identical(grid$family, "factor")
   expect_equal(grid$candidate_scale[, 1L], c(0.25, 0.75))
@@ -1100,7 +1096,7 @@ test_that("correlated component allocations retain nonlinear covariances", {
     expect_equal(kronecker(diag(2), tcrossprod(coefficient_factor)),
                  expected, tolerance = 1e-14)
 
-    candidate <- as.matrix(fit)
+    candidate <- as.matrix(fit$mcmc)
     candidate[, "tau"] <- grid$candidate_scale[i, 1L] / sqrt(0.5)
     direct <- random_effects_marginal_vcov(
       fit, parameter = "mu", posterior_samples = candidate
@@ -1167,8 +1163,7 @@ test_that("nested aggregate allocations use their public covariance scale", {
     ncol = length(columns),
     dimnames = list(NULL, columns)
   )
-  fit <- coda::mcmc.list(coda::mcmc(draws))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(draws)))
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "parameter_map") <- .bt_build_parameter_map(
@@ -1401,8 +1396,7 @@ test_that("LKJ correlation updates distinguish scalar and composite paths", {
     samples[, indicators] <- 1
     samples[1L, indicators] <- 0
   }
-  fit <- coda::mcmc.list(coda::mcmc(samples))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(samples)))
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "parameter_map") <- .bt_build_parameter_map(
@@ -1563,8 +1557,7 @@ test_that("block component scales resolve uniquely without enabling independent 
   )
   draws <- matrix(rep(values, 2L), nrow = 2L, byrow = TRUE,
                   dimnames = list(NULL, names(values)))
-  fit <- coda::mcmc.list(coda::mcmc(draws))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(draws)))
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "parameter_map") <- .bt_build_parameter_map(
@@ -1587,7 +1580,7 @@ test_that("an allocation-derived SD update holds the weights fixed and moves the
     fit <- case$fit
     weights <- case$weights
     current_sd <- case$tau * sqrt(weights[1L])
-    posterior <- as.matrix(fit)
+    posterior <- as.matrix(fit$mcmc)
     catalog <- parameter_catalog(fit)
     sd_rows <- catalog$quantities[catalog$quantities$role == "random_sd", , drop = FALSE]
     plan <- random_effects_marginal_update_plan(
@@ -1765,7 +1758,7 @@ test_that("an allocation-derived SD update lists every block that the moved scal
   for(study_structure in c("diag", "us")){
     case <- .random_update_test_split_root_fit(study_structure)
     fit <- case$fit
-    posterior <- as.matrix(fit)
+    posterior <- as.matrix(fit$mcmc)
     catalog <- parameter_catalog(fit)
     vcov_of <- function(samples, blocks = NULL){
       random_effects_marginal_vcov(
@@ -1871,7 +1864,7 @@ test_that("a scale shared by several blocks reaches all of them in an allocation
       extra_columns = "tau",
       values = values
     )
-    posterior <- as.matrix(fit)
+    posterior <- as.matrix(fit$mcmc)
     catalog <- parameter_catalog(fit)
     vcov_of <- function(samples, blocks = NULL){
       random_effects_marginal_vcov(
@@ -2007,7 +2000,7 @@ test_that("a scale that reaches several blocks only in part has no allocation-de
 .random_update_test_scale_reach <- function(fit, name, source, factor, unreached,
                                             info = name){
 
-  posterior <- as.matrix(fit)
+  posterior <- as.matrix(fit$mcmc)
   selection <- parameter_catalog_resolve(parameter_catalog(fit), name)
   plan <- random_effects_marginal_update_plan(fit, selection)
   vcov_of <- function(samples, blocks = NULL){

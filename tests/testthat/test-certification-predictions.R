@@ -1,6 +1,5 @@
 skip_if_not_test_profile("certification")
 skip_if_not_installed("rjags")
-skip_if_not_installed("runjags")
 
 # JAGS_predict_formula() against exact Gaussian predictions. With a known
 # residual SD of 1, N(0, 1) priors on the intercept and the slope, and random

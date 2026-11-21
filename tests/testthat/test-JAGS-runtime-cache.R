@@ -77,9 +77,7 @@ test_that("runtime cache warnings and capture failures are returned to the calle
 
 test_that("saved fit caches restore without entering backend extension payloads", {
 
-  skip_if_not_installed("runjags")
-  basic_fit <- structure(list(end.state = rep("", 2L)), class = c("runjags", "BayesTools_fit"))
-  basic_fit <- contract_test_backend_fit(basic_fit)
+  basic_fit <- contract_test_backend_fit(2L)
   callback <- function(context, state = NULL){
 
     if(context$phase == "capture") list(process = context$process_id, identity = "fixture") else NULL
@@ -107,17 +105,17 @@ test_that("saved fit caches restore without entering backend extension payloads"
     .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
-    run.jags = function(...) basic_fit,
-    extend.jags = function(runjags.object, ...){
-      expect_null(attr(runjags.object, "runtime_state", exact = TRUE))
-      expect_null(attr(runjags.object, "runtime_cache", exact = TRUE))
-      runjags.object
+    .bt_rjags_fit = function(...) basic_fit,
+    .bt_rjags_extend = function(fit, ...){
+      expect_null(attr(fit, "runtime_state", exact = TRUE))
+      expect_null(attr(fit, "runtime_cache", exact = TRUE))
+      fit
     },
-    add.summary = function(fit, ...) fit,
-    .package = "runjags"
+    .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
     makePSOCKcluster = function(cores) as.list(seq_len(cores)),
+    clusterCall = function(cl, fun, ...) lapply(cl, function(worker) fun(...)),
     stopCluster = function(cl) events <<- c(events, "stop"),
     clusterApply = function(cl, x, fun, ...) lapply(x, fun, ...),
     .package = "parallel"
@@ -165,8 +163,8 @@ test_that("saved fit caches restore without entering backend extension payloads"
   expect_identical(events, c("restore", "capture", "stop"))
   fail_extend <- TRUE
   testthat::local_mocked_bindings(
-    extend.jags = function(...) stop("JAGS model compilation failed"),
-    .package = "runjags"
+    .bt_rjags_extend = function(...) stop("JAGS model compilation failed"),
+    .package = "BayesTools"
   )
   events <- character()
   expect_warning(
@@ -203,9 +201,7 @@ test_that("saved fit caches restore without entering backend extension payloads"
 
 test_that("runtime cache capture warnings are recorded in the fit warnings", {
 
-  skip_if_not_installed("runjags")
-  basic_fit <- structure(list(end.state = rep("", 2L)), class = c("runjags", "BayesTools_fit"))
-  basic_fit <- contract_test_backend_fit(basic_fit)
+  basic_fit <- contract_test_backend_fit(2L)
   worker_alive <- TRUE
   testthat::local_mocked_bindings(
     .JAGS_require_packages = function(...) invisible(NULL),
@@ -217,13 +213,13 @@ test_that("runtime cache capture warnings are recorded in the fit warnings", {
     .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
-    run.jags = function(...) basic_fit,
-    extend.jags = function(runjags.object, ...) runjags.object,
-    add.summary = function(fit, ...) fit,
-    .package = "runjags"
+    .bt_rjags_fit = function(...) basic_fit,
+    .bt_rjags_extend = function(fit, ...) fit,
+    .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
     makePSOCKcluster = function(cores) as.list(seq_len(cores)),
+    clusterCall = function(cl, fun, ...) lapply(cl, function(worker) fun(...)),
     stopCluster = function(cl) invisible(NULL),
     clusterApply = function(cl, x, fun, ...){
       if(!worker_alive && identical(x[[1L]]$context$phase, "capture")){
@@ -309,8 +305,7 @@ test_that("runtime cache capture warnings are recorded in the fit warnings", {
 
 .report_test_backend <- function(state, env = parent.frame()){
 
-  basic_fit <- contract_test_backend_fit(structure(list(end.state = rep("", 2L)),
-    class = c("runjags", "BayesTools_fit")))
+  basic_fit <- contract_test_backend_fit(2L)
   testthat::local_mocked_bindings(
     .JAGS_require_packages = function(...) invisible(NULL),
     .JAGS_load_modules = function(...) invisible(NULL),
@@ -326,24 +321,24 @@ test_that("runtime cache capture warnings are recorded in the fit warnings", {
     .package = "BayesTools", .env = env
   )
   testthat::local_mocked_bindings(
-    run.jags = function(...){
+    .bt_rjags_fit = function(...){
       state$runs <- state$runs + 1L
       state$pending <- state$pending + 1L
       if(state$runs %in% state$fail_runs) stop(state$run_error, call. = FALSE)
       basic_fit
     },
-    extend.jags = function(runjags.object, ...){
+    .bt_rjags_extend = function(fit, ...){
       state$extensions <- state$extensions + 1L
       state$pending <- state$pending + 1L
-      state$objects <- c(state$objects, list(runjags.object))
+      state$objects <- c(state$objects, list(fit))
       if(state$extensions %in% state$fail_extensions) stop(state$extend_error, call. = FALSE)
-      runjags.object
+      fit
     },
-    add.summary = function(fit, ...) fit,
-    .package = "runjags", .env = env
+    .package = "BayesTools", .env = env
   )
   testthat::local_mocked_bindings(
     makePSOCKcluster = function(cores, ...) as.list(seq_len(cores)),
+    clusterCall = function(cl, fun, ...) lapply(cl, function(worker) fun(...)),
     stopCluster = function(cl) invisible(NULL),
     clusterApply = function(cl, x, fun, callback){
       expect_identical(environment(fun), baseenv())
@@ -399,7 +394,6 @@ test_that("runtime cache capture warnings are recorded in the fit warnings", {
 
 test_that("runtime reports collect one element per process of every kept run", {
 
-  skip_if_not_installed("runjags")
   entry <- .report_test_entry
   state <- .report_test_backend(.report_test_state())
   report <- .report_test_callback(state)
@@ -451,7 +445,6 @@ test_that("runtime reports collect one element per process of every kept run", {
 
 test_that("runtime reports drop failed attempts and failed extensions but still call the callback", {
 
-  skip_if_not_installed("runjags")
   entry <- .report_test_entry
   state <- .report_test_backend(.report_test_state())
   report <- .report_test_callback(state)
@@ -545,7 +538,6 @@ test_that("runtime reports drop failed attempts and failed extensions but still 
 
 test_that("runtime reports are not requested from workers after a connection failure", {
 
-  skip_if_not_installed("runjags")
   entry <- .report_test_entry
   connection <- "error reading from connection"
   state <- .report_test_backend(.report_test_state())
@@ -580,7 +572,6 @@ test_that("runtime reports are not requested from workers after a connection fai
 
 test_that("JAGS_extend replays the stored report callback, accepts a new one, and NULL disables it", {
 
-  skip_if_not_installed("runjags")
   entry <- .report_test_entry
   state <- .report_test_backend(.report_test_state(unconverged = 10L))
   report <- .report_test_callback(state)
@@ -624,7 +615,6 @@ test_that("JAGS_extend replays the stored report callback, accepts a new one, an
 
 test_that("runtime report warnings and errors are recorded for kept runs and never lose the fit", {
 
-  skip_if_not_installed("runjags")
   collect <- function(expr){
     messages <- character()
     value <- withCallingHandlers(expr, warning = function(condition){
@@ -681,7 +671,6 @@ test_that("runtime report warnings and errors are recorded for kept runs and nev
 
 test_that("fits without a runtime report are unchanged and never contact the workers for one", {
 
-  skip_if_not_installed("runjags")
   state <- .report_test_backend(.report_test_state(unconverged = 1L))
   # the attributes of the base commit (58f0495) for this mocked fit and its
   # extension, with and without an explicit NULL
@@ -706,7 +695,6 @@ test_that("fits without a runtime report are unchanged and never contact the wor
 
 test_that("the JASP fitting path reports after its initial run and each of its extensions", {
 
-  skip_if_not_installed("runjags")
   entry <- .report_test_entry
   state <- .report_test_backend(.report_test_state())
   report <- .report_test_callback(state)

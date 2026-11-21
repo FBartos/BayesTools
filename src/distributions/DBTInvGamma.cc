@@ -67,21 +67,6 @@ namespace jags {
       return out;
     }
 
-    double DBTInvGamma::typicalValue(std::vector<double const *> const &par,
-                                     double const *lower, double const *upper) const
-    {
-      double l = lower ? *lower : 0.0;
-      double u = upper ? *upper : JAGS_POSINF;
-      if((lower || upper) && !std::isfinite(bayestools::invgamma::log_interval_mass(*par[0], *par[1], l, u))){
-        throwDistError(this, "Prior normalization is numerically unavailable.");
-      }
-      double out = bayestools::invgamma::typical_value(*par[0], *par[1], l, u);
-      if(!std::isfinite(out)){
-        throwDistError(this, "Prior initialization is numerically unavailable.");
-      }
-      return out;
-    }
-
     bool DBTInvGamma::canBound() const
     {
       return true;

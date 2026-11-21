@@ -105,6 +105,7 @@ This package uses testthat edition 3. Do not add `context()`.
 - The expected fit catalog lives in
   `tests/testthat/helper-expected-fit-catalog.R`. Update the fitting file and
   catalog together when a new cached fit is necessary.
+- All catalog fits are required. The model-fit cache records the JAGS and rjags versions alongside the source files and fitting code.
 - Reuse existing fits whenever possible. Missing or stale required fits are not
   passing release evidence.
 - Fits that exist only to carry structural fixture assertions are saved with

@@ -16,7 +16,7 @@ namespace jags {
       }
 
       bool valid_geometry(std::vector<double const *> const &args,
-                          std::vector<unsigned int> const &lengths)
+                          std::vector<unsigned long> const &lengths)
       {
         if(lengths[1] != 1){
           return false;
@@ -30,12 +30,12 @@ namespace jags {
         return lengths[0] == bayestools::lkj::n_cpc(as_K(K_value));
       }
 
-      bool finite_transform_u(double const *u, unsigned int length)
+      bool finite_transform_u(double const *u, unsigned long length)
       {
         // JAGS can evaluate descendants before rejecting an out-of-support
         // stochastic proposal. The transform therefore accepts every finite
         // proposal; fill_cholesky_from_u() supplies the finite extension.
-        for(unsigned int i = 0; i < length; ++i){
+        for(unsigned long i = 0; i < length; ++i){
           if(!std::isfinite(u[i])){
             return false;
           }
@@ -45,7 +45,7 @@ namespace jags {
       }
 
       bool check_lkj_args(std::vector<double const *> const &args,
-                          std::vector<unsigned int> const &lengths)
+                          std::vector<unsigned long> const &lengths)
       {
         return valid_geometry(args, lengths) &&
           finite_transform_u(args[0], lengths[0]);
@@ -58,7 +58,7 @@ namespace jags {
 
     void BTLKJCholesky::evaluate(double *value,
                                  std::vector<double const *> const &args,
-                                 std::vector<unsigned int> const &lengths) const
+                                 std::vector<unsigned long> const &lengths) const
     {
       if(!valid_geometry(args, lengths)){
         return;
@@ -66,7 +66,7 @@ namespace jags {
       bayestools::lkj::fill_cholesky_from_u(value, args[0], as_K(*args[1]));
     }
 
-    unsigned int BTLKJCholesky::length(std::vector<unsigned int> const &lengths,
+    unsigned long BTLKJCholesky::length(std::vector<unsigned long> const &lengths,
                                        std::vector<double const *> const &args) const
     {
       if(!valid_geometry(args, lengths)){
@@ -76,13 +76,13 @@ namespace jags {
       return K * K;
     }
 
-    bool BTLKJCholesky::checkParameterLength(std::vector<unsigned int> const &lengths) const
+    bool BTLKJCholesky::checkParameterLength(std::vector<unsigned long> const &lengths) const
     {
       return lengths[0] > 0 && lengths[1] == 1;
     }
 
     bool BTLKJCholesky::checkParameterValue(std::vector<double const *> const &args,
-                                            std::vector<unsigned int> const &lengths) const
+                                            std::vector<unsigned long> const &lengths) const
     {
       return check_lkj_args(args, lengths);
     }
@@ -111,7 +111,7 @@ namespace jags {
 
     void BTLKJCholeskyOrdered::evaluate(double *value,
                                         std::vector<double const *> const &args,
-                                        std::vector<unsigned int> const &lengths) const
+                                        std::vector<unsigned long> const &lengths) const
     {
       if(!valid_geometry(args, lengths) || lengths[2] != as_K(*args[1]) ||
          !bayestools::lkj::valid_position(args[2], lengths[2])){
@@ -120,7 +120,7 @@ namespace jags {
       bayestools::lkj::fill_cholesky_from_u_ordered(value, args[0], as_K(*args[1]), args[2]);
     }
 
-    unsigned int BTLKJCholeskyOrdered::length(std::vector<unsigned int> const &lengths,
+    unsigned long BTLKJCholeskyOrdered::length(std::vector<unsigned long> const &lengths,
                                               std::vector<double const *> const &args) const
     {
       if(!valid_geometry(args, lengths)){
@@ -130,13 +130,13 @@ namespace jags {
       return K * K;
     }
 
-    bool BTLKJCholeskyOrdered::checkParameterLength(std::vector<unsigned int> const &lengths) const
+    bool BTLKJCholeskyOrdered::checkParameterLength(std::vector<unsigned long> const &lengths) const
     {
       return lengths[0] > 0 && lengths[1] == 1 && lengths[2] > 0;
     }
 
     bool BTLKJCholeskyOrdered::checkParameterValue(std::vector<double const *> const &args,
-                                                   std::vector<unsigned int> const &lengths) const
+                                                   std::vector<unsigned long> const &lengths) const
     {
       return check_lkj_args(args, lengths) && lengths[2] == as_K(*args[1]) &&
         bayestools::lkj::valid_position(args[2], lengths[2]);
@@ -163,7 +163,7 @@ namespace jags {
 
     void BTLKJCorr::evaluate(double *value,
                              std::vector<double const *> const &args,
-                             std::vector<unsigned int> const &lengths) const
+                             std::vector<unsigned long> const &lengths) const
     {
       if(!valid_geometry(args, lengths)){
         return;
@@ -171,7 +171,7 @@ namespace jags {
       bayestools::lkj::fill_corr_from_u(value, args[0], as_K(*args[1]));
     }
 
-    unsigned int BTLKJCorr::length(std::vector<unsigned int> const &lengths,
+    unsigned long BTLKJCorr::length(std::vector<unsigned long> const &lengths,
                                    std::vector<double const *> const &args) const
     {
       if(!valid_geometry(args, lengths)){
@@ -181,13 +181,13 @@ namespace jags {
       return K * K;
     }
 
-    bool BTLKJCorr::checkParameterLength(std::vector<unsigned int> const &lengths) const
+    bool BTLKJCorr::checkParameterLength(std::vector<unsigned long> const &lengths) const
     {
       return lengths[0] > 0 && lengths[1] == 1;
     }
 
     bool BTLKJCorr::checkParameterValue(std::vector<double const *> const &args,
-                                        std::vector<unsigned int> const &lengths) const
+                                        std::vector<unsigned long> const &lengths) const
     {
       return check_lkj_args(args, lengths);
     }

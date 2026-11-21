@@ -1,0 +1,50 @@
+name: Set up JAGS 5
+description: Install JAGS 5.0.2 and a matching source build of rjags for R package checks.
+
+runs:
+  using: composite
+  steps:
+    - name: Install JAGS on Windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $installer = Join-Path $env:RUNNER_TEMP 'JAGS-5.0.2-x86_64.exe'
+        curl.exe -fsSL --retry 3 -o $installer https://github.com/r-windows/JAGS/releases/download/installers/JAGS-5.0.2-x86_64.exe
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        if ((Get-FileHash $installer).Hash -ne 'c3ba01821015db85d8143f313546b90a89c420ccd936f9a1a2cce7a784d282a3') { throw 'JAGS installer checksum mismatch' }
+        $process = Start-Process $installer -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru
+        if ($process.ExitCode) { exit $process.ExitCode }
+        "JAGS_ROOT=C:/progra~1/JAGS/JAGS-5.0.2" >> $env:GITHUB_ENV
+        "JAGS_HOME=C:/progra~1/JAGS/JAGS-5.0.2" >> $env:GITHUB_ENV
+
+    - name: Install JAGS on macOS
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        installer="$RUNNER_TEMP/JAGS-5.0.2-universal.pkg"
+        curl -fsSL --retry 3 -o "$installer" https://downloads.sourceforge.net/project/mcmc-jags/JAGS/5.x/macOS/JAGS-5.0.2-universal.pkg
+        sudo installer -pkg "$installer" -target /
+
+    - name: Install JAGS on Linux
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gfortran libltdl-dev liblapack-dev libblas-dev
+        cd "$RUNNER_TEMP"
+        curl -fsSL --retry 3 -o JAGS-5.0.2.tar.gz https://downloads.sourceforge.net/project/mcmc-jags/JAGS/5.x/Source/JAGS-5.0.2.tar.gz
+        tar -xzf JAGS-5.0.2.tar.gz
+        cd JAGS-5.0.2
+        ./configure --prefix=/usr/local --libdir=/usr/local/lib
+        make -j2
+        sudo make install
+        sudo ldconfig
+        echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+
+    - name: Install and verify rjags
+      shell: Rscript {0}
+      run: |
+        options(repos = c(CRAN = "https://cloud.r-project.org"))
+        if (!requireNamespace("coda", quietly = TRUE)) install.packages("coda")
+        install.packages("rjags", type = "source")
+        stopifnot(packageVersion("rjags") >= "5-5", rjags::jags.version() == "5.0.2")

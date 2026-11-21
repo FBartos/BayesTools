@@ -26,7 +26,7 @@ cached_fits <- vignette_cache(
     "marglik_brms_independent", "marglik_sleep_independent", "fit_sleep_hcs",
     "fit_sleep_hcs_test", "fit_nested", "fit_crossed_independent", "fit_crossed_allocation"
   ),
-  packages = c("lme4", "brms", "runjags", "rjags")
+  packages = c("lme4", "brms", "rjags")
 )
 
 options(width = 140)

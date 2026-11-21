@@ -72,8 +72,8 @@ N01 <- prior("normal", list(0, 1))
   if(!monitor_gamma) values <- values[, !startsWith(colnames(values), "prior_par_eta_"), drop = FALSE]
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(values)), sample = n,
-         summary.pars = list(mutate = NULL), monitor = colnames(values)),
-    class = c("runjags", "BayesTools_fit", "list")
+         monitor = colnames(values)),
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list")     <- bound
   attr(fit, "formula_design") <- list(mu = info$formula_design)
@@ -705,8 +705,8 @@ test_that("ordered totals with several bounded alternatives are tested within ea
   columns <- do.call(cbind, columns[!vapply(columns, is.null, logical(1))])
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(columns)), sample = length(values),
-         summary.pars = list(mutate = NULL), monitor = colnames(columns)),
-    class = c("runjags", "BayesTools_fit", "list")
+         monitor = colnames(columns)),
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list")     <- info$prior_list
   attr(fit, "formula_design") <- list(mu = info$formula_design)
@@ -986,9 +986,9 @@ test_that("the levels of an ordered term are reflected at the bounds of its tota
     g = prior_factor("uniform", list(1, 2), contrast = "treatment")))
   columns <- cbind(mu_intercept = stats::rnorm(n), `mu_g[1]` = stats::runif(n, 1, 2), `mu_g[2]` = stats::runif(n, 1, 2))
   fit <- structure(
-    list(mcmc = coda::mcmc.list(coda::mcmc(columns)), sample = n, summary.pars = list(mutate = NULL),
+    list(mcmc = coda::mcmc.list(coda::mcmc(columns)), sample = n,
          monitor = colnames(columns)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list")     <- info$prior_list
   attr(fit, "formula_design") <- list(mu = info$formula_design)
@@ -1045,9 +1045,9 @@ test_that("the levels of a spike-and-slab factor are reflected at the bounds of 
                    `mu_g[2]` = variable[, 2] * indicator, mu_g_indicator = indicator, mu_g_inclusion = .5,
                    `mu_g_variable[1]` = variable[, 1], `mu_g_variable[2]` = variable[, 2])
   fit <- structure(
-    list(mcmc = coda::mcmc.list(coda::mcmc(columns)), sample = n, summary.pars = list(mutate = NULL),
+    list(mcmc = coda::mcmc.list(coda::mcmc(columns)), sample = n,
          monitor = colnames(columns)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list")     <- info$prior_list
   attr(fit, "formula_design") <- list(mu = info$formula_design)

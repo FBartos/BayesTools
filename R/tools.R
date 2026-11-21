@@ -334,12 +334,6 @@ check_list   <- function(x, name = deparse(substitute(x)), check_length = 0, che
   else
     return(invisible(TRUE))
 }
-.check_runjags <- function(){
-  if(!requireNamespace("runjags", quietly = TRUE))
-    stop("runjags package needs to be installed. Run 'install.packages('runjags')'")
-  else
-    return(invisible(TRUE))
-}
 
 # extract stan samples into a named matrix
 .extract_stan <- function(fit, drop = TRUE){

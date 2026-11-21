@@ -1072,8 +1072,8 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
   mock_fit <- function(samples, prior_list){
     fit <- structure(
       list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples),
-           summary.pars = list(mutate = NULL), monitor = colnames(samples)),
-      class = c("runjags", "BayesTools_fit", "list")
+           monitor = colnames(samples)),
+      class = "BayesTools_fit"
     )
     attr(fit, "prior_list") <- prior_list
     fit <- attach_test_parameter_map(fit)
@@ -1141,7 +1141,7 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
     mu_intercept_indicator = intercept_indicator,
     mu_x_indicator = slope_indicator
   ))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(fit)
   attr(fit, "prior_list") <- single$prior_list
   fit <- attach_test_parameter_map(fit)
   single_mixed <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x"))
@@ -1184,9 +1184,9 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
     mu_x_indicator = slope_inclusion
   )
   scaled_fit <- structure(
-    list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+    list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
          monitor = colnames(posterior), sample = n),
-    class = c("runjags", "BayesTools_fit")
+    class = "BayesTools_fit"
   )
   attr(scaled_fit, "prior_list") <- scaled$prior_list
   attr(scaled_fit, "formula_design") <- list(mu = scaled$formula_design)
@@ -1674,8 +1674,7 @@ test_that("boundary-singular prior densities keep exact edge-cell masses", {
     expect_s3_class(.prior_density_from_context(context, c(p = 1)), "prior_linear_density")
   }
 
-  fit <- coda::mcmc(cbind(p = stats::qgamma(stats::ppoints(64), .5, 1)))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(cbind(p = stats::qgamma(stats::ppoints(64), .5, 1))))
   attr(fit, "prior_list") <- list(p = prior("gamma", list(.5, 1)))
   fit <- attach_test_parameter_map(fit)
   fit <- .bt_attach_parameter_map(fit, monitor_names = "p")
@@ -2190,8 +2189,7 @@ test_that("prior heights use exact ordinates at density jumps and zero outside s
   expect_equal(.prior_linear_density_height(mixture, -.3), .5 * stats::dnorm(-.3),
                tolerance = 1e-12)
 
-  fit <- coda::mcmc(cbind(mu = stats::qnorm(stats::ppoints(64), .2, .5)))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(cbind(mu = stats::qnorm(stats::ppoints(64), .2, .5))))
   attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)))
   fit <- attach_test_parameter_map(fit)
   fit <- .bt_attach_parameter_map(fit, monitor_names = "mu")
@@ -2579,8 +2577,7 @@ test_that("conditional log-intercept prior densities mix the conditioned models"
     mu_x           = c(rep(0, 8), seq(.1, 1, length.out = 12)),
     mu_x_indicator = c(rep(0L, 8), rep(1L, 12))
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_scale") <- formula_scale
   fit <- attach_test_parameter_map(fit)
@@ -2613,9 +2610,9 @@ test_that("marginal posteriors of log-intercept unscaled intercepts use the log-
   n <- 50L
   posterior <- cbind(mu_intercept = abs(stats::rnorm(n, .3, .1)), mu_x = stats::rnorm(n, .1, .2))
   scaled_fit <- structure(
-    list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+    list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
          monitor = colnames(posterior), sample = n),
-    class = c("runjags", "BayesTools_fit")
+    class = "BayesTools_fit"
   )
   attr(scaled_fit, "prior_list") <- scaled$prior_list
   attr(scaled_fit, "formula_design") <- list(mu = scaled$formula_design)
@@ -2734,9 +2731,9 @@ test_that("formula marginals of log-intercept combinations derive supports, comp
     mu_x_indicator = slope_inclusion
   )
   fit <- structure(
-    list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+    list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
          monitor = colnames(posterior), sample = n),
-    class = c("runjags", "BayesTools_fit")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- scaled$prior_list
   attr(fit, "formula_design") <- list(mu = scaled$formula_design)
@@ -4793,9 +4790,9 @@ transformed_density_test_fit <- function(x_prior = prior("normal", list(0, 1))){
     sigma        = abs(stats::rnorm(n, 1, .1))
   )
   fit <- structure(
-    list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+    list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
          monitor = colnames(posterior), sample = n),
-    class = c("runjags", "BayesTools_fit")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- c(scaled$prior_list, list(sigma = prior("gamma", list(2, 2))))
   attr(fit, "formula_design") <- list(mu = scaled$formula_design)

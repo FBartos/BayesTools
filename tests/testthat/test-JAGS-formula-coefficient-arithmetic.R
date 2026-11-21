@@ -59,12 +59,12 @@ test_that("dynamic ratios use bounded alternate grouping and retain zero denomin
   }
   fit <- .formula_ratio_test_fit(dynamic = TRUE, values = c(0, 1))
   descriptor <- JAGS_formula_coefficient_transform(fit, "mu")
-  raw <- as.matrix(fit)
+  raw <- as.matrix(fit$mcmc)
   raw[, "v"] <- c(0, 2e-300)
   error <- tryCatch(.bt_apply_formula_coefficient_transform(raw, descriptor, "mu_x"), error = identity)
   expect_s3_class(error, "BayesTools_formula_transform_unavailable")
   expect_identical(error$reason, "zero_multiplier_denominator")
-  expect_identical(unname(.bt_apply_formula_coefficient_transform(as.matrix(fit), descriptor, "mu_x")[, "mu_x"]),
+  expect_identical(unname(.bt_apply_formula_coefficient_transform(as.matrix(fit$mcmc), descriptor, "mu_x")[, "mu_x"]),
     c(0, -5e-101))
 })
 
@@ -213,7 +213,7 @@ test_that("static subnormal ratio weights use value-aware coefficient arithmetic
       transform <- JAGS_formula_coefficient_transform(fit, "mu")
       interaction <- transform$source_names[grepl("__xXx__", transform$source_names, fixed = TRUE)]
       expected <- transform$basis_matrix["mu_x", interaction] * c(-1, 0, 1) * 1e200 * numerator / 1e23
-      value <- .bt_apply_formula_coefficient_transform(as.matrix(fit), transform, "mu_x")[, "mu_x"]
+      value <- .bt_apply_formula_coefficient_transform(as.matrix(fit$mcmc), transform, "mu_x")[, "mu_x"]
       expect_identical(unname(value[2L]), 0)
       expect_equal(unname(value[c(1L, 3L)] / expected[c(1L, 3L)]), c(1, 1), tolerance = 1e-14)
       observed[[length(observed) + 1L]] <- unname(value)
@@ -226,10 +226,10 @@ test_that("static subnormal ratio weights use value-aware coefficient arithmetic
   }
   fit <- .formula_ratio_test_fit(numerator = 1e-200, denominator = 1e23, values = 1)
   transform <- JAGS_formula_coefficient_transform(fit, "mu")
-  value <- .bt_apply_formula_coefficient_transform(as.matrix(fit), transform, "mu_x")[, "mu_x"]
+  value <- .bt_apply_formula_coefficient_transform(as.matrix(fit$mcmc), transform, "mu_x")[, "mu_x"]
   expect_true(value != 0 && abs(value) < .Machine$double.xmin)
   fit <- .formula_ratio_test_fit(numerator = 1e-200, denominator = 1e23, values = 1e-200)
-  expect_error(.bt_apply_formula_coefficient_transform(as.matrix(fit),
+  expect_error(.bt_apply_formula_coefficient_transform(as.matrix(fit$mcmc),
     JAGS_formula_coefficient_transform(fit, "mu"), "mu_x"), class = "BayesTools_formula_transform_unavailable")
 })
 
@@ -249,7 +249,7 @@ test_that("compiled finite-density and fixed ratio owners retain truthful values
       list(mu = compiled$formula_design), list(mu = compiled$formula_scale))
     transform <- JAGS_formula_coefficient_transform(fit, "mu")
     expected <- unname(transform$basis_matrix["mu_x", interaction]) * 1e200 * 1e-200 / 1e23
-    value <- .bt_apply_formula_coefficient_transform(as.matrix(fit), transform, "mu_x")[, "mu_x"]
+    value <- .bt_apply_formula_coefficient_transform(as.matrix(fit$mcmc), transform, "mu_x")[, "mu_x"]
     expect_equal(unname(value / expected), rep(1, 3L), tolerance = 1e-14)
     if(point){
       target <- transform$targets[transform$targets$target == "mu_x", ]

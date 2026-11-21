@@ -509,7 +509,7 @@ test_that("model probability refit requirements retain exact typed diagnostics",
   values <- if(is.prior.point(prior_object)) rep(prior_object$parameters$location, 20) else seq(-1, 1, length.out = 20)
   values <- cbind(theta = values)
   fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(values)), sample = 20,
-    summary.pars = list(mutate = NULL), monitor = "theta"), class = c("runjags", "BayesTools_fit", "list"))
+    monitor = "theta"), class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(theta = prior_object)
   list(fit = attach_test_parameter_map(fit), marglik = bridgesampling_object(evidence), prior_weights = weight)
 }
@@ -520,7 +520,7 @@ test_that("model probability refit requirements retain exact typed diagnostics",
   colnames(values) <- paste0("omega[", seq_along(omega), "]")
   if(prior_object$weights$type != "fixed") values[, 2] <- seq(.1, .9, length.out = 20)
   fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(values)), sample = 20,
-    summary.pars = list(mutate = NULL), monitor = colnames(values)), class = c("runjags", "BayesTools_fit", "list"))
+    monitor = colnames(values)), class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(bias = prior_object)
   list(fit = attach_test_parameter_map(fit), marglik = bridgesampling_object(evidence), prior_weights = weight)
 }
@@ -647,7 +647,7 @@ test_that("compiled factor point mixtures retain the declared factor shape", {
       f = prior_factor("point", list(location), contrast = contrast)))
     draws <- .generate_prior_sample_matrix(compiled$prior_list, 8L, seed = 17)
     fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = 8L,
-      summary.pars = list(mutate = NULL), monitor = colnames(draws)), class = c("runjags", "BayesTools_fit", "list"))
+      monitor = colnames(draws)), class = "BayesTools_fit")
     attr(fit, "prior_list") <- compiled$prior_list
     attr(fit, "formula_design") <- list(mu = compiled$formula_design)
     list(fit = attach_test_parameter_map(fit), marglik = bridgesampling_object(0), prior_weights = 1)
@@ -676,7 +676,7 @@ test_that("empty allocated absent sources retain the complete ordered declaratio
   compiled <- JAGS_formula(~1, "mu", data.frame(f = factor(c("a", "b", "c"))), list(intercept = prior("point", list(0))))
   draws <- .generate_prior_sample_matrix(compiled$prior_list, 8L, seed = 17)
   absent <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = 8L,
-    summary.pars = list(mutate = NULL), monitor = colnames(draws)), class = c("runjags", "BayesTools_fit", "list"))
+    monitor = colnames(draws)), class = "BayesTools_fit")
   attr(absent, "prior_list") <- compiled$prior_list
   attr(absent, "formula_design") <- list(mu = compiled$formula_design)
   absent <- attach_test_parameter_map(absent)

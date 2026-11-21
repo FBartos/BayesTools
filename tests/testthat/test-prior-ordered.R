@@ -628,7 +628,7 @@ test_that("ordered source retention follows selected model and row without extra
       colnames(gamma) <- spec$allocations[[1L]]$gamma_coordinates
       draws <- cbind(draws, gamma)
     }
-    fit <- structure(list(mcmc=coda::mcmc.list(coda::mcmc(draws))), class=c("runjags","BayesTools_fit","list"))
+    fit <- structure(list(mcmc=coda::mcmc.list(coda::mcmc(draws))), class="BayesTools_fit")
     attr(fit,"prior_list") <- info$prior_list
     attr(fit,"formula_design") <- list(mu=info$formula_design)
     attr(fit,"parameter_map") <- .bt_build_parameter_map(colnames(draws), prior_list = info$prior_list,
@@ -689,8 +689,8 @@ test_that("ordered scalar measures use declared contractions and exact primitive
     }
     coefficients <- .bt_deterministic_node_evaluate(.bt_dnode_ordered_coefficients(spec),.bt_deterministic_lookup(draws))
     chains <- coda::mcmc.list(coda::mcmc(cbind(mu_intercept=0,coefficients,draws)))
-    fit <- structure(list(mcmc=chains,sample=40L,summary.pars=list(mutate=NULL),monitor=colnames(chains[[1L]])),
-      class=c("runjags","BayesTools_fit","list"))
+    fit <- structure(list(mcmc=chains,sample=40L,monitor=colnames(chains[[1L]])),
+      class="BayesTools_fit")
     attr(fit,"prior_list") <- info$prior_list
     attr(fit,"formula_design") <- list(mu=info$formula_design)
     fit <- attach_test_parameter_map(fit)
@@ -1092,8 +1092,8 @@ test_that("ordered projections preserve slice events, shared unions and original
       }
       draws <- cbind(draws,value)
     }
-    fit <- structure(list(mcmc=coda::mcmc.list(coda::mcmc(draws)),sample=8L,summary.pars=list(mutate=NULL),monitor=colnames(draws)),
-      class=c("runjags","BayesTools_fit","list"))
+    fit <- structure(list(mcmc=coda::mcmc.list(coda::mcmc(draws)),sample=8L,monitor=colnames(draws)),
+      class="BayesTools_fit")
     attr(fit,"prior_list") <- bound
     attr(fit,"formula_design") <- list(mu=info$formula_design)
     if(!is.null(scale)) attr(fit,"formula_scale") <- list(mu=info$formula_scale)
@@ -1206,8 +1206,8 @@ test_that("scaled ordered formula marginals reuse aligned fitted ordinary source
   draws <- cbind(beta,coefficients,
     matrix(total,ncol=1L,dimnames=list(NULL,spec$total_names)),gamma)
   fit <- structure(list(mcmc=coda::mcmc.list(coda::mcmc(draws,start=11L,thin=2L)),
-    sample=4L,summary.pars=list(mutate=NULL),monitor=colnames(draws)),
-    class=c("runjags","BayesTools_fit","list"))
+    sample=4L,monitor=colnames(draws)),
+    class="BayesTools_fit")
   attr(fit,"prior_list") <- info$prior_list
   attr(fit,"formula_design") <- list(mu=info$formula_design)
   attr(fit,"formula_scale") <- list(mu=info$formula_scale)
@@ -1358,8 +1358,8 @@ test_that("ordered formula projections use each contributing formula prefix", {
       draws <- cbind(make_draws(mu,mu_beta,mu_total,mu_gamma),
         make_draws(tau,tau_ordinary,tau_total,tau_gamma))
       fit <- structure(list(mcmc=coda::mcmc.list(coda::mcmc(draws,start=11L,thin=2L)),
-        sample=4L,summary.pars=list(mutate=NULL),monitor=colnames(draws)),
-        class=c("runjags","BayesTools_fit","list"))
+        sample=4L,monitor=colnames(draws)),
+        class="BayesTools_fit")
       attr(fit,"prior_list") <- c(mu$prior_list,tau$prior_list)
       attr(fit,"formula_design") <- list(mu=mu$formula_design,tau=tau$formula_design)
       attr(fit,"formula_scale") <- if(tau_scaled) list(mu=mu$formula_scale,tau=tau$formula_scale) else list(mu=mu$formula_scale)
@@ -1516,8 +1516,8 @@ test_that("unscaled ordered producers always restore raw primitive semantics", {
       }
       draws <- cbind(tau_intercept=rep(0,4L),expected,primitives)
       fit <- structure(list(mcmc=coda::mcmc.list(coda::mcmc(draws,start=11L,thin=2L)),
-        sample=4L,summary.pars=list(mutate=NULL),monitor=colnames(draws)),
-        class=c("runjags","BayesTools_fit","list"))
+        sample=4L,monitor=colnames(draws)),
+        class="BayesTools_fit")
       attr(fit,"prior_list") <- info$prior_list
       attr(fit,"formula_design") <- list(tau=info$formula_design)
       fit <- attach_test_parameter_map(fit)
@@ -2450,8 +2450,7 @@ test_that("public posterior mixing projects ordered primitive rows and preserves
   )
   source_posterior <- cbind(posterior, mu_f_ordered_total = c(3, 12))
 
-  fit <- coda::mcmc(source_posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(source_posterior))
   attr(fit, "prior_list") <- formula_info$prior_list
   fit <- attach_test_parameter_map(fit)
   single <- as_mixed_posteriors(fit, parameters = "mu_f")
@@ -2485,10 +2484,9 @@ test_that("public posterior mixing projects ordered primitive rows and preserves
       list(
         mcmc = coda::mcmc.list(samples),
         sample = nrow(samples),
-        summary.pars = list(mutate = NULL),
         monitor = colnames(samples)
       ),
-      class = c("runjags", "BayesTools_fit", "list")
+      class = "BayesTools_fit"
     )
     attr(model_fit, "prior_list") <- list(mu_f = prior)
     model_fit <- attach_test_parameter_map(model_fit)
@@ -2572,8 +2570,7 @@ test_that("marginal posterior uses the stored full-rank ordered design", {
     byrow = TRUE,
     dimnames = list(NULL, paste0("mu_f[", 1:3, "]"))
   )
-  fit <- coda::mcmc(cbind(posterior, mu_f_ordered_total = c(10, 20)))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(cbind(posterior, mu_f_ordered_total = c(10, 20))))
   attr(fit, "prior_list") <- formula_info$prior_list
   fit <- attach_test_parameter_map(fit)
   mixed <- as_mixed_posteriors(fit, parameters = "mu_f")
@@ -2628,8 +2625,7 @@ test_that("ordered levels combined with an intercept convolve on the common grid
     if(is.null(allocation)) primitive_draws <- cbind(primitive_draws,
       "prior_par_eta_mu_f_ordered_alloc_f_1[1]" = 1,
       "prior_par_eta_mu_f_ordered_alloc_f_1[2]" = 1)
-    fit <- coda::mcmc(primitive_draws)
-    class(fit) <- c("mcmc", "BayesTools_fit")
+    fit <- test_fit_from_chains(coda::mcmc(primitive_draws))
     attr(fit, "prior_list") <- formula_info$prior_list
     fit <- attach_test_parameter_map(fit)
     mixed <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_f"))
@@ -2977,7 +2973,7 @@ test_that("prior curves without a structural route omit unresolved heavy-tailed 
   fit <- coda::mcmc(cbind(posterior, mu_f_ordered_total = seq_len(500)/100,
     "prior_par_eta_mu_f_ordered_alloc_f_1[1]" = 1,
     "prior_par_eta_mu_f_ordered_alloc_f_1[2]" = 1))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(fit)
   attr(fit, "prior_list") <- formula_info$prior_list
   fit <- attach_test_parameter_map(fit)
   mixed <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_f"))
@@ -3376,8 +3372,7 @@ test_that("ordered mixed measures propagate through marginal inference", {
     "mu_f_ordered_total" = c(0, .3, .5, 0),
     "mu_f_ordered_total_indicator" = c(0, 1, 1, 0)
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- formula_info$prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -3647,7 +3642,7 @@ test_that("estimates tables show ordered totals and shares or the level effects"
     samples <- do.call(cbind, unname(columns))
     fit <- structure(
       list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = n),
-      class = c("runjags", "BayesTools_fit", "list")
+      class = "BayesTools_fit"
     )
     attr(fit, "prior_list") <- prior_list
     attr(fit, "formula_design") <- list(mu = result$formula_design)
@@ -3815,8 +3810,8 @@ test_that("rendered labels of ordered quantities follow the label grammar", {
     }
     fit <- structure(
       list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = n,
-           summary.pars = list(mutate = NULL), monitor = colnames(draws)),
-      class = c("runjags", "BayesTools_fit", "list")
+           monitor = colnames(draws)),
+      class = "BayesTools_fit"
     )
     attr(fit, "prior_list") <- bound
     attr(fit, "formula_design") <- list(mu = info$formula_design)

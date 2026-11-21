@@ -1,5 +1,7 @@
 # development version
 ### Breaking changes
+- BayesTools requires JAGS 5.0.0 or later and rjags 5-5 or later
+- `JAGS_fit()` returns a `BayesTools_fit` with coda methods and uses `JAGS_extend()` for continuation
 - `hypothesis_BF()` and `hypothesis_BF_model()` replace `columns` with `include_densities`, `include_probabilities`, and `include_method`; the `prior` and `posterior` columns are replaced by point densities and region probabilities, and table labels keep the notation of the hypothesis, with a constant on the right of a single relation
 - hypothesis statements cannot contain `#` comments
 - a mixture of publication-bias priors must be named `bias` in the prior list
@@ -15,7 +17,6 @@
 - `JAGS_fit()` and `JAGS_extend()` gain `runtime_report`, a callback that collects small values from every process that ran chains, parallel workers included, into the `runtime_report_values` attribute
 
 ### Fixes
-- extensions by `JAGS_extend()` and the parallel automatic extensions of `JAGS_fit()` adapt for the fit's `adapt` instead of runjags' default of 1000 iterations
 - on Apple silicon, numeric constants in generated JAGS models and the values of compiled hypotheses are exact
 
 # version 0.4.0

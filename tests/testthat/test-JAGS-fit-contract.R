@@ -181,7 +181,7 @@ test_that("refit errors have the class BayesTools_refit_required", {
 
   # the fit-contract gate refuses a BayesTools 0.3.0 fit (no parameter map,
   # fit contract, or draw geometry) at every public entry
-  legacy <- structure(list(), class = c("runjags", "BayesTools_fit"))
+  legacy <- structure(list(), class = "BayesTools_fit")
   missing_map <- paste0(
     "The fitted object does not contain parameter-map metadata. ",
     "Refit the model with the current BayesTools version."

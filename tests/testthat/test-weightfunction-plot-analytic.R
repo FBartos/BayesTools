@@ -200,8 +200,7 @@ test_that("individual omega posteriors of conditioned bias mixtures use the righ
     PET = ifelse(indicator == 4, .5, 0)
   )
   colnames(model) <- c("bias_indicator", paste0("omega[", 1:4, "]"), "PET")
-  model <- coda::mcmc(model)
-  class(model) <- c("mcmc", "BayesTools_fit")
+  model <- test_fit_from_chains(coda::mcmc(model))
   attr(model, "prior_list") <- list(bias = bias_prior)
   model <- attach_test_parameter_map(model)
 
@@ -349,8 +348,7 @@ test_that("conditional bias posteriors zero null bias prior weights", {
     byrow = TRUE
   )
   colnames(model) <- c("bias_indicator", "omega[1]", "omega[2]", "PET")
-  model <- coda::mcmc(model)
-  class(model) <- c("mcmc", "BayesTools_fit")
+  model <- test_fit_from_chains(coda::mcmc(model))
   attr(model, "prior_list") <- list(bias = bias_prior)
   model <- attach_test_parameter_map(model)
 
@@ -525,8 +523,7 @@ test_that("two-sided-only bias mixtures keep one-sided omega context for priors 
     byrow = TRUE
   )
   colnames(model) <- c("bias_indicator", "omega[1]", "omega[2]", "omega[3]")
-  model <- coda::mcmc(model)
-  class(model) <- c("mcmc", "BayesTools_fit")
+  model <- test_fit_from_chains(coda::mcmc(model))
   attr(model, "prior_list") <- list(bias = bias_prior)
   model <- attach_test_parameter_map(model)
 
@@ -681,8 +678,7 @@ test_that("analytical plotting handles heterogeneous weightfunction mixtures", {
     byrow = TRUE
   )
   colnames(model) <- c("bias_indicator", paste0("omega[", 1:5, "]"), "PET", "PEESE")
-  model <- coda::mcmc(model)
-  class(model) <- c("mcmc", "BayesTools_fit")
+  model <- test_fit_from_chains(coda::mcmc(model))
   attr(model, "prior_list") <- list(bias = prior_mixture(prior_list))
   model <- attach_test_parameter_map(model)
 

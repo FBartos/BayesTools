@@ -38,12 +38,6 @@ double radial_log(double x, double scale, double *represented_r = 0, double *coo
   return h;
 }
 
-bool candidate_available(double x, double shape, double scale, double lower, double upper)
-{
-  return std::isfinite(x) && x >= lower && x <= upper &&
-    std::isfinite(log_density(x, shape, scale));
-}
-
 }
 
 bool valid_parameters(double shape, double scale)
@@ -123,27 +117,6 @@ double truncated_quantile(double p, double shape, double scale, double lower, do
     lo, hi, lower_error, upper_error);
   double x = std::exp(std::log(scale) - root);
   return std::isfinite(x) && x > 0.0 && x > lower && x < upper ? x : quiet_nan();
-}
-
-double typical_value(double shape, double scale, double lower, double upper)
-{
-  double value = mode(shape, scale);
-  if(candidate_available(value, shape, scale, lower, upper)) return value;
-  value = truncated_quantile(0.5, shape, scale, lower, upper);
-  if(candidate_available(value, shape, scale, lower, upper)) return value;
-  if(std::isfinite(lower) && std::isfinite(upper) && lower < upper){
-    value = lower + 0.5 * (upper - lower);
-    if(candidate_available(value, shape, scale, lower, upper)) return value;
-  }
-  if(std::isfinite(lower)){
-    value = lower + std::max(1.0, std::fabs(lower) * 0.1);
-    if(candidate_available(value, shape, scale, lower, upper)) return value;
-  }
-  if(std::isfinite(upper) && upper > 0.0){
-    value = upper * 0.5;
-    if(candidate_available(value, shape, scale, lower, upper)) return value;
-  }
-  return quiet_nan();
 }
 
 }

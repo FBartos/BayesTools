@@ -118,7 +118,6 @@ test_that("backend transport classification preserves the original condition", {
 
 test_that("parallel transport failures stop initialization retries immediately", {
 
-  skip_if_not_installed("runjags")
   calls <- stops <- 0L
   original <- simpleError("error writing to connection",
     call = quote(serialize(data, node$con)))
@@ -126,6 +125,7 @@ test_that("parallel transport failures stop initialization retries immediately",
     makePSOCKcluster = function(cores){
       structure(as.list(seq_len(cores)), class = "runtime_test_cluster")
     },
+    clusterCall = function(cl, fun, ...) lapply(cl, function(worker) fun(...)),
     stopCluster = function(cl) stops <<- stops + 1L,
     .package = "parallel"
   )
@@ -138,11 +138,11 @@ test_that("parallel transport failures stop initialization retries immediately",
     .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
-    run.jags = function(...){
+    .bt_rjags_fit = function(...){
       calls <<- calls + 1L
       stop(original)
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
   for(silent in c(TRUE, FALSE)){
     calls <- stops <- 0L
@@ -169,104 +169,6 @@ test_that("parallel transport failures stop initialization retries immediately",
       expect_match(messages[[1L]], conditionMessage(fit), fixed = TRUE)
     }
   }
-})
-
-test_that("JAGS_fit resolves the JAGS executable once per session", {
-
-  skip_if_not_installed("runjags")
-  # runjags' default 'jagspath' option searches for JAGS on every evaluation
-  # (runjags::findjags()); a fresh session state starts without a stored path
-  runjags_default <- expression(findjags())
-  user_option <- runjags::runjags.options()[["jagspath"]]
-  user_cache <- .BayesTools_private$jags_path
-  withr::defer({
-    runjags::runjags.options(jagspath = list(user_option))
-    assign("jags_path", user_cache, envir = .BayesTools_private)
-  })
-  runjags::runjags.options(jagspath = list(runjags_default))
-  .BayesTools_private$jags_path <- NULL
-
-  searches <- 0L
-  backend <- list()
-  testthat::local_mocked_bindings(
-    findjags = function(...){
-      searches <<- searches + 1L
-      "C:/JAGS/x64/bin/jags-terminal.exe"
-    },
-    run.jags = function(...){
-      # runjags' model setup evaluates the 'jagspath' option again
-      backend[[length(backend) + 1L]] <<- list(
-        jags   = list(...)[["jags"]],
-        option = runjags::runjags.getOption("jagspath")
-      )
-      stop("backend probe")
-    },
-    .package = "runjags"
-  )
-  testthat::local_mocked_bindings(
-    .JAGS_require_packages = function(...) invisible(NULL),
-    .JAGS_load_modules = function(...) invisible(NULL),
-    .bt_attach_parameter_map = function(fit, ...) fit,
-    .bt_attach_draw_geometry = function(fit, ...) fit,
-    .bt_attach_fit_contract = function(fit, ...) fit,
-    .package = "BayesTools"
-  )
-  fit <- function(){
-    JAGS_fit(
-      model_syntax = "model{ x ~ dnorm(mu, 1) }", data = list(x = 0),
-      prior_list = list(mu = prior("normal", list(0, 1))),
-      chains = 2, adapt = 50, burnin = 50, sample = 100,
-      autofit_control = list(restarts = 2, sample_extend = 100), silent = TRUE, seed = 1
-    )
-  }
-
-  # two fits with two backend attempts each search once; every attempt gets
-  # the path as its argument and as the option its model setup reads, and
-  # the option is restored afterwards
-  expect_s3_class(fit(), "error")
-  expect_s3_class(fit(), "error")
-  expect_identical(searches, 1L)
-  expect_length(backend, 4L)
-  for(call in backend){
-    expect_identical(call$jags, "C:/JAGS/x64/bin/jags-terminal.exe")
-    expect_identical(call$option, "C:/JAGS/x64/bin/jags-terminal.exe")
-  }
-  expect_identical(runjags::runjags.options()[["jagspath"]], runjags_default)
-
-  # a path set by the user is used as given, without a search, and kept
-  backend <- list()
-  runjags::runjags.options(jagspath = "D:/user/jags-terminal.exe")
-  expect_s3_class(fit(), "error")
-  expect_identical(searches, 1L)
-  expect_identical(backend[[1L]]$jags, "D:/user/jags-terminal.exe")
-  expect_identical(backend[[1L]]$option, "D:/user/jags-terminal.exe")
-  expect_identical(runjags::runjags.options()[["jagspath"]], "D:/user/jags-terminal.exe")
-
-  # changing the option back resolves the path again, once
-  backend <- list()
-  runjags::runjags.options(jagspath = list(runjags_default))
-  expect_s3_class(fit(), "error")
-  expect_s3_class(fit(), "error")
-  expect_identical(searches, 2L)
-  expect_identical(backend[[1L]]$jags, "C:/JAGS/x64/bin/jags-terminal.exe")
-
-  # an unsuccessful search is not kept: the backend searches as before
-  .BayesTools_private$jags_path <- NULL
-  backend <- list()
-  testthat::local_mocked_bindings(
-    findjags = function(...){
-      searches <<- searches + 1L
-      "JAGS not found"
-    },
-    .package = "runjags"
-  )
-  expect_s3_class(fit(), "error")
-  expect_s3_class(fit(), "error")
-  # per fit: one search of the path resolution and one per backend attempt
-  expect_identical(searches, 2L + 2L * (1L + 2L))
-  expect_null(backend[[1L]]$jags)
-  expect_identical(backend[[1L]]$option, "JAGS not found")
-  expect_identical(runjags::runjags.options()[["jagspath"]], runjags_default)
 })
 
 test_that("cleanup reaches surviving nodes after the first worker disconnects", {
@@ -302,10 +204,7 @@ test_that("cleanup reaches surviving nodes after the first worker disconnects", 
 
 test_that("fit retries and extensions use the actual current worker topology", {
 
-  skip_if_not_installed("runjags")
-  basic_fit <- structure(list(end.state = rep("", 4L)),
-    class = c("runjags", "BayesTools_fit"))
-  basic_fit <- contract_test_backend_fit(basic_fit)
+  basic_fit <- contract_test_backend_fit(4L)
   attr(basic_fit, "prior_list") <- list()
   attr(basic_fit, "model_syntax") <- "model{}"
   attr(basic_fit, "required_packages") <- character()
@@ -335,6 +234,7 @@ test_that("fit retries and extensions use the actual current worker topology", {
       cluster_arguments[[length(cluster_arguments) + 1L]] <<- list(...)
       structure(as.list(seq_len(cores)), class = "runtime_test_cluster")
     },
+    clusterCall = function(cl, fun, ...) lapply(cl, function(worker) fun(...)),
     stopCluster = function(cl) events <<- c(events, "stop"),
     clusterApply = function(cl, x, fun, setup) lapply(x, fun, setup = setup),
     .package = "parallel"
@@ -352,20 +252,19 @@ test_that("fit retries and extensions use the actual current worker topology", {
     .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
-    run.jags = function(...){
+    .bt_rjags_fit = function(...){
       events <<- c(events, "fit")
       fit_arguments[[length(fit_arguments) + 1L]] <<- list(...)
       backend_calls <<- backend_calls + 1L
       if(backend_calls == 1L) stop("retry probe")
       basic_fit
     },
-    extend.jags = function(...){
+    .bt_rjags_extend = function(...){
       events <<- c(events, "extend")
       extension_arguments[[length(extension_arguments) + 1L]] <<- list(...)
       basic_fit
     },
-    add.summary = function(fit, ...) fit,
-    .package = "runjags"
+    .package = "BayesTools"
   )
 
   for(parallel in c(FALSE, TRUE)){
@@ -396,15 +295,14 @@ test_that("fit retries and extensions use the actual current worker topology", {
     }else{
       expect_length(cluster_arguments, 0L)
     }
-    expect_identical(extension_arguments[[1L]]$method, if(parallel) "rjparallel" else "rjags")
     expect_identical(extension_arguments[[1L]]$cl, fit_arguments[[1L]]$cl)
-    expect_identical(extension_arguments[[1L]]$n.sims, if(parallel) 3L else NULL)
+    expect_length(extension_arguments[[1L]]$cl, if(parallel) 3L else 0L)
     if(parallel){
       expect_identical(vapply(contexts[2:4], `[[`, integer(1), "process_chains"),
         c(2L, 1L, 1L))
     }
 
-    # Changing worker count must override the backend's stored n.sims.
+    # Changing the core count changes the actual number of workers.
     events <- character()
     contexts <- list()
     extended <- JAGS_extend(fit, autofit_control = control,
@@ -412,7 +310,7 @@ test_that("fit retries and extensions use the actual current worker topology", {
     expect_identical(events, c("packages", "modules", "start coordinator",
       "start worker", "start worker", "extend", "stop", "finish coordinator"))
     expect_identical(vapply(contexts[2:3], `[[`, integer(1), "process_chains"), c(2L, 2L))
-    expect_identical(tail(extension_arguments, 1L)[[1L]]$n.sims, 2L)
+    expect_length(tail(extension_arguments, 1L)[[1L]]$cl, 2L)
     expect_identical(attr(extended, "runtime_setup", exact = TRUE), setup)
     expect_identical(tail(cluster_arguments, 1L)[[1L]], list(outfile = normalized_output))
     expect_null(attr(extended, "worker_output", exact = TRUE))
@@ -423,15 +321,14 @@ test_that("fit retries and extensions use the actual current worker topology", {
       parallel = TRUE, cores = 8, silent = TRUE)
     # Logging is an explicit setting for this invocation, not replayed from fit.
     expect_identical(tail(cluster_arguments, 1L)[[1L]], list())
-    expect_identical(tail(extension_arguments, 1L)[[1L]]$n.sims, 4L)
+    expect_length(tail(extension_arguments, 1L)[[1L]]$cl, 4L)
     expect_identical(vapply(contexts[2:5], `[[`, integer(1), "process_chains"), rep(1L, 4L))
 
     events <- character()
     local <- JAGS_extend(capped, autofit_control = control,
       parallel = FALSE, silent = TRUE)
     expect_identical(events, c("packages", "modules", "start local", "extend", "finish local"))
-    expect_identical(tail(extension_arguments, 1L)[[1L]]$method, "rjags")
-    expect_null(tail(extension_arguments, 1L)[[1L]]$n.sims)
+    expect_null(tail(extension_arguments, 1L)[[1L]]$cl)
 
     events <- character()
     disabled <- JAGS_extend(local, autofit_control = control,
@@ -452,18 +349,18 @@ test_that("fit retries and extensions use the actual current worker topology", {
   setup_failure <- FALSE
   extension_calls <- 0L
   testthat::local_mocked_bindings(
-    extend.jags = function(...){
+    .bt_rjags_extend = function(...){
       extension_calls <<- extension_calls + 1L
       stop("error reading from connection")
     },
-    .package = "runjags"
+    .package = "BayesTools"
   )
   expect_warning(retained <- JAGS_extend(fit, autofit_control = control,
     parallel = TRUE, cores = 2, silent = TRUE),
     "returning the last valid fit.*Parallel JAGS worker communication failed.*error reading from connection")
   expect_identical(extension_calls, 1L)
-  expect_identical(retained$end.state, fit$end.state)
-  expect_s3_class(retained, "runjags")
+  expect_identical(retained$end_state, fit$end_state)
+  expect_s3_class(retained, "BayesTools_fit")
 })
 
 test_that("runtime clusters start workers with the session's builds and stop once", {

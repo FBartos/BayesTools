@@ -1,3 +1,7 @@
-include Makevars.win.common
+# rjags supplies the flags for the JAGS library loaded by this R installation.
+JAGS_RSCRIPT := "$(R_HOME)/bin$(R_ARCH_BIN)/Rscript" --vanilla
+PKG_CPPFLAGS := $(shell $(JAGS_RSCRIPT) -e "rjags::pkg.compile.flags('CPPFLAGS')") -I../inst/include -DR_NO_REMAP
+PKG_CXXFLAGS := $(shell $(JAGS_RSCRIPT) -e "rjags::pkg.compile.flags('CXXFLAGS')")
+PKG_LIBS := $(shell $(JAGS_RSCRIPT) -e "rjags::pkg.compile.flags('LIBS')") -ljrmath-0
 
-PKG_CXXFLAGS = -D_GLIBCXX_USE_CXX11_ABI=0
+include Makevars.common

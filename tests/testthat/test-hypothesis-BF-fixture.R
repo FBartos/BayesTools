@@ -653,8 +653,7 @@ test_that("the callbacks of a backend receive the declared conditioning of the d
 
 .hypothesis_treatment_level_marginal_for_test <- function(fit){
 
-  model <- coda::as.mcmc(as.matrix(fit[["mcmc"]]))
-  class(model) <- c("BayesTools_fit", class(model))
+  model <- test_fit_from_chains(coda::as.mcmc(as.matrix(fit[["mcmc"]])))
   attr(model, "prior_list") <- attr(fit, "prior_list", exact = TRUE)
   model <- attach_test_parameter_map(model)
 

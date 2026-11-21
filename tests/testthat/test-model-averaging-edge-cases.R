@@ -49,10 +49,9 @@ source(testthat::test_path("common-functions.R"))
     list(
       mcmc = coda::mcmc.list(samples),
       sample = nrow(samples),
-      summary.pars = list(mutate = NULL),
       monitor = colnames(samples)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- prior_list
   attach_test_parameter_map(fit)
@@ -967,8 +966,7 @@ test_that("marginal_posterior rejects simplex and weightfunction posteriors clea
 
   weightfunction <- prior_weightfunction(steps = .05)
   omega <- seq(.1, .9, length.out = 20)
-  fit <- coda::mcmc(cbind("omega[1]" = rep(1, 20), "omega[2]" = omega))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(cbind("omega[1]" = rep(1, 20), "omega[2]" = omega)))
   attr(fit, "prior_list") <- list(omega = weightfunction)
   fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, parameters = "omega")
@@ -1484,10 +1482,9 @@ test_that("mixed contrast coefficients are never bracketed positions", {
       list(
         mcmc = coda::mcmc.list(samples),
         sample = nrow(samples),
-        summary.pars = list(mutate = NULL),
         monitor = colnames(samples)
       ),
-      class = c("runjags", "BayesTools_fit", "list")
+      class = "BayesTools_fit"
     )
     attr(model_fit, "prior_list") <- list(mu_g = meandif_prior)
     list(
@@ -1540,7 +1537,7 @@ test_that("mixed contrast coefficients are never bracketed positions", {
   ), formula_scale = list(x = TRUE))
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)

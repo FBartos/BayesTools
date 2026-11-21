@@ -69,21 +69,6 @@ namespace jags {
       return out;
     }
 
-    double DBTMoment::typicalValue(std::vector<double const *> const &par,
-                                     double const *lower, double const *upper) const
-    {
-      double l = lower ? *lower : JAGS_NEGINF;
-      double u = upper ? *upper : JAGS_POSINF;
-      if((lower || upper) && !std::isfinite(bayestools::nonlocal::log_interval_mass(l, u, *par[0], *par[1], *par[2], 0.0, false))){
-        throwDistError(this, "Prior normalization is numerically unavailable.");
-      }
-      double out = bayestools::nonlocal::typical_value(*par[0], bayestools::nonlocal::moment_mode(*par[1], *par[2]), l, u, *par[1], *par[2], 0.0, false);
-      if(!std::isfinite(out)){
-        throwDistError(this, "Prior initialization is numerically unavailable.");
-      }
-      return out;
-    }
-
     bool DBTMoment::canBound() const
     {
       return true;

@@ -1,0 +1,7 @@
+# Query the rjags installation used by this R, including its JAGS library path.
+JAGS_RSCRIPT = "$(R_HOME)/bin$(R_ARCH_BIN)/Rscript" --vanilla
+PKG_CPPFLAGS = `$(JAGS_RSCRIPT) -e "rjags::pkg.compile.flags('CPPFLAGS')"` -I../inst/include -DR_NO_REMAP
+PKG_CXXFLAGS = `$(JAGS_RSCRIPT) -e "rjags::pkg.compile.flags('CXXFLAGS')"`
+PKG_LIBS = `$(JAGS_RSCRIPT) -e "rjags::pkg.compile.flags('LIBS')"` -ljrmath
+
+include Makevars.common
