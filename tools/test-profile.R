@@ -79,9 +79,6 @@ report_elapsed <- function() {
   message("Elapsed seconds: ", round(as.numeric(elapsed), 1))
 }
 
-if (!requireNamespace("devtools", quietly = TRUE)) {
-  stop("The devtools package is required to run tools/test-profile.R.", call. = FALSE)
-}
 if (!requireNamespace("testthat", quietly = TRUE)) {
   stop("The testthat package is required to run tools/test-profile.R.", call. = FALSE)
 }
@@ -150,7 +147,7 @@ if (length(bayestools_snapshot_unreadable(snapshot_state)) > 0L) {
 }
 unreviewed     <- list(changed = character(), deleted = character(), problems = character())
 # The guard's report is printed in 'finally', so it also follows a test failure
-# that propagates from devtools::test().
+# that propagates from testthat.
 report_unreviewed <- function(unreviewed) {
   if (length(unreviewed$problems) > 0L) {
     message("Restoring the reviewed snapshot files failed:\n- ", paste(unreviewed$problems, collapse = "\n- "))
@@ -165,7 +162,11 @@ report_unreviewed <- function(unreviewed) {
   }
 }
 tryCatch(
-  devtools::test(
+  # PSOCK workers load the installed DLL. A separate pkgload compilation of
+  # the same source can have a different binary fingerprint on Windows.
+  testthat::test_local(
+    load_package = if ("fit" %in% selected_profiles &&
+                       (is.null(filter) || grepl(filter, "00-model-fits"))) "installed" else "source",
     filter = test_filter,
     stop_on_failure = stop_on_failure,
     reporter = reporter_object

@@ -878,6 +878,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # label every column from its label parts: the parameter names are the
   # columns' selectors, the row labels their table labels
+  backend_anchor <- attr(fit, "backend_anchor", exact = TRUE)
+  if(!is.null(backend_anchor)){
+    model_samples <- model_samples[, colnames(model_samples) != backend_anchor, drop = FALSE]
+  }
   column_parts <- .bt_estimates_column_parts(
     columns     = colnames(model_samples),
     fit         = fit,

@@ -17,7 +17,7 @@
 # certification functions of the helpers run from the project root.
 .certification_helpers <- function() {
 
-  pkgload::load_all(".", quiet = TRUE, helpers = FALSE, export_all = TRUE)
+  loadNamespace("BayesTools")
   old_testthat <- Sys.getenv("TESTTHAT", unset = NA_character_)
   on.exit(if (is.na(old_testthat)) Sys.unsetenv("TESTTHAT") else Sys.setenv(TESTTHAT = old_testthat), add = TRUE)
   Sys.setenv(TESTTHAT = "true")
@@ -48,7 +48,7 @@
          paste(bayestools_snapshot_unreadable(snapshot_state), collapse = "\n- "), call. = FALSE)
   }
   results <- tryCatch(
-    as.data.frame(devtools::test(filter = paste0("^certification-", case, "$"),
+    as.data.frame(testthat::test_local(load_package = "installed", filter = paste0("^certification-", case, "$"),
                                  stop_on_failure = FALSE, reporter = reporter)),
     finally = {
       unreviewed <- bayestools_quarantine_snapshots(snapshot_root, snapshot_state)

@@ -828,6 +828,7 @@ test_that("JAGS_extend preserves marginalized random-effect metadata", {
     ),
     class = "BayesTools_fit"
   )
+  fit <- add_test_chain_states(fit)
   attr(fit, "prior_list") <- list()
   attr(fit, "model_syntax") <- "model{}"
   attr(fit, "required_packages") <- character()

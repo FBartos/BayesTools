@@ -152,7 +152,6 @@ contract_test_backend_fit <- function(chains = 1L) {
     coda::mcmc(matrix(0, nrow = 2L, ncol = 1L, dimnames = list(NULL, "x")))
   }))
   fit <- add_test_chain_states(structure(list(mcmc = mcmc), class = "BayesTools_fit"))
-  attr(fit, "adaptation") <- BayesTools:::.bt_adaptation_record(500L)
   attr(fit, "parameter_map") <- BayesTools:::.bt_build_parameter_map(character())
   fit <- BayesTools:::.bt_attach_draw_geometry(fit)
   BayesTools:::.bt_attach_fit_contract(fit)

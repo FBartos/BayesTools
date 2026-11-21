@@ -5160,6 +5160,7 @@ test_that("the backend anchor of a model without monitors is auxiliary", {
   ))
   # Autofit does not extend: the anchor is not assessable but not selected.
   expect_null(attr(fit, "warnings"))
+  expect_equal(nrow(summary(fit)), 0L)
   coordinates <- parameter_coordinates(fit)
   expect_identical(
     stats::setNames(coordinates$convergence_role, coordinates$coordinate_name),

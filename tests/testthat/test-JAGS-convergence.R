@@ -1271,13 +1271,14 @@ test_that("unavailable monitors carry the parameter-not-found class and add_para
   expect_identical(after_sampling$available, c("mu", "theta[1]", "theta[2]"))
 
   # a missing parameter name is an argument error, not an internal failure
+  fit <- .mock_convergence_fit(cbind(mu = seq_len(20)))
   expect_error(
-    JAGS_check_convergence(structure(list(), class = "BayesTools_fit"), add_parameters = NA),
+    JAGS_check_convergence(fit, add_parameters = NA),
     "add_parameters",
     fixed = TRUE
   )
   expect_error(
-    JAGS_check_convergence(structure(list(), class = "BayesTools_fit"), add_parameters = c("mu", NA)),
+    JAGS_check_convergence(fit, add_parameters = c("mu", NA)),
     "add_parameters",
     fixed = TRUE
   )

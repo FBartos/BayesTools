@@ -347,7 +347,7 @@ test_that("fitted and original formula values and measures use fitted rows", {
 test_that("public at values preserve fitted SD and original data units", {
 
   fit <- .formula_state_test_fit(multiplier = NULL, extra_priors = list(),
-    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2))
+    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2)))
   fitted <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"))
   original <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), transform_scaled = TRUE)
   for(at in c(0, 1, 20, 30)){

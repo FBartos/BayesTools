@@ -17,7 +17,8 @@ Sys.setenv(
   VDIFFR_RUN_TESTS            = "true"
 )
 
-devtools::test(
+testthat::test_local(
+  load_package = "installed",
   stop_on_failure = TRUE,
   reporter = testthat::LlmReporter$new()
 )

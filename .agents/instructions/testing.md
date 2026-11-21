@@ -20,6 +20,10 @@ For ad hoc `devtools::test()` calls, set `AGENT=1` and pass
 `testthat::LlmReporter$new()`. Run the narrowest relevant profile first; do not
 use repeated full-suite runs as an iteration loop.
 
+Install the current checkout in the private library before a fixture-generating
+or certification run. The coordinator and PSOCK workers use that same
+installed BayesTools binary. Unit tests ordinarily load the checkout directly.
+
 The runner also has a `filter` mode that runs the test files matching a
 testthat filter, with the profile set to `all`:
 

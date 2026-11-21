@@ -241,7 +241,9 @@ test_that("fit retries and extensions use the actual current worker topology", {
   )
   testthat::local_mocked_bindings(
     .JAGS_require_packages = function(...) events <<- c(events, "packages"),
-    .JAGS_load_modules = function(...) events <<- c(events, "modules"),
+    .JAGS_load_modules = function(jags_modules, cl = NULL, ...){
+      events <<- c(events, if(is.null(cl)) "local modules" else "worker modules")
+    },
     .bt_attach_parameter_map = function(fit, ...) fit,
     .bt_attach_draw_geometry = function(fit, ...) fit,
     .bt_attach_fit_contract = function(fit, ...) fit,
@@ -285,7 +287,7 @@ test_that("fit retries and extensions use the actual current worker topology", {
       c("start coordinator", rep("start worker", 3L))
     }else "start local"
     finish_events <- if(parallel) c("stop", "finish coordinator") else "finish local"
-    expect_identical(events, c("packages", "modules", start_events,
+    expect_identical(events, c("packages", "local modules", if(parallel) "worker modules", start_events,
       "fit", "fit", "extend", finish_events))
     expect_identical(attr(fit, "runtime_setup", exact = TRUE), setup)
     expect_null(attr(fit, "worker_output", exact = TRUE))
@@ -307,7 +309,7 @@ test_that("fit retries and extensions use the actual current worker topology", {
     contexts <- list()
     extended <- JAGS_extend(fit, autofit_control = control,
       parallel = TRUE, cores = 2, silent = TRUE, worker_output = worker_output)
-    expect_identical(events, c("packages", "modules", "start coordinator",
+    expect_identical(events, c("packages", "local modules", "worker modules", "start coordinator",
       "start worker", "start worker", "extend", "stop", "finish coordinator"))
     expect_identical(vapply(contexts[2:3], `[[`, integer(1), "process_chains"), c(2L, 2L))
     expect_length(tail(extension_arguments, 1L)[[1L]]$cl, 2L)
@@ -327,13 +329,13 @@ test_that("fit retries and extensions use the actual current worker topology", {
     events <- character()
     local <- JAGS_extend(capped, autofit_control = control,
       parallel = FALSE, silent = TRUE)
-    expect_identical(events, c("packages", "modules", "start local", "extend", "finish local"))
+    expect_identical(events, c("packages", "local modules", "start local", "extend", "finish local"))
     expect_null(tail(extension_arguments, 1L)[[1L]]$cl)
 
     events <- character()
     disabled <- JAGS_extend(local, autofit_control = control,
       parallel = TRUE, cores = 2, silent = TRUE, runtime_setup = NULL)
-    expect_identical(events, c("packages", "modules", "extend", "stop"))
+    expect_identical(events, c("packages", "local modules", "worker modules", "extend", "stop"))
     expect_null(attr(disabled, "runtime_setup", exact = TRUE))
   }
 
@@ -341,7 +343,7 @@ test_that("fit retries and extensions use the actual current worker topology", {
   setup_failure <- TRUE
   expect_error(JAGS_extend(fit, autofit_control = control,
     parallel = TRUE, cores = 2, silent = TRUE), "worker setup failed", fixed = TRUE)
-  expect_identical(events, c("packages", "modules", "start coordinator",
+  expect_identical(events, c("packages", "local modules", "worker modules", "start coordinator",
     "start worker", "stop", "finish coordinator"))
 
   # A failed parallel extension retains usable draws, while reporting the
