@@ -2,6 +2,7 @@
 ### Breaking changes
 - `hypothesis_BF()` and `hypothesis_BF_model()` replace `columns` with `include_densities`, `include_probabilities`, and `include_method`; the `prior` and `posterior` columns are replaced by point densities and region probabilities, and table labels keep the notation of the hypothesis, with a constant on the right of a single relation
 - hypothesis statements cannot contain `#` comments
+- a mixture of publication-bias priors must be named `bias` in the prior list
 
 ### Features
 - `hypothesis_BF()` accepts interval hypotheses such as `"-0.1 <= mu <= 0.1"` and explicit comparisons with `unconstrained`
