@@ -5,6 +5,7 @@
 - a mixture of publication-bias priors must be named `bias` in the prior list
 
 ### Features
+- `plot_model_probabilities()` displays posterior model probabilities and model states in a matrix
 - `hypothesis_BF()` accepts interval hypotheses such as `"-0.1 <= mu <= 0.1"` and explicit comparisons with `unconstrained`
 - `hypothesis_BF()` can display the method, prior and posterior point densities, and region probabilities with separate switches
 - Selection contexts support observation-level publication-bias exemptions
