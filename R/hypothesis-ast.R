@@ -75,8 +75,9 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
   if(length(hypothesis) == 0L){
     stop("'hypothesis' must contain at least one statement.", call. = FALSE)
   }
+  aliases <- list(names = character(), refused = NULL)
   if(!is.null(catalog)){
-    hypothesis <- .bt_hypothesis_quote_catalog_aliases(
+    aliases <- .bt_hypothesis_catalog_aliases(
       hypothesis = hypothesis,
       catalog    = catalog,
       namespace  = namespace,
@@ -97,8 +98,9 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
     }
   }
   statements <- lapply(hypothesis, function(statement){
+    quoted <- .bt_hypothesis_quote_statement_aliases(statement, aliases$names, aliases$refused)
     .bt_hypothesis_ast_statement_from_spec(
-      .hypothesis_parse_statement_spec(statement)
+      .hypothesis_parse_statement_spec(quoted$text, statement, quoted$mask)
     )
   })
   out <- list(
@@ -110,7 +112,7 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
   out
 }
 
-.bt_hypothesis_quote_catalog_aliases <- function(
+.bt_hypothesis_catalog_aliases <- function(
     hypothesis, catalog, namespace, component, simplify_names){
 
   .bt_validate_parameter_catalog(catalog)
@@ -162,28 +164,18 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
     nzchar(names) &
       (make.names(names) != names | tolower(names) == "vs")
   ]
-  if(length(names) == 0L){
-    return(hypothesis)
-  }
   names <- names[order(nchar(names), decreasing = TRUE)]
-
-  vapply(
-    hypothesis,
-    .bt_hypothesis_quote_statement_aliases,
-    character(1),
-    aliases = names,
-    refused = refused,
-    USE.NAMES = FALSE
-  )
+  list(names = names, refused = refused)
 }
 
 .bt_hypothesis_quote_statement_aliases <- function(statement, aliases,
                                                    refused = NULL){
 
   n <- nchar(statement, type = "chars")
-  if(n == 0L){
-    return(statement)
+  if(n == 0L || !length(aliases)){
+    return(list(text = statement, mask = statement))
   }
+  mask <- statement
   out <- character()
   i <- 1L
   quote <- ""
@@ -226,6 +218,7 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
     }
     if(!is.null(matched)){
       end <- i + nchar(matched, type = "chars") - 1L
+      substr(mask, i, end) <- strrep("x", end - i + 1L)
       # An alias followed by `[` is the root of a level reference such as
       # `f:g[f=b, g=v]`; quoting only the root would split it from its level.
       level_follows <- grepl(
@@ -244,7 +237,7 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
     i <- i + 1L
   }
 
-  paste0(out, collapse = "")
+  list(text = paste0(out, collapse = ""), mask = mask)
 }
 
 .bt_hypothesis_alias_boundary <- function(statement, start, end){
@@ -295,11 +288,11 @@ hypothesis_ast_schema <- function(){
       "Whether the statement contained an explicit top-level 'vs'.",
       "Alternative-side node.",
       "Null-side node, explicit or generated as a complement.",
-      "Point, not_point, or region.",
+      "Point, not_point, region, or unconstrained.",
       "Stable side source label.",
       "Stable display label.",
-      "Arithmetic expression or region condition node.",
-      "Finite point value; NULL for regions.",
+      "Arithmetic expression, region condition, or the literal unit mass of the unconstrained model.",
+      "Finite point value; NULL for region and unconstrained sides.",
       "Literal, symbol, level_reference, parentheses, arithmetic, function, comparison, boolean, or negation.",
       "Stable node source label.",
       "Operator of an arithmetic, comparison, or boolean node.",
@@ -601,6 +594,10 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
 
 .bt_hypothesis_ast_side <- function(side){
 
+  if(identical(side$type, "unconstrained")){
+    return(list(type = "unconstrained", source = "unconstrained", label = "unconstrained",
+                expression = .bt_hypothesis_ast_node(1), value = NULL))
+  }
   if(side$type %in% c("point", "not_point")){
     expression <- side$expression
     if(is.null(expression)){
@@ -755,6 +752,7 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
 
 .bt_hypothesis_render_side <- function(side){
 
+  if(identical(side$type, "unconstrained")) return("unconstrained")
   expression <- .bt_hypothesis_render_node(side$expression)
   if(identical(side$type, "point")){
     return(paste(expression, "=", .hypothesis_number_label(side$value)))
@@ -865,6 +863,12 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
     }
     .bt_validate_hypothesis_side(statement$left)
     .bt_validate_hypothesis_side(statement$right)
+    types <- c(statement$left$type, statement$right$type)
+    if("unconstrained" %in% types &&
+       (!statement$explicit || !any(types %in% c("region", "point")))){
+      stop("'unconstrained' must be one side of an explicit 'vs' comparison with a point ('=') or a region.",
+           call. = FALSE)
+    }
     if(!identical(statement$source,
                   .bt_hypothesis_render_statement(statement))){
       stop("Hypothesis AST statement source is inconsistent with its nodes.",
@@ -924,7 +928,7 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
     names(side),
     c("type", "source", "label", "expression", "value")
   ) && is.character(side$type) && length(side$type) == 1L &&
-    side$type %in% c("point", "not_point", "region") &&
+    side$type %in% c("point", "not_point", "region", "unconstrained") &&
     is.character(side$source) && length(side$source) == 1L &&
     !is.na(side$source) && nzchar(side$source) &&
     is.character(side$label) && length(side$label) == 1L &&
@@ -942,6 +946,11 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
            call. = FALSE)
     }
     .hypothesis_validate_expression(expression, condition = FALSE)
+  }else if(identical(side$type, "unconstrained")){
+    if(!identical(expression, 1) || !is.null(side$value) ||
+       !identical(side$label, "unconstrained")){
+      stop("An unconstrained hypothesis side must represent unit mass.", call. = FALSE)
+    }
   }else{
     if(!is.null(side$value)){
       stop("Hypothesis AST region node must not contain a point value.",

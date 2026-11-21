@@ -24,21 +24,55 @@ skip_if_not_test_profile("unit")
                     use_formula = FALSE, prior_samples = TRUE)
 }
 
+test_that("point methods identify the source of the ordinate used at each null", {
+
+  posterior <- .hypothesis_marginal_child(.unavailable_factor_posterior()[["B"]])
+  posterior <- .bt_meta_set(posterior, "posterior_density",
+    posterior_density_attribute(c(-2, 0, 2), c(.05, .4, .05),
+                                method = "grid algorithm", density_method = "IWMDE"))
+  posterior <- .bt_meta_set(posterior, "posterior_ordinate",
+    posterior_ordinate_attribute(0, .5, method = "ordinate algorithm", density_method = "qCMDE"))
+  point_test <- function(posterior, statement, density_method = "precomputed"){
+    hypothesis_BF(posterior, hypothesis = statement, parameter = "mu_fac",
+                  density_method = density_method, include_method = TRUE)$method
+  }
+  expect_identical(point_test(posterior, c("mu_fac = 0", "mu_fac = .25",
+    "mu_fac > 0 vs mu_fac = 0", "mu_fac = 0 vs unconstrained", "mu_fac > 0",
+    "-.1 <= mu_fac <= .1 vs unconstrained", "unconstrained vs -.1 <= mu_fac <= .1")),
+    c("Savage-Dickey (qCMDE)", "Savage-Dickey (IWMDE)", "transitive Savage-Dickey (qCMDE)",
+      "Savage-Dickey (qCMDE)", "prior-posterior odds", "encompassing prior", "encompassing prior"))
+  for(method in c("normal", "KDE")){
+    expect_identical(point_test(posterior, "mu_fac = 0", method), paste0("Savage-Dickey (", method, ")"))
+  }
+  for(estimator in c("qCMDE", "precomputed")){
+    posterior <- .bt_meta_set(posterior, "posterior_ordinate",
+      posterior_ordinate_attribute(0, .5, method = estimator, density_method = "precomputed"))
+    expect_identical(point_test(posterior, "mu_fac = 0"), paste0("Savage-Dickey (", estimator, ")"))
+  }
+  posterior <- .bt_meta_set(posterior, "posterior_ordinate",
+    posterior_ordinate_attribute(3, .5, method = "obsolete", density_method = "qCMDE"))
+  posterior <- .bt_meta_set(posterior, "posterior_density",
+    posterior_density_attribute(c(-1, 0, 2), c(.05, .4, .05), method = "grid",
+                                density_method = "IWMDE", support = posterior_support_attribute(c(-1, 2))))
+  expect_warning(method <- point_test(posterior, "mu_fac = 3"), "Ignoring the precomputed posterior ordinate")
+  expect_identical(method, "Savage-Dickey (exact support exclusion)")
+})
+
 test_that("whole-factor unavailable rows retain labels and valid siblings", {
 
   posterior <- .unavailable_factor_posterior()
   for(statement in c("mu_fac = 0", "mu_fac > 0", "mu_fac = 0 vs mu_fac > 0")){
     result <- tryCatch(hypothesis_BF(posterior, hypothesis = statement,
-      parameter = "mu_fac", columns = "all", seed = 8), error = identity)
+      parameter = "mu_fac", include_densities = TRUE, include_probabilities = TRUE, include_method = TRUE, seed = 8), error = identity)
     expect_s3_class(result, "BayesTools_hypothesis_BF")
     if(inherits(result, "error")) next
     expect_identical(result$method[1L], "unavailable")
-    expect_true(all(is.na(result[1L, c("BF", "BF_error", "prior", "posterior")])))
+    expect_true(all(is.na(result[1L, setdiff(names(result), c("Alternative", "Null", "method"))])))
     expect_true(nzchar(attr(result, "warnings")[[rownames(result)[1L]]]))
     expect_identical(rownames(result), paste0("mu_fac[", c("A", "B", "C"), "]"))
     for(level in c("B", "C")){
       scalar <- hypothesis_BF(.hypothesis_marginal_child(posterior[[level]]),
-                              hypothesis = statement, parameter = "mu_fac", columns = "all", seed = 8)
+                              hypothesis = statement, parameter = "mu_fac", seed = 8)
       expect_equal(as.numeric(result[level == c("A", "B", "C"), "BF"]), as.numeric(scalar$BF), tolerance = 1e-14)
     }
     expect_identical(result$Alternative, rep(if(statement == "mu_fac = 0") "mu_fac != 0" else sub(" vs.*", "", statement), 3))
@@ -80,7 +114,7 @@ test_that("known region diagnostic refusals form complete unavailable tables", {
     .prior_region_from_adaptive = function(...) list(available = TRUE,
       converged = FALSE, probability = .5, messages = "known integration failure",
       absolute_error = .001))
-  result <- hypothesis_BF(posterior, hypothesis = "mu_fac > 0", parameter = "mu_fac", columns = "all")
+  result <- hypothesis_BF(posterior, hypothesis = "mu_fac > 0", parameter = "mu_fac", include_method = TRUE)
   expect_true(all(is.na(as.numeric(result$BF))))
   expect_identical(result$method, rep("unavailable", 3L))
   expect_match(attr(result, "warnings")[["mu_fac[B]"]],
@@ -217,7 +251,7 @@ test_that("point inference retains finite log ordinates and orientation", {
 
   arguments <- list(posterior = c(1, 2, 3), prior = prior("normal", list(0, 1)),
                     parameter = "theta", density_method = "normal",
-                    logBF = TRUE, columns = "all")
+                    logBF = TRUE)
   implicit <- do.call(hypothesis_BF, c(arguments, list(hypothesis = "theta = 40")))
   explicit <- do.call(hypothesis_BF, c(arguments, list(hypothesis = "theta = 40 vs theta != 40")))
   reverse <- do.call(hypothesis_BF, c(arguments, list(hypothesis = "theta != 40 vs theta = 40")))
@@ -252,7 +286,7 @@ test_that("affine point coordinates avoid collapsed translations", {
 
   arguments <- list(posterior = c(1, 2, 3), prior = prior("normal", list(0, 1)),
                     parameter = "theta", density_method = "normal",
-                    logBF = TRUE, columns = "all")
+                    logBF = TRUE)
   baseline <- do.call(hypothesis_BF, c(arguments, list(hypothesis = "theta = 0")))
   shifted <- do.call(hypothesis_BF, c(arguments, list(hypothesis = "theta + 1e100 = 1e100")))
   expect_equal(as.numeric(shifted$BF), as.numeric(baseline$BF), tolerance = 1e-12)
@@ -290,8 +324,8 @@ test_that("affine Boolean regions use exact declared probabilities", {
   result <- hypothesis_BF(posterior = c(-2, -1, 1, 2),
     prior = prior("normal", list(0, 1)), parameter = "theta",
     hypothesis = "(theta + 1e100 > 1e100) & (theta / 49 <= 1)",
-    seed = 337, columns = "all")
-  expect_equal(result$prior, (stats::pnorm(49) - .5) / (1 - (stats::pnorm(49) - .5)), tolerance = 1e-14)
+    seed = 337, include_probabilities = TRUE)
+  expect_equal(result$prior_prob_alt, stats::pnorm(49) - .5, tolerance = 1e-14)
   expect_true(length(attr(result, "prior_numerical_diagnostics")) == 1L)
   expect_false(any(grepl("prior_numerical_diagnostics", utils::capture.output(print(result)), fixed = TRUE)))
   expect_error(hypothesis_BF(c(-2, -1, 1, 2), prior("normal", list(0, 1)),

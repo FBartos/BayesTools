@@ -152,7 +152,7 @@ test_that("point-image refusals transport the specific image leaf while computin
     }
     region_mass(quantity, side, prior)
   })
-  result <- hypothesis_BF(posterior, hypothesis = "mu_fac > 0", parameter = "mu_fac", columns = "all")
+  result <- hypothesis_BF(posterior, hypothesis = "mu_fac > 0", parameter = "mu_fac", include_method = TRUE)
   expect_identical(result$method[1L], "unavailable")
   expect_true(is.na(as.numeric(result$BF[1L])))
   expect_true(is.finite(as.numeric(result$BF[2L])))

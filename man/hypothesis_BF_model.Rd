@@ -17,7 +17,9 @@ hypothesis_BF_model(
   density_method = NULL,
   density_control = NULL,
   n_samples = 10000,
-  columns = "default",
+  include_densities = FALSE,
+  include_probabilities = FALSE,
+  include_method = FALSE,
   parameter = NULL,
   conditional_omitted = FALSE
 )
@@ -55,7 +57,7 @@ random-effect quantities through \code{\link[=parameter_mixed_posterior]{paramet
 it a point null on a quantity with a prior point mass at that value stops
 with \code{BayesTools_point_mass_at_null}; region hypotheses are tested.}
 
-\item{logBF, BF01, seed, columns}{see \code{\link[=hypothesis_BF]{hypothesis_BF()}}.}
+\item{logBF, BF01, seed, include_densities, include_probabilities, include_method}{see \code{\link[=hypothesis_BF]{hypothesis_BF()}}.}
 
 \item{density_method}{the name of a registered density backend
 (\code{\link[=hypothesis_density_backends]{hypothesis_density_backends()}}); matching ignores case and accepts an

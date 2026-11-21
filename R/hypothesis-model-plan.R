@@ -445,8 +445,10 @@ hypothesis_stop <- function(reason, type = c("target", "fixed", "method",
   if (is.null(metadata)) {
     metadata <- provider[["metadata"]]()
   }
-  ast        <- .hypothesis_model_ast(hypothesis, metadata[["catalog"]])
-  statements <- hypothesis_render(ast)
+  ast <- .hypothesis_model_ast(hypothesis, metadata[["catalog"]])
+  if (inherits(hypothesis, "BayesTools_hypothesis_ast")) {
+    .bt_validate_hypothesis_ast(ast)
+  }
   # A plan is a function of its statement and arguments (and of the object and
   # its metadata, which the cache is of).
   arguments  <- rlang::hash(list(
@@ -454,7 +456,9 @@ hypothesis_stop <- function(reason, type = c("target", "fixed", "method",
     as.numeric(n_samples), metadata
   ))
 
-  lapply(statements, function(statement) {
+  lapply(ast$statements, function(parsed) {
+    statement <- ast
+    statement$statements <- list(parsed)
     .hypothesis_model_plan_cached(
       cache,
       paste("plan", arguments, rlang::hash(statement), sep = "\r"),
@@ -1752,9 +1756,9 @@ posterior_fitted_linear_weights <- function(sample, weights,
   if (!inherits(hypothesis, "BayesTools_hypothesis_ast")) {
     hypothesis <- hypothesis_parse(hypothesis)
   }
-  coefficients <- hypothesis_linear_target_side(
-    hypothesis[["statements"]][[1L]][["left"]], plan[["parameter"]]
-  )[["coefficients"]]
+  statement <- hypothesis[["statements"]][[1L]]
+  side <- if (identical(statement$left$type, "unconstrained")) statement$right else statement$left
+  coefficients <- hypothesis_linear_target_side(side, plan[["parameter"]])[["coefficients"]]
 
   paste(
     "combination", plan[["parameter"]],

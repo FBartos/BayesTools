@@ -34,8 +34,8 @@ test_that("implicit near-one prior regions use their independently positive comp
   expect_gt(ccdf(distribution, 10), 0)
   for(text in c("theta > 10", "theta <= 10")){
     explicit <- if(text == "theta > 10") "theta > 10 vs theta <= 10" else "theta <= 10 vs theta > 10"
-    implicit <- hypothesis_BF(c(9, 11), distribution, text, parameter = "theta", seed = 1, columns = "all")
-    compared <- hypothesis_BF(c(9, 11), distribution, explicit, parameter = "theta", seed = 1, columns = "all")
+    implicit <- hypothesis_BF(c(9, 11), distribution, text, parameter = "theta", seed = 1)
+    compared <- hypothesis_BF(c(9, 11), distribution, explicit, parameter = "theta", seed = 1)
     expect_identical(attr(implicit, "raw_log_BF"), attr(compared, "raw_log_BF"))
     expect_identical(attr(implicit, "prior_numerical_diagnostics"), attr(compared, "prior_numerical_diagnostics"))
     expected <- -stats::pnorm(10, lower.tail = FALSE, log.p = TRUE)
@@ -57,7 +57,7 @@ test_that("positive deterministic subnormal region masses retain authoritative l
     texts <- c(paste("theta >", cut), paste("theta >", cut, "vs theta <=", cut),
       paste("theta <=", cut), paste("theta <=", cut, "vs theta >", cut))
     for(i in seq_along(texts)){
-      result <- tryCatch(hypothesis_BF(posterior, distribution, texts[[i]], parameter = "theta", seed = 1, columns = "all"), error = identity)
+      result <- tryCatch(hypothesis_BF(posterior, distribution, texts[[i]], parameter = "theta", seed = 1), error = identity)
       expect_false(inherits(result, "error"), info = texts[[i]])
       if(inherits(result, "error")) next
       expected <- -stats::pexp(cut, lower.tail = FALSE, log.p = TRUE) + stats::pexp(cut, log.p = TRUE)
@@ -131,7 +131,8 @@ test_that("hypothesis_BF stops on unknown arguments", {
     hypothesis_BF(posterior, theta_prior, "theta > 0", parameter = "theta", seeed = 1),
     "unused argument (seeed = 1)", fixed = TRUE)
   expect_error(
-    hypothesis_BF(posterior, theta_prior, "theta > 0", "theta", FALSE, FALSE, 1, "KDE", "default", "extra"),
+    hypothesis_BF(posterior, theta_prior, "theta > 0", "theta", FALSE, FALSE, 1,
+                  "KDE", FALSE, FALSE, FALSE, "extra"),
     "unused argument", fixed = TRUE)
 })
 
@@ -480,8 +481,9 @@ test_that("explicit-level regions over one linear combination use the exact prio
   difference <- odds(stats::pnorm(0.5, sd = sqrt(2), lower.tail = FALSE))
   interval <- odds(stats::pnorm(1) - stats::pnorm(-1))
   prior_odds <- function(posterior, hypothesis, seed){
-    hypothesis_BF(posterior, hypothesis = hypothesis, parameter = "mu_fac", columns = "all",
-                  seed = seed)[["prior"]]
+    result <- hypothesis_BF(posterior, hypothesis = hypothesis, parameter = "mu_fac",
+                            include_probabilities = TRUE, seed = seed)
+    result$prior_prob_alt / result$prior_prob_null
   }
 
   # independent N(0, 1) levels: P(A > 0) = 1/2 and A - B ~ N(0, 2) exactly,
@@ -547,7 +549,7 @@ test_that("explicit-level regions the exact route cannot represent keep the samp
   tolerance <- c(1e-8, 1e-8, 0.1, 0.1)
   for(i in seq_along(hypotheses)){
     result <- hypothesis_BF(independent, hypothesis = hypotheses[[i]], parameter = "mu_fac",
-                            columns = "all", seed = 1)
+                            seed = 1)
     expect_s3_class(result, "BayesTools_hypothesis_BF")
     expect_equal(as.numeric(attr(result, "raw_BF")), reference[[i]], tolerance = tolerance[[i]], info = hypotheses[[i]])
   }
@@ -569,7 +571,7 @@ test_that("region BF uses its canonical log before natural representation", {
   reference <- 1.104835212292940058e-312
   reference_log <- -718.30685281944005469
   for(flags in list(c(FALSE, FALSE), c(TRUE, FALSE), c(FALSE, TRUE), c(TRUE, TRUE))){
-    result <- hypothesis_BF(c(2, 721), prior("exponential", list(rate = 1)), "theta > 1 vs theta > 720", parameter = "theta", columns = "all", logBF = flags[1L], BF01 = flags[2L])
+    result <- hypothesis_BF(c(2, 721), prior("exponential", list(rate = 1)), "theta > 1 vs theta > 720", parameter = "theta", logBF = flags[1L], BF01 = flags[2L])
     raw <- attr(result, "raw_BF")
     expect_true(raw > 0)
     expect_true(abs(raw / reference - 1) < 1e-10)
@@ -578,9 +580,9 @@ test_that("region BF uses its canonical log before natural representation", {
     if(flags[1L]) expect_equal(visible, if(flags[2L]) -reference_log else reference_log, tolerance = 1e-10) else if(flags[2L]) expect_identical(visible, Inf) else expect_identical(visible, raw)
     expect_identical(as.data.frame(result)[[if(flags[1L]) if(flags[2L]) "logBF01" else "logBF10" else if(flags[2L]) "BF01" else "BF10"]], visible)
   }
-  swapped <- hypothesis_BF(c(2, 721), prior("exponential", list(rate = 1)), "theta > 720 vs theta > 1", parameter = "theta", BF01 = TRUE, columns = "all")
+  swapped <- hypothesis_BF(c(2, 721), prior("exponential", list(rate = 1)), "theta > 720 vs theta > 1", parameter = "theta", BF01 = TRUE)
   expect_true(abs(as.numeric(swapped$BF) / reference - 1) < 1e-10)
-  moderate <- hypothesis_BF(c(2, 721), prior("exponential", list(rate = 1)), "theta > 1 vs theta > 10", parameter = "theta", columns = "all")
+  moderate <- hypothesis_BF(c(2, 721), prior("exponential", list(rate = 1)), "theta > 1 vs theta > 10", parameter = "theta")
   expect_equal(attr(moderate, "raw_BF"), 2 * exp(-9), tolerance = 1e-12)
   expect_error(hypothesis_BF(c(2, 721), prior("exponential", list(rate = 1)), "theta > 1 vs theta > 1600", parameter = "theta"), "Prior region mass", fixed = TRUE)
 })
@@ -593,12 +595,12 @@ test_that("fixed treatment baselines use the shared ordinate refusal rule", {
         class = if(null == 0) "BayesTools_point_mass_at_null" else "BayesTools_zero_ordinate")
       expect_null(conditionCall(condition))
     }
-    whole <- hypothesis_BF(posterior, hypothesis = "2 * mu_fac = 0", parameter = "mu_fac", density_method = method, columns = "all")
+    whole <- hypothesis_BF(posterior, hypothesis = "2 * mu_fac = 0", parameter = "mu_fac", density_method = method)
     expect_true(is.na(attr(whole, "raw_BF")[1L]))
     expect_true(all(is.finite(attr(whole, "raw_BF")[-1L])))
     expect_match(attr(whole, "warnings")[[1L]], "point", ignore.case = TRUE)
-    contrast <- hypothesis_BF(posterior, hypothesis = "mu_fac[B] - mu_fac[A] = 0", parameter = "mu_fac", density_method = method, columns = "all")
-    direct <- hypothesis_BF(posterior, hypothesis = "mu_fac[B] = 0", parameter = "mu_fac", density_method = method, columns = "all")
+    contrast <- hypothesis_BF(posterior, hypothesis = "mu_fac[B] - mu_fac[A] = 0", parameter = "mu_fac", density_method = method)
+    direct <- hypothesis_BF(posterior, hypothesis = "mu_fac[B] = 0", parameter = "mu_fac", density_method = method)
     expect_equal(attr(contrast, "raw_log_BF"), attr(direct, "raw_log_BF"), tolerance = 1e-12)
   }
 })
@@ -606,7 +608,7 @@ test_that("fixed treatment baselines use the shared ordinate refusal rule", {
 test_that("transitive numerical zero over zero is explicitly undefined", {
   call <- function(hypothesis, log = FALSE, reciprocal = FALSE, method = "KDE"){
     withCallingHandlers(hypothesis_BF(c(0, 1), prior("uniform", list(-1000, 1000)), hypothesis,
-      parameter = "theta", density_method = method, columns = "all", logBF = log, BF01 = reciprocal),
+      parameter = "theta", density_method = method, include_probabilities = TRUE, logBF = log, BF01 = reciprocal),
       warning = function(condition){
         expect_match(conditionMessage(condition), "Gaussian KDE height is estimated from kernel tails", fixed = TRUE)
         expect_null(conditionCall(condition))
@@ -616,7 +618,7 @@ test_that("transitive numerical zero over zero is explicitly undefined", {
   point <- call("theta = 100 vs theta != 100")
   expect_identical(attr(point, "raw_log_BF"), -Inf)
   region <- call("theta > 100")
-  expect_identical(region$posterior, 0)
+  expect_identical(region$posterior_prob_alt, 0)
   for(flags in list(c(FALSE, FALSE), c(TRUE, FALSE), c(FALSE, TRUE), c(TRUE, TRUE))){
     result <- call("theta = 100 vs theta > 100", flags[1L], flags[2L])
     expect_identical(attr(result, "raw_BF"), NA_real_)
@@ -750,9 +752,9 @@ test_that("transformed factor levels preserve joint affine prior provenance", {
   expect_identical(.bt_meta_get(affine$B, "linear_offset"), 3)
   expect_equal(.bt_meta_get(affine$B, "linear_weights")[["mu_fac"]], 2)
 
-  raw_region <- hypothesis_BF(raw, hypothesis = "mu_fac[B] > 0", seed = 82, columns = "all")
-  affine_region <- hypothesis_BF(affine, hypothesis = "mu_fac[B] > 3", seed = 82, columns = "all")
-  expect_identical(affine_region$prior, raw_region$prior)
+  raw_region <- hypothesis_BF(raw, hypothesis = "mu_fac[B] > 0", seed = 82, include_probabilities = TRUE)
+  affine_region <- hypothesis_BF(affine, hypothesis = "mu_fac[B] > 3", seed = 82, include_probabilities = TRUE)
+  expect_identical(affine_region$prior_prob_alt, raw_region$prior_prob_alt)
   expect_identical(attr(affine_region, "raw_BF"), attr(raw_region, "raw_BF"))
 
   nonlinear <- marginal_posterior(
@@ -901,7 +903,7 @@ test_that("raw-draw point nulls use the continuous draws of a prior with declare
   # the kernel sum of the continuous draws (bandwidth of those draws)
   for(value in c(0.25, 0.5, 1)){
     out <- hypothesis_BF(posterior, spike, paste("theta =", value), parameter = "theta",
-                         columns = "all", seed = 1)
+                         seed = 1)
     expect_equal(
       attr(out, "raw_BF"),
       .75 * stats::dnorm(value) / (.6 * kde_height(continuous, value)),
@@ -909,7 +911,7 @@ test_that("raw-draw point nulls use the continuous draws of a prior with declare
     )
   }
   normal <- hypothesis_BF(posterior, spike, "theta = 0.25", parameter = "theta",
-                          density_method = "normal", columns = "all", seed = 1)
+                          density_method = "normal", seed = 1)
   expect_equal(
     attr(normal, "raw_BF"),
     .75 * stats::dnorm(.25) / (.6 * stats::dnorm(.25, mean(continuous), stats::sd(continuous))),
@@ -918,21 +920,21 @@ test_that("raw-draw point nulls use the continuous draws of a prior with declare
 
   # an affine expression of the parameter masks the raw draws first
   scaled <- hypothesis_BF(posterior, spike, "2 * theta = 0.5", parameter = "theta",
-                          columns = "all", seed = 1)
+                          seed = 1)
   expect_equal(attr(scaled, "raw_BF"), attr(
-    hypothesis_BF(posterior, spike, "theta = 0.25", parameter = "theta", columns = "all", seed = 1),
+    hypothesis_BF(posterior, spike, "theta = 0.25", parameter = "theta", seed = 1),
     "raw_BF"), tolerance = 1e-10)
 
   # without declared atoms every draw enters the kernel sum
   plain <- hypothesis_BF(posterior, prior("normal", list(0, 1)), "theta = 0.25",
-                         parameter = "theta", columns = "all", seed = 1)
+                         parameter = "theta", seed = 1)
   expect_equal(attr(plain, "raw_BF"), stats::dnorm(.25) / kde_height(posterior, .25),
                tolerance = 1e-10)
 
   # no continuous draw: zero continuous height; one: the degenerate-sample refusal
   expect_identical(
     attr(hypothesis_BF(rep(0.2, 50), spike, "theta = 0.25", parameter = "theta",
-                       columns = "all", seed = 1), "raw_BF"),
+                       seed = 1), "raw_BF"),
     Inf
   )
   expect_error(
@@ -955,7 +957,7 @@ test_that("raw-draw point nulls reflect the kernel at the bounds the prior objec
   set.seed(7)
   posterior <- stats::qnorm(stats::runif(20000, stats::pnorm(0, .1, .2), 1), .1, .2)
   BF <- function(prior, hypothesis, draws = posterior){
-    attr(hypothesis_BF(draws, prior, hypothesis, parameter = "tau", columns = "all", seed = 1), "raw_BF")
+    attr(hypothesis_BF(draws, prior, hypothesis, parameter = "tau", seed = 1), "raw_BF")
   }
   exact_BF <- function(value){
     2 * stats::dnorm(value) /
@@ -1003,7 +1005,7 @@ test_that("raw-draw point nulls reflect the kernel at the bounds the prior objec
   expect_equal(BF(half, "tau = 0.02", outside), 2 * stats::dnorm(.02) / kernel(.02, outside), tolerance = 1e-10)
   expect_equal(
     attr(hypothesis_BF(posterior, half, "tau = 0", parameter = "tau", density_method = "normal",
-                       columns = "all", seed = 1), "raw_BF"),
+                       seed = 1), "raw_BF"),
     2 * stats::dnorm(0) / stats::dnorm(0, mean(posterior), stats::sd(posterior)), tolerance = 1e-10)
   prior_draws <- abs(stats::rnorm(20000))
   expect_equal(suppressWarnings(BF(prior_draws, "tau = 0.02")), kernel(.02, prior_draws) / kernel(.02),
@@ -1055,11 +1057,11 @@ test_that("hypothesis_BF KDEs retain Gaussian tails beyond sample grids", {
     prior      = prior,
     hypothesis = "theta = 3",
     parameter  = "theta",
-    columns    = "all"
+    include_densities = TRUE
   ))
-  expect_equal(out[["posterior"]], expected_posterior, tolerance = 1e-12,
+  expect_equal(out$posterior_density, expected_posterior, tolerance = 1e-12,
                ignore_attr = TRUE)
-  expect_equal(out[["prior"]], expected_prior, tolerance = 1e-12,
+  expect_equal(out$prior_density, expected_prior, tolerance = 1e-12,
                ignore_attr = TRUE)
   expect_equal(
     attr(out, "raw_BF"),
@@ -1121,9 +1123,9 @@ test_that("hypothesis_BF marginal KDEs retain tails beyond evaluation grids", {
     posterior  = posterior,
     hypothesis = "theta = 2",
     parameter  = "theta",
-    columns    = "all"
+    include_densities = TRUE
   )
-  expect_equal(out[["posterior"]], expected_height, tolerance = 1e-12)
+  expect_equal(out$posterior_density, expected_height, tolerance = 1e-12)
   expect_true(is.finite(attr(out, "raw_BF")))
   expect_match(attr(out, "warnings"), "Posterior samples do not span")
 })
@@ -1167,7 +1169,7 @@ test_that("hypothesis_BF routes normal point-null density requests", {
     hypothesis     = "theta = 0",
     parameter      = "theta",
     density_method = "normal",
-    columns        = "all"
+    include_method = TRUE
   )
   expected <- Savage_Dickey_BF(
     posterior,
@@ -1205,12 +1207,12 @@ test_that("hypothesis_BF uses boundary-reflected KDE for marginal point nulls", 
     hypothesis     = "theta = 0",
     parameter      = "theta",
     density_method = "KDE",
-    columns        = "all"
+    include_method = TRUE
   )
 
   expect_true(attr(expected, "posterior_density_boundary_reflection"))
   expect_equal(attr(out, "raw_BF"), as.numeric(expected), tolerance = 1e-12)
-  expect_equal(out[["method"]], "Savage-Dickey")
+  expect_equal(out[["method"]], "Savage-Dickey (KDE)")
 })
 
 
@@ -1234,7 +1236,7 @@ test_that("hypothesis_BF applies normal point-null routing to list levels", {
     hypothesis     = "theta[ a ] = 0",
     parameter      = "theta",
     density_method = "normal",
-    columns        = "all"
+    include_method = TRUE
   )
   expected <- Savage_Dickey_BF(
     level_a,
@@ -1251,7 +1253,7 @@ test_that("hypothesis_BF applies normal point-null routing to list levels", {
     hypothesis     = "theta = 0",
     parameter      = "theta",
     density_method = "normal",
-    columns        = "all"
+    include_method = TRUE
   )
 
   expect_equal(nrow(expanded), 2L)
@@ -1271,7 +1273,8 @@ test_that("hypothesis_BF normal compound point expressions do not use KDE", {
     hypothesis     = "theta + 0 = 0",
     parameter      = "theta",
     density_method = "normal",
-    columns        = "all"
+    include_densities = TRUE,
+    include_method = TRUE
   ), class = "BayesTools_inexact_ordinate")
 
   expected_prior <- stats::dnorm(0, mean = mean(prior), sd = stats::sd(prior))
@@ -1282,10 +1285,10 @@ test_that("hypothesis_BF normal compound point expressions do not use KDE", {
   )
 
   expect_equal(attr(out, "raw_BF"), expected_prior / expected_posterior)
-  expect_equal(out[["prior"]], expected_prior)
-  expect_equal(out[["posterior"]], expected_posterior)
+  expect_equal(out$prior_density, expected_prior)
+  expect_equal(out$posterior_density, expected_posterior)
   expect_equal(out[["method"]], "Savage-Dickey (normal)")
-  expect_false(identical(out[["method"]], "kernel Savage-Dickey"))
+  expect_false(identical(out[["method"]], "Savage-Dickey (KDE)"))
 })
 
 
@@ -1362,76 +1365,31 @@ test_that("hypothesis_BF returns compact BayesTools table by default", {
   expect_true(attr(log_out, "logBF"))
   expect_false(attr(log_out, "BF01"))
 
-  expect_error(
-    hypothesis_BF(
-      posterior  = posterior,
-      prior      = prior,
-      hypothesis = "theta = 0",
-      parameter  = "theta",
-      columns    = c("all", "typo")
-    ),
-    "cannot be combined"
-  )
-  expect_error(
-    hypothesis_BF(
-      posterior  = posterior,
-      prior      = prior,
-      hypothesis = "theta = 0",
-      parameter  = "theta",
-      columns    = "prior_probability"
-    ),
-    "Unknown 'columns' value"
-  )
-
-  # each column has one spelling: its column name
-  expect_warning(selected <- hypothesis_BF(
-    posterior  = posterior,
-    prior      = prior,
-    hypothesis = "theta = 0",
-    parameter  = "theta",
-    columns    = c("method", "prior")
-  ), class = "BayesTools_inexact_ordinate")
-  expect_equal(
-    colnames(selected),
-    c("Alternative", "Null", "BF", "BF_error", "method", "prior")
-  )
-  for(spelling in c("Method", "computation_method", "Prior", "error%(BF)",
-                    "alternative", "null")){
-    expect_error(
-      hypothesis_BF(
-        posterior  = posterior,
-        prior      = prior,
-        hypothesis = "theta = 0",
-        parameter  = "theta",
-        columns    = spelling
-      ),
-      paste0(
-        "Unknown 'columns' value: '", spelling, "'. Columns are selected by ",
-        "their names: 'Alternative', 'Null', 'BF', 'BF_error', 'prior', ",
-        "'posterior', 'method', or 'default' or 'all'."
-      ),
-      fixed = TRUE
-    )
+  distribution <- BayesTools::prior("normal", list(0, 1))
+  evaluate <- function(statement, ...){
+    hypothesis_BF(posterior, distribution, statement, parameter = "theta", ...)
+  }
+  expect_error(evaluate("theta = 0", columns = "all"), "unused argument.*columns")
+  for(flag in c("include_densities", "include_probabilities", "include_method")){
+    for(invalid in list(NA, c(TRUE, FALSE), 1)){
+      expect_error(do.call(evaluate, c(list("theta = 0"), setNames(list(invalid), flag))), flag)
+    }
   }
 
-  expect_warning(detailed <- hypothesis_BF(
-    posterior  = posterior,
-    prior      = prior,
-    hypothesis = "theta = 0",
-    parameter  = "theta",
-    columns    = "all"
-  ), class = "BayesTools_inexact_ordinate")
-
-  expect_equal(
-    colnames(detailed),
-    c("Alternative", "Null", "BF", "BF_error", "prior", "posterior", "method")
-  )
-  expect_match(attr(detailed, "footnotes"), "diagnostic values", fixed = TRUE)
-  expect_match(attr(detailed, "footnotes"), "not always probabilities",
-               fixed = TRUE)
-
-  printed_detailed <- utils::capture.output(print(detailed))
-  expect_true(any(grepl("diagnostic values", printed_detailed, fixed = TRUE)))
+  base <- names(out)
+  densities <- c("prior_density", "posterior_density")
+  probabilities <- c("prior_prob_alt", "posterior_prob_alt", "prior_prob_null", "posterior_prob_null")
+  point <- "theta = 0"
+  region <- "-0.1 <= theta <= 0.1"
+  expect_identical(names(evaluate(point, include_method = TRUE)), c(base, "method"))
+  expect_identical(names(evaluate(point, include_densities = TRUE)), c(base, densities))
+  expect_identical(names(evaluate(region, include_probabilities = TRUE)), c(base, probabilities))
+  expect_identical(names(evaluate(point, include_probabilities = TRUE)), base)
+  expect_identical(names(evaluate(region, include_densities = TRUE)), base)
+  mixed <- evaluate(c(point, region), include_densities = TRUE, include_probabilities = TRUE,
+                    include_method = TRUE)
+  expect_identical(names(mixed), c(base, densities, probabilities, "method"))
+  expect_equal(mixed$method, c("Savage-Dickey (KDE)", "prior-posterior odds"))
 
   expect_warning(multi <- hypothesis_BF(
     posterior  = posterior,
@@ -1503,14 +1461,14 @@ test_that("hypothesis_BF accepts scalar BayesTools prior objects", {
     prior      = prior("normal", list(mean = 0, sd = 1)),
     hypothesis = "theta = 0",
     parameter  = "theta",
-    columns    = "all",
+    include_densities = TRUE,
     seed       = 3
   )
 
-  expect_equal(out[["prior"]], stats::dnorm(0), tolerance = 1e-3)
+  expect_equal(out$prior_density, stats::dnorm(0), tolerance = 1e-3)
   expect_equal(
     attr(out, "raw_BF"),
-    out[["prior"]] / out[["posterior"]],
+    out$prior_density / out$posterior_density,
     tolerance = 1e-12
   )
 })
@@ -1532,13 +1490,13 @@ test_that("hypothesis_BF accepts mixture and spike-and-slab prior objects", {
   # Reference: analytic mixture densities; 1e-4 is the grid-refinement
   # criterion of the deterministic prior density.
   point <- hypothesis_BF(posterior, mixture, hypothesis = "theta = 0",
-                         parameter = "theta", columns = "all", seed = 1)
-  expect_equal(as.numeric(point[["prior"]]),
+                         parameter = "theta", include_densities = TRUE, seed = 1)
+  expect_equal(as.numeric(point$prior_density),
                .25 * stats::dnorm(0) + .75 * stats::dnorm(0, sd = 0.3),
                tolerance = 1e-4)
   slab <- hypothesis_BF(posterior, spike_and_slab, hypothesis = "theta = 0.3",
-                        parameter = "theta", columns = "all", seed = 1)
-  expect_equal(as.numeric(slab[["prior"]]), 0.3 * stats::dnorm(0.3),
+                        parameter = "theta", include_densities = TRUE, seed = 1)
+  expect_equal(as.numeric(slab$prior_density), 0.3 * stats::dnorm(0.3),
                tolerance = 1e-4)
   expect_error(
     hypothesis_BF(posterior, spike_and_slab, hypothesis = "theta = 0",
@@ -1558,9 +1516,9 @@ test_that("hypothesis_BF accepts mixture and spike-and-slab prior objects", {
   )
   for(case in region_cases){
     region <- hypothesis_BF(posterior, case$prior, hypothesis = "theta > 0.2",
-                            parameter = "theta", columns = "all", seed = 1)
+                            parameter = "theta", include_probabilities = TRUE, seed = 1)
     odds    <- case$mass / (1 - case$mass)
-    expect_equal(region[["prior"]], odds, tolerance = 1e-12)
+    expect_equal(region$prior_prob_alt / region$prior_prob_null, odds, tolerance = 1e-12)
     expect_true(is.finite(attr(region, "raw_BF")))
   }
 })
@@ -1582,11 +1540,11 @@ test_that("hypothesis_BF uses exact scalar prior density beyond its grid", {
     hypothesis = "theta = 4",
     parameter  = "theta",
     seed       = 14,
-    columns    = "all"
+    include_densities = TRUE
   )
 
-  expect_equal(out[["prior"]], stats::dnorm(4), tolerance = 1e-15)
-  expect_gt(out[["posterior"]], 0)
+  expect_equal(out$prior_density, stats::dnorm(4), tolerance = 1e-15)
+  expect_gt(out$posterior_density, 0)
   expect_true(is.finite(attr(out, "raw_BF")))
 })
 
@@ -1603,7 +1561,7 @@ test_that("hypothesis_BF uses analytic scalar prior probabilities for simple reg
     prior      = prior("normal", list(mean = 0, sd = 1)),
     hypothesis = "theta > 0.25",
     parameter  = "theta",
-    columns    = "all",
+    include_probabilities = TRUE,
     seed       = 1
   )
   out_seed2 <- hypothesis_BF(
@@ -1611,7 +1569,7 @@ test_that("hypothesis_BF uses analytic scalar prior probabilities for simple reg
     prior      = prior("normal", list(mean = 0, sd = 1)),
     hypothesis = "theta > 0.25",
     parameter  = "theta",
-    columns    = "all",
+    include_probabilities = TRUE,
     seed       = 2
   )
 
@@ -1622,7 +1580,7 @@ test_that("hypothesis_BF uses analytic scalar prior probabilities for simple reg
   expected        <- (posterior_left / posterior_right) /
     (prior_left / prior_right)
 
-  expect_equal(out[["prior"]], prior_left / prior_right, tolerance = 1e-12)
+  expect_equal(out$prior_prob_alt / out$prior_prob_null, prior_left / prior_right, tolerance = 1e-12)
   expect_equal(attr(out, "raw_BF"), expected, tolerance = 1e-12)
   expect_equal(attr(out_seed2, "raw_BF"), expected, tolerance = 1e-12)
 })
@@ -1643,7 +1601,7 @@ test_that("hypothesis_BF uses prior-posterior odds for region hypotheses", {
     posterior  = posterior,
     prior      = prior,
     hypothesis = "theta > 0.25",
-    columns    = "all"
+    include_method = TRUE
   )
 
   prior_left      <- mean(prior[["theta"]] > 0.25)
@@ -1770,6 +1728,35 @@ test_that("hypothesis_BF estimates region BF error for overlapping regions", {
 })
 
 
+test_that("evidence columns report point densities and probabilities of the labelled regions", {
+
+  draws <- c(-1, 0, .25, .5, 1, 2)
+  distribution <- prior("normal", list(0, 1))
+  statements <- c("theta = 0.2", "0 <= theta <= 1", "theta > 1 vs theta > 0",
+                  "theta = 0.2 vs theta > 1", "theta > 1 vs theta = 0.2")
+  run <- function(BF01) hypothesis_BF(draws, distribution, statements, parameter = "theta",
+    include_densities = TRUE,
+    include_probabilities = TRUE, density_method = "normal", BF01 = BF01)
+  result <- as.data.frame(run(FALSE))
+  inside <- stats::pnorm(1) - .5
+  tail <- stats::pnorm(1, lower.tail = FALSE)
+  point <- c(1L, 4L, 5L)
+  expect_equal(result$prior_density[point], rep(stats::dnorm(.2), 3))
+  expect_equal(result$posterior_density[point], rep(stats::dnorm(.2, mean(draws), stats::sd(draws)), 3))
+  expect_true(all(is.na(result$prior_density[2:3])))
+  expect_true(all(is.na(result$posterior_density[2:3])))
+  expect_equal(result$prior_prob_alt, c(NA, inside, tail, NA, tail))
+  expect_equal(result$prior_prob_null, c(NA, 1 - inside, .5, tail, NA))
+  expect_equal(result$posterior_prob_alt, c(NA, 4/6, 1/6, NA, 1/6))
+  expect_equal(result$posterior_prob_null, c(NA, 2/6, 4/6, 1/6, NA))
+  reverse <- as.data.frame(run(TRUE))
+  evidence <- c("prior_density", "posterior_density", "prior_prob_alt",
+                "posterior_prob_alt", "prior_prob_null", "posterior_prob_null")
+  expect_identical(result[evidence], reverse[evidence])
+  expect_false(any(c("prior", "posterior", "method") %in% names(result)))
+})
+
+
 test_that("hypothesis_BF supports interval complements", {
 
   prior     <- data.frame(theta = seq(-1, 1, length.out = 101))
@@ -1789,6 +1776,32 @@ test_that("hypothesis_BF supports interval complements", {
     (prior_left / prior_right)
 
   expect_equal(attr(out, "raw_BF"), expected, tolerance = 1e-12)
+})
+
+
+test_that("interval chains assign boundary mass and compare the requested regions", {
+
+  draws <- c(-1, 0, 0, 0.25, 0.5, 1, 2, 3)
+  spike_slab <- prior_spike_and_slab(
+    prior("normal", list(0, 1)), prior_inclusion = prior("spike", list(0.6))
+  )
+  statements <- c(
+    "0 <= theta <= 1", "1 >= theta > 0", "0 < theta < 1", "1 > theta >= 0",
+    "!(0 <= theta <= 1)",
+    "0 <= theta <= 1 vs theta > 1", "theta > 1 vs 0 <= theta <= 1"
+  )
+  result <- hypothesis_BF(draws, spike_slab, hypothesis = statements, parameter = "theta")
+
+  # The lower endpoint carries 40% prior mass, and both endpoints occur in the draws.
+  prior_inside <- 0.6 * (stats::pnorm(1) - 0.5) + c(0.4, 0, 0, 0.4)
+  posterior_inside <- c(5, 3, 2, 4) / length(draws)
+  inside_vs_outside <- (posterior_inside / (1 - posterior_inside)) /
+    (prior_inside / (1 - prior_inside))
+  inside_vs_upper <- (posterior_inside[1] / mean(draws > 1)) /
+    (prior_inside[1] / (0.6 * stats::pnorm(1, lower.tail = FALSE)))
+  expect_equal(attr(result, "raw_BF"),
+               c(inside_vs_outside, 1 / inside_vs_outside[1], inside_vs_upper, 1 / inside_vs_upper),
+               tolerance = 1e-12)
 })
 
 
@@ -1847,12 +1860,12 @@ test_that("hypothesis_BF reports undefined odds when both posterior regions are 
     posterior  = posterior,
     prior      = prior,
     hypothesis = "theta > 1 vs theta < -1",
-    columns    = "all"
+    include_probabilities = TRUE
   )
 
   expect_true(is.na(attr(out, "raw_BF")))
   expect_false(is.nan(attr(out, "raw_BF")))
-  expect_true(is.na(out[["posterior"]]))
+  expect_equal(c(out$posterior_prob_alt, out$posterior_prob_null), c(0, 0))
   expect_true(is.na(out[["BF_error"]]))
   expect_match(attr(out, "warnings"), "Both posterior region masses are zero")
 })
@@ -2116,14 +2129,17 @@ test_that("hypothesis_BF evaluates explicit marginal posterior level comparisons
   out <- hypothesis_BF(
     posterior  = posterior,
     hypothesis = "mu_alloc[alternate] > mu_alloc[random]",
-    columns    = "all",
+    include_probabilities = TRUE,
+    include_method = TRUE,
     seed       = 11
   )
 
-  expect_equal(out[["posterior"]], 4, tolerance = 1e-12)
-  expect_equal(attr(out, "raw_BF"), out[["posterior"]] / out[["prior"]],
+  prior_odds <- out$prior_prob_alt / out$prior_prob_null
+  posterior_odds <- out$posterior_prob_alt / out$posterior_prob_null
+  expect_equal(posterior_odds, 4, tolerance = 1e-12)
+  expect_equal(attr(out, "raw_BF"), posterior_odds / prior_odds,
                tolerance = 1e-12)
-  expect_true(out[["prior"]] > .90 && out[["prior"]] < 1.10)
+  expect_true(prior_odds > .90 && prior_odds < 1.10)
   expect_true(is.finite(out[["BF_error"]]))
   expect_equal(out[["method"]], "prior-posterior odds")
 })
@@ -2164,8 +2180,7 @@ test_that("hypothesis_BF references level names that contain brackets", {
   reference <- hypothesis_BF(
     make_posterior(c("A", "B")),
     hypothesis = "mu[A] > mu[B]",
-    seed       = 1,
-    columns    = "all"
+    seed       = 1
   )
   # cut() levels; backticks or the parameter catalog's escaped component
   # form ("(0,1%5D", optionally quoted) reference them.
@@ -2176,7 +2191,7 @@ test_that("hypothesis_BF references level names that contain brackets", {
     "mu[(0,1%5D] > `mu[(1,2]]`"
   )){
     out <- hypothesis_BF(posterior, hypothesis = hypothesis, seed = 1,
-                         columns = "all")
+                         include_method = TRUE)
     expect_equal(attr(out, "raw_BF"), attr(reference, "raw_BF"),
                  tolerance = 1e-12, info = hypothesis)
     expect_equal(out[["method"]], "prior-posterior odds", info = hypothesis)
@@ -2331,16 +2346,17 @@ test_that("hypothesis_BF uses child precomputed density for explicit level point
   out <- hypothesis_BF(
     posterior      = posterior,
     hypothesis     = "mu_alloc[alternate] = 0",
-    columns        = "all",
+    include_densities = TRUE,
+    include_method = TRUE,
     density_method = "precomputed"
   )
 
   expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) / 0.50
 
   expect_equal(attr(out, "raw_BF"), expected, tolerance = 1e-12)
-  expect_equal(out[["posterior"]], 0.50, tolerance = 1e-12)
+  expect_equal(out$posterior_density, 0.50, tolerance = 1e-12)
   expect_equal(as.numeric(out[["BF_error"]]), 3, tolerance = 1e-12)
-  expect_equal(out[["method"]], "Savage-Dickey (precomputed)")
+  expect_equal(out[["method"]], "Savage-Dickey (IWMDE)")
 })
 
 
@@ -2407,10 +2423,10 @@ test_that("hypothesis_linear_target compiles an exact atom-free linear target", 
     posterior  = target$posterior,
     hypothesis = target$hypothesis,
     parameter  = target$parameter,
-    columns    = "all"
+    include_method = TRUE
   )
   expect_true(is.finite(attr(out, "raw_BF")))
-  expect_identical(out$method, "transitive Savage-Dickey")
+  expect_identical(out$method, "transitive Savage-Dickey (KDE)")
 
   precise <- hypothesis_linear_target(
     posterior = posterior,
@@ -2767,14 +2783,16 @@ test_that("hypothesis_BF uses parent precomputed metadata for level point nulls"
   explicit <- hypothesis_BF(
     posterior      = posterior,
     hypothesis     = "mu_alloc[alternate] = 0",
-    columns        = "all",
+    include_densities = TRUE,
+    include_method = TRUE,
     density_method = "precomputed"
   )
   expanded <- hypothesis_BF(
     posterior      = posterior,
     hypothesis     = "mu_alloc = 0",
     parameter      = "mu_alloc",
-    columns        = "all",
+    include_densities = TRUE,
+    include_method = TRUE,
     density_method = "precomputed"
   )
 
@@ -2782,12 +2800,12 @@ test_that("hypothesis_BF uses parent precomputed metadata for level point nulls"
   expected_random <- BayesTools:::.prior_linear_density_height(prior_density, 0) / 0.25
 
   expect_equal(attr(explicit, "raw_BF"), expected_alternate, tolerance = 1e-12)
-  expect_equal(explicit[["posterior"]], 0.50, tolerance = 1e-12)
+  expect_equal(explicit$posterior_density, 0.50, tolerance = 1e-12)
   expect_equal(as.numeric(explicit[["BF_error"]]), 3, tolerance = 1e-12)
-  expect_equal(expanded[["posterior"]], c(0.50, 0.25), tolerance = 1e-12)
+  expect_equal(expanded$posterior_density, c(0.50, 0.25), tolerance = 1e-12)
   expect_equal(attr(expanded, "raw_BF"), c(expected_alternate, expected_random),
                tolerance = 1e-12)
-  expect_equal(expanded[["method"]], rep("Savage-Dickey (precomputed)", 2))
+  expect_equal(expanded[["method"]], rep("Savage-Dickey (IWMDE)", 2))
 })
 
 test_that("hypothesis_BF uses parent posterior_densities for explicit level point null", {
@@ -2822,15 +2840,16 @@ test_that("hypothesis_BF uses parent posterior_densities for explicit level poin
   out <- hypothesis_BF(
     posterior      = posterior,
     hypothesis     = "mu_alloc[alternate] = 0",
-    columns        = "all",
+    include_densities = TRUE,
+    include_method = TRUE,
     density_method = "precomputed"
   )
 
   expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) / 0.50
 
   expect_equal(attr(out, "raw_BF"), expected, tolerance = 1e-12)
-  expect_equal(out[["posterior"]], 0.50, tolerance = 1e-12)
-  expect_equal(out[["method"]], "Savage-Dickey (precomputed)")
+  expect_equal(out$posterior_density, 0.50, tolerance = 1e-12)
+  expect_equal(out[["method"]], "Savage-Dickey (qCMDE)")
 })
 
 
@@ -2867,11 +2886,12 @@ test_that("hypothesis_BF infers marginal_inference parameter from bracket syntax
   out <- hypothesis_BF(
     posterior  = inference,
     hypothesis = "mu_alloc[alternate] > mu_alloc[random]",
-    columns    = "all",
+    include_probabilities = TRUE,
+    include_method = TRUE,
     seed       = 12
   )
 
-  expect_equal(out[["posterior"]], 3, tolerance = 1e-12)
+  expect_equal(out$posterior_prob_alt / out$posterior_prob_null, 3, tolerance = 1e-12)
   expect_equal(out[["method"]], "prior-posterior odds")
 
   # a 'parameter' the inference does not contain is an unresolved reference
@@ -2937,7 +2957,7 @@ test_that("hypothesis_BF samples level priors from mixture and conditional conte
     out <- hypothesis_BF(
       posterior  = posterior,
       hypothesis = "mu_alloc[alternate] > mu_alloc[random]",
-      columns    = "all",
+      include_method = TRUE,
       seed       = 13
     )
 
@@ -3191,16 +3211,17 @@ test_that("hypothesis_BF reuses stored IWMDE ordinates and BF error", {
     posterior      = posterior,
     hypothesis     = "theta = 0.5",
     parameter      = "theta",
-    columns        = "all",
+    include_densities = TRUE,
+    include_method = TRUE,
     density_method = "precomputed"
   )
 
   expected <- BayesTools:::.prior_linear_density_height(prior_density, 0.5) / 0.25
 
   expect_equal(attr(out, "raw_BF"), expected, tolerance = 1e-12)
-  expect_equal(out[["posterior"]], 0.25, tolerance = 1e-12)
+  expect_equal(out$posterior_density, 0.25, tolerance = 1e-12)
   expect_equal(as.numeric(out[["BF_error"]]), 7, tolerance = 1e-12)
-  expect_equal(out[["method"]], "Savage-Dickey (precomputed)")
+  expect_equal(out[["method"]], "Savage-Dickey (IWMDE)")
 })
 
 
@@ -3220,7 +3241,7 @@ test_that("hypothesis_BF propagates point and region error for point-vs-region t
     posterior      = posterior,
     hypothesis     = "theta = 0 vs theta > 0",
     parameter      = "theta",
-    columns        = "all",
+    include_method = TRUE,
     density_method = "precomputed"
   )
 
@@ -3231,7 +3252,7 @@ test_that("hypothesis_BF propagates point and region error for point-vs-region t
   )
 
   expect_equal(as.numeric(out[["BF_error"]]), expected_error, tolerance = 1e-12)
-  expect_equal(out[["method"]], "transitive Savage-Dickey")
+  expect_equal(out[["method"]], "transitive Savage-Dickey (IWMDE)")
 })
 
 
@@ -3287,7 +3308,7 @@ test_that("hypothesis_BF reuses stored qCMDE density and BF error", {
     posterior      = posterior,
     hypothesis     = "theta = 0.25",
     parameter      = "theta",
-    columns        = "all",
+    include_densities = TRUE,
     density_method = "precomputed"
   )
 
@@ -3296,7 +3317,7 @@ test_that("hypothesis_BF reuses stored qCMDE density and BF error", {
     posterior_height
 
   expect_equal(attr(out, "raw_BF"), expected, tolerance = 1e-12)
-  expect_equal(out[["posterior"]], posterior_height, tolerance = 1e-12)
+  expect_equal(out$posterior_density, posterior_height, tolerance = 1e-12)
   expect_equal(as.numeric(out[["BF_error"]]), 4, tolerance = 1e-12)
 })
 
@@ -3349,7 +3370,6 @@ test_that("hypothesis_BF rejects precomputed point density missing the null", {
       posterior      = posterior,
       hypothesis     = "theta = 0",
       parameter      = "theta",
-      columns        = "all",
       density_method = "precomputed"
     ),
     "Stored posterior density does not span",
@@ -3405,7 +3425,6 @@ test_that("hypothesis_BF precomputed point null rejects density grid missing sup
       posterior      = posterior,
       hypothesis     = "theta = 0",
       parameter      = "theta",
-      columns        = "all",
       density_method = "precomputed"
     ),
     "Stored posterior density does not span",
@@ -3465,10 +3484,10 @@ test_that("point hypotheses need an exact regular prior ordinate on every route"
   )
   transformed_BF <- hypothesis_BF(
     .hypothesis_marginal_posterior_for_test(abs(draws), undefined), hypothesis = "theta = 1",
-    parameter = "theta", columns = "all"
+    parameter = "theta", include_densities = TRUE
   )
   expect_true(is.finite(transformed_BF$BF) && transformed_BF$BF > 0)
-  expect_equal(as.numeric(transformed_BF$prior), stats::dnorm(1) / 2, tolerance = 1e-12)
+  expect_equal(as.numeric(transformed_BF$prior_density), stats::dnorm(1) / 2, tolerance = 1e-12)
   expect_ordinate_class(
     Savage_Dickey_BF(.hypothesis_marginal_posterior_for_test(draws, BayesTools:::.prior_linear_combination_density(
       list(x = spike), c(x = 1))), null_hypothesis = 0, silent = TRUE),
@@ -3477,9 +3496,9 @@ test_that("point hypotheses need an exact regular prior ordinate on every route"
 
   # an affine expression of a prior object has its exact density (2 theta ~
   # N(0, 2) at 1, i.e. dnorm(1 / 2) / 2); nonlinear expressions are refused
-  affine <- hypothesis_BF(draws, prior("normal", list(0, 1)), "2 * theta = 1", columns = "all")
-  expect_identical(affine$method, "kernel Savage-Dickey")
-  expect_equal(as.numeric(affine$prior), stats::dnorm(.5) / 2, tolerance = 1e-14)
+  affine <- hypothesis_BF(draws, prior("normal", list(0, 1)), "2 * theta = 1", include_densities = TRUE, include_method = TRUE)
+  expect_identical(affine$method, "Savage-Dickey (KDE)")
+  expect_equal(as.numeric(affine$prior_density), stats::dnorm(.5) / 2, tolerance = 1e-14)
   expect_ordinate_class(hypothesis_BF(draws, prior("normal", list(0, 1)), "exp(theta) = 1"),
                         "BayesTools_inexact_ordinate")
 
@@ -3488,17 +3507,17 @@ test_that("point hypotheses need an exact regular prior ordinate on every route"
   # prior density)
   prior_draws <- stats::rnorm(4000)
   raw_warning <- tryCatch(
-    hypothesis_BF(draws, prior_draws, c("theta = 0", "theta = 0.5"), columns = "all"),
+    hypothesis_BF(draws, prior_draws, c("theta = 0", "theta = 0.5")),
     warning = function(w) w
   )
   expect_s3_class(raw_warning, "BayesTools_inexact_ordinate")
   expect_s3_class(raw_warning, "BayesTools_hypothesis_ordinate")
   expect_match(conditionMessage(raw_warning), "'theta = 0', 'theta = 0.5'", fixed = TRUE)
-  expect_warning(raw <- hypothesis_BF(draws, prior_draws, "theta = 0", columns = "all"),
+  expect_warning(raw <- hypothesis_BF(draws, prior_draws, "theta = 0", include_densities = TRUE, include_method = TRUE),
                  class = "BayesTools_inexact_ordinate")
-  expect_identical(raw$method, "kernel Savage-Dickey")
+  expect_identical(raw$method, "Savage-Dickey (KDE)")
   expect_equal(
-    as.numeric(raw$prior),
+    as.numeric(raw$prior_density),
     as.numeric(BayesTools:::.hypothesis_sample_density_height(prior_draws, 0, "prior")),
     tolerance = 1e-14
   )
@@ -3529,13 +3548,13 @@ test_that("linear level expressions use the joint prior density for normal ordin
   draws <- fit[, "mu_fac[1]"] - fit[, "mu_fac[2]"]
   for(method in c("KDE", "normal")){
     contrast <- hypothesis_BF(posterior, hypothesis = "mu_fac[B] - mu_fac[C] = 0",
-                              density_method = method, columns = "all")
-    expect_equal(as.numeric(contrast$prior), stats::dnorm(0, 0, sqrt(2)), tolerance = 1e-14)
+                              density_method = method, include_densities = TRUE, include_method = TRUE)
+    expect_equal(as.numeric(contrast$prior_density), stats::dnorm(0, 0, sqrt(2)), tolerance = 1e-14)
     reference <- hypothesis_BF(posterior, hypothesis = "mu_fac[B] - mu_fac[A] = 0.1",
-                               density_method = method, columns = "all")
-    expect_equal(as.numeric(reference$prior), stats::dnorm(.1), tolerance = 1e-14)
+                               density_method = method, include_densities = TRUE)
+    expect_equal(as.numeric(reference$prior_density), stats::dnorm(.1), tolerance = 1e-14)
   }
-  expect_equal(as.numeric(contrast$posterior),
+  expect_equal(as.numeric(contrast$posterior_density),
                stats::dnorm(0, mean(draws), stats::sd(draws)), tolerance = 1e-12)
   expect_identical(contrast$method, "Savage-Dickey (normal)")
 
@@ -3580,7 +3599,7 @@ test_that("symbolic and centered point-versus-region targets agree", {
   prior <- data.frame(theta = seq(-2, 2, length.out = 201),
                        phi = rev(seq(-3, 3, length.out = 201)))
   run <- function(statement){
-    suppressWarnings(hypothesis_BF(posterior, prior, statement, columns = "all"))
+    suppressWarnings(hypothesis_BF(posterior, prior, statement, include_method = TRUE))
   }
   symbolic <- tryCatch(run("theta = phi vs theta > phi"), error = identity)
   expect_s3_class(symbolic, "BayesTools_hypothesis_BF")
@@ -3597,7 +3616,7 @@ test_that("symbolic and centered point-versus-region targets agree", {
 test_that("hypothesis exports retain precision, warning rows and selected BF bounds", {
 
   result <- hypothesis_BF(seq(-1, 1, length.out = 201), prior("normal", list(0, 1)),
-    c("theta > 0", "theta < 0"), parameter = "theta", columns = "all")
+    c("theta > 0", "theta < 0"), parameter = "theta")
   expected_names <- rownames(result)
   attr(result, "warnings") <- setNames(c("first", "second", "global", "other"),
                                        c(expected_names[1], expected_names[1], "", "other"))
@@ -3732,10 +3751,10 @@ test_that("undefined posterior region odds retain both deterministic prior diagn
     list(mu = compiled$formula_design), list(mu = compiled$formula_scale))
   mixed <- as_mixed_posteriors(fit, names(compiled$prior_list), transform_scaled = FALSE)
   leaf <- marginal_posterior(mixed, "mu_x", formula = ~ x, prior_samples = TRUE)[[1L]]
-  out <- hypothesis_BF(leaf, hypothesis = "theta > 1 vs theta < -1", parameter = "theta", columns = "all")
+  out <- hypothesis_BF(leaf, hypothesis = "theta > 1 vs theta < -1", parameter = "theta")
   diagnostics <- attr(out, "prior_numerical_diagnostics")[[1L]]
-  left <- hypothesis_BF(leaf, hypothesis = "theta > 1 vs theta <= 1", parameter = "theta", columns = "all")
-  right <- hypothesis_BF(leaf, hypothesis = "theta < -1 vs theta >= -1", parameter = "theta", columns = "all")
+  left <- hypothesis_BF(leaf, hypothesis = "theta > 1 vs theta <= 1", parameter = "theta")
+  right <- hypothesis_BF(leaf, hypothesis = "theta < -1 vs theta >= -1", parameter = "theta")
   expect_identical(diagnostics$left, attr(left, "prior_numerical_diagnostics")[[1L]]$left)
   expect_identical(diagnostics$right, attr(right, "prior_numerical_diagnostics")[[1L]]$left)
   expect_true(length(diagnostics$left) > 0L && length(diagnostics$right) > 0L)

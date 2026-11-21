@@ -84,6 +84,10 @@
 
 .hypothesis_region_mass <- function(quantity, side, prior) {
 
+  if(identical(side$type, "unconstrained")){
+    return(structure(1, route = "deterministic", log_mass = 0))
+  }
+
   if(prior){
     deterministic <- .hypothesis_prior_object_region_mass(quantity, side)
     if(!is.null(deterministic)) return(deterministic)
@@ -316,6 +320,8 @@
 
 
 .hypothesis_draw_region_indicator <- function(side, draws) {
+
+  if(identical(side$type, "unconstrained")) return(rep(TRUE, NROW(draws)))
 
   expression <- .hypothesis_side_expression(side)
   values <- .hypothesis_structural_condition(expression, draws)

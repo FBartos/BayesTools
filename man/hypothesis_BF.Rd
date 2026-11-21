@@ -18,7 +18,9 @@ hypothesis_BF(posterior, ...)
   BF01 = FALSE,
   seed = NULL,
   density_method = c("KDE", "normal", "precomputed"),
-  columns = "default",
+  include_densities = FALSE,
+  include_probabilities = FALSE,
+  include_method = FALSE,
   ...
 )
 
@@ -35,7 +37,9 @@ hypothesis_BF(posterior, ...)
   density_method = "KDE",
   density_control = NULL,
   n_samples = 10000,
-  columns = "default",
+  include_densities = FALSE,
+  include_probabilities = FALSE,
+  include_method = FALSE,
   ...
 )
 
@@ -103,14 +107,27 @@ Finite sample and KDE evaluation ranges are not treated as exact support,
 so finite point hypotheses outside those ranges use kernel-tail density
 estimates.}
 
-\item{columns}{output columns. \code{"default"} returns \code{Alternative},
-\code{Null}, \code{BF}, and \code{BF_error}. \code{"all"} also returns
-\code{prior}, \code{posterior}, and \code{method} columns. The
-\code{prior} and \code{posterior} columns are diagnostics, not always
-probabilities: point tests report density heights, region tests report odds,
-and transitive point-vs-region tests report \code{NA}. The default
-\code{BF_error} column is printed as \code{error\%(BF)}. Individual columns
-are selected by these column names; other spellings are rejected.}
+\item{include_densities}{whether to add \code{prior_density} and \code{posterior_density}
+when the request contains a point hypothesis. These report the prior and
+posterior density at the tested point on its requested scale.}
+
+\item{include_probabilities}{whether to add \code{prior_prob_alt}, \code{posterior_prob_alt},
+\code{prior_prob_null}, and \code{posterior_prob_null} when the request
+contains a region or an explicit \code{unconstrained} side. Each probability
+is the mass of the labelled side under the encompassing prior or posterior
+on the selected scale and conditioning event. An unconstrained side has
+mass one. Inapplicable cells in a mixed table are \code{NA}.}
+
+\item{include_method}{whether to add the \code{method} used for each Bayes factor.
+Point tests identify the posterior density estimator, for example
+\code{"Savage-Dickey (KDE)"}. A precomputed density reports the estimator
+recorded by the provider when available. Comparing two regions reports
+\code{"prior-posterior odds"}. Comparing a region with \code{unconstrained}
+in either direction reports \code{"encompassing prior"}.
+All three display options default to \code{FALSE}. The default table contains
+\code{Alternative}, \code{Null}, \code{BF}, and \code{BF_error}
+(printed as \code{error\%(BF)}). \code{BF01} inverts the displayed Bayes
+factor and preserves the hypothesis labels, densities, and probabilities.}
 
 \item{namespace, component, transform_scaled, conditional, density_control, n_samples}{arguments of the method for a fitted model, passed to
 \code{\link[=hypothesis_BF_model]{hypothesis_BF_model()}}, which documents them: the component of the model
@@ -230,18 +247,23 @@ A transitive ratio with both a numerically zero posterior point ordinate and
 zero posterior region mass is undefined and returns \code{NA} with a warning
 recorded in the result.
 
-The hypothesis language deliberately accepts only a small,
-non-programmable subset of R expressions:
+The hypothesis language accepts arithmetic expressions, logical regions,
+and chained inequalities for intervals:
 
 \preformatted{
 hypothesis := statement [ "vs" statement ]
+            | comparand "vs" "unconstrained"
+            | "unconstrained" "vs" comparand
 statement  := point | region
+comparand  := arithmetic ( "=" | "==" ) finite_number | region
 point      := arithmetic ( "=" | "==" | "!=" ) finite_number
-region     := relation
+region     := relation | interval
             | "(" region ")"
             | "!" region
             | region ( "&" | "|" ) region
 relation   := arithmetic ( "<" | "<=" | ">" | ">=" ) arithmetic
+interval   := lower ( "<" | "<=" ) arithmetic ( "<" | "<=" ) upper
+            | upper ( ">" | ">=" ) arithmetic ( ">" | ">=" ) lower
 }
 
 Arithmetic expressions may contain parameter identifiers, finite numeric
@@ -254,6 +276,18 @@ another parameter expression. Symbolic right-hand sides are normalized to a
 difference from zero. Relations with a constant on the left and a parameter
 expression on the right are normalized to the equivalent parameter-left
 form.
+
+An interval has two finite constant bounds with the lower below the upper.
+For example, \code{"-0.1 <= mu <= 0.1"} compares practical equivalence
+with its complement, using posterior odds of the interval divided by its
+prior odds. A BF10 above one favors the interval. A strict inequality
+excludes a point mass at that endpoint. An explicit comparison such as
+\code{"-0.1 <= mu <= 0.1 vs mu > 0.1"} compares the interval with the
+upper tail alone. Use \code{"-0.1 <= mu <= 0.1 vs unconstrained"}
+to compare the interval with the full model. This BF is the posterior
+probability of the interval divided by its prior probability. Reversing
+the two sides gives the reciprocal. The full model retains the fitted
+prior, parameter support, and conditioning selected for the test.
 
 Equality defines a point hypothesis and may appear only as the top-level
 relation of a statement. It cannot be parenthesized inside, negated, or

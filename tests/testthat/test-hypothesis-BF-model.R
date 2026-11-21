@@ -146,6 +146,52 @@ test_that("the fit method equals the three-step extraction of a coefficient", {
 })
 
 
+test_that("unconstrained comparisons report formula region masses on either side", {
+
+  fit <- .hypothesis_model_test_fit()
+  draws <- as.matrix(fit[[1L]])
+  targets <- c("x", "f[B]", "f[B] - f[C]")
+  regions <- paste("-0.2 <=", targets, "< 0.4")
+  statements <- c(paste(regions, "vs unconstrained"), paste("unconstrained vs", regions))
+  result <- as.data.frame(hypothesis_BF(fit, statements, include_probabilities = TRUE, seed = 12,
+                                        n_samples = 400))
+
+  # Two independent standard normal treatment coefficients give the contrast variance 2.
+  prior_sd <- c(1, 1, sqrt(2))
+  prior_mass <- stats::pnorm(0.4, sd = prior_sd) - stats::pnorm(-0.2, sd = prior_sd)
+  values <- cbind(draws[, "mu_x"], draws[, "mu_f[1]"], draws[, "mu_f[1]"] - draws[, "mu_f[2]"])
+  posterior_mass <- colMeans(values >= -0.2 & values < 0.4)
+  unit_mass <- rep(1, length(targets))
+
+  expect_equal(result$prior_prob_alt, c(prior_mass, unit_mass))
+  expect_equal(result$prior_prob_null, c(unit_mass, prior_mass))
+  expect_equal(result$posterior_prob_alt, c(posterior_mass, unit_mass))
+  expect_equal(result$posterior_prob_null, c(unit_mass, posterior_mass))
+  expect_equal(result$BF10, c(posterior_mass / prior_mass, prior_mass / posterior_mass))
+  expect_identical(result$Null[seq_along(targets)], rep("unconstrained", length(targets)))
+  expect_identical(tail(result$Alternative, length(targets)), rep("unconstrained", length(targets)))
+
+  point <- as.data.frame(hypothesis_BF(fit, "f[B] - f[C] = 0.1 vs unconstrained",
+                                       include_densities = TRUE, density_method = "normal"))
+  expect_equal(point$prior_density, stats::dnorm(0.1, sd = sqrt(2)))
+  expect_equal(point$posterior_density, stats::dnorm(0.1, mean(values[, 3L]), stats::sd(values[, 3L])))
+  expect_equal(point$BF10, point$posterior_density / point$prior_density)
+
+  # The point and interval use different parameter groups in this fit.
+  mixed <- as.data.frame(hypothesis_BF(
+    fit, c("f[B] - f[C] = 0.1", statements[1L]), density_method = "normal",
+    include_densities = TRUE, include_probabilities = TRUE, include_method = TRUE,
+    seed = 12, n_samples = 400
+  ))
+  expect_equal(mixed$prior_density, c(point$prior_density, NA))
+  expect_equal(mixed$posterior_density, c(point$posterior_density, NA))
+  for(column in c("prior_prob_alt", "posterior_prob_alt", "prior_prob_null", "posterior_prob_null")){
+    expect_equal(mixed[[column]], c(NA_real_, result[[column]][1L]))
+  }
+  expect_identical(mixed$method, c("Savage-Dickey (normal)", "encompassing prior"))
+})
+
+
 test_that("transform_scaled tests coefficients on the original scale", {
 
   fit <- .hypothesis_model_test_fit()
@@ -212,8 +258,8 @@ test_that("whole-factor statements label each row by its level", {
       expect_identical(table$Alternative, paste0("f[", levels, "] > 0"))
       expect_identical(table$Null, paste0("f[", levels, "] <= 0"))
     }else{
-      expect_identical(table$Alternative, paste0("f[", levels, "] != 0"))
-      expect_identical(table$Null, paste0("f[", levels, "] = 0"))
+      expect_identical(table$Alternative, paste0("`f[", levels, "]` != 0"))
+      expect_identical(table$Null, paste0("`f[", levels, "]` = 0"))
     }
   }
 
@@ -1933,7 +1979,7 @@ test_that("exp-affine targets are tested on their own scale with the certified p
   captured <- NULL
   # the engine evaluates a group with the draw-based method directly
   local_mocked_bindings(
-    hypothesis_BF.default = function(posterior, hypothesis, ...){
+    .hypothesis_BF_draws = function(posterior, hypothesis, ...){
       captured <<- list(posterior = posterior, hypothesis = hypothesis, ...)
       structure(
         data.frame(BF = 2, check.names = FALSE),
@@ -1960,7 +2006,7 @@ test_that("exp-affine targets are tested on their own scale with the certified p
     BF01            = FALSE,
     seed            = 1,
     density_control = NULL,
-    columns         = "all"
+    columns = c("Alternative", "Null", "BF", "BF_error")
   )
 
   # no prior draws: the posterior carries the prior density, and the
@@ -2454,7 +2500,7 @@ test_that("variance point statements keep their Bayes factor orientation through
         parameter      = sd,
         seed           = 1,
         density_method = "KDE",
-        columns        = "all"
+        include_densities = TRUE
       ),
       BayesTools_inexact_ordinate = function(warning){
         warned <<- TRUE
@@ -2463,12 +2509,8 @@ test_that("variance point statements keep their Bayes factor orientation through
     )
     expect_true(warned, info = statement)
     restored <- .hypothesis_model_plan_sd_restore(out, original)
-    # the densities are those of the variance: the SD densities over 2 * sd
-    expect_equal(
-      as.numeric(restored[["prior"]]),
-      as.numeric(out[["prior"]]) / (2 * 0.3),
-      tolerance = 1e-12
-    )
+    expect_equal(restored$prior_density, out$prior_density / (2 * 0.3))
+    expect_equal(restored$posterior_density, out$posterior_density / (2 * 0.3))
     .hypothesis_model_restore_hypothesis_labels(out = restored, hypothesis = original)
   }
 
@@ -2588,7 +2630,7 @@ test_that("parameter groups bind producer logs in statement order and export vis
   make_table <- function(parameter, hypothesis){
     hypothesis_BF(
       c(1, 2, 3), prior("normal", list(0, 1)), hypothesis,
-      parameter = parameter, density_method = "normal", columns = "all"
+      parameter = parameter, density_method = "normal"
     )
   }
   first  <- make_table("a", statements[c(1L, 3L)])
@@ -2701,6 +2743,25 @@ test_that("warning ownership distinguishes exact references and expressions", {
   attr(expanded, "hypothesis_ast") <- hypothesis_parse(c("g = 0", "g = 0"))
   expect_identical(warning_rows(expanded, record("g", "g[A]", "A")), c("g[A] (1)", "g[A] (2)"))
 
+  # Unconstrained sides and generated complements are display labels, not
+  # statements; an ordinate warning still reaches every point row of a batch.
+  statements <- c("g[B] = 0.2 vs unconstrained", "unconstrained vs g[B] = 0.2",
+                  "-0.2 <= g[B] < 0.4", "g[B] = 0.2")
+  mixed <- data.frame(
+    Alternative = c("g[B] = 0.2", "unconstrained", "-0.2 <= g[B] < 0.4", "g[B] != 0.2"),
+    Null = c("unconstrained", "g[B] = 0.2", "not (-0.2 <= g[B] < 0.4)", "g[B] = 0.2"),
+    row.names = paste0("g (", 1:4, ")"),
+    check.names = FALSE
+  )
+  attr(mixed, "hypothesis_ast") <- hypothesis_parse(statements)
+  expect_identical(warning_rows(mixed, record("g", "g[B]", "B", value = 0.2)),
+                   c("g (1)", "g (2)", "g (4)"))
+  expect_identical(.hypothesis_model_table_rows_with_labels(mixed, "g[B]"), 1:4)
+  # a generated complement is read through its region
+  complement <- mixed[3L, , drop = FALSE]
+  complement$Alternative <- "unconstrained"
+  expect_identical(.hypothesis_model_table_rows_with_labels(complement, "g[B]"), 1L)
+
 })
 
 
@@ -2802,7 +2863,7 @@ test_that("different level expressions with equal fitted weights are separate gr
   # the groups are those of a request in any order
   expect_identical(groups(rev(equal_weights)), rev(groups(equal_weights)))
 
-  call <- function(statements) hypothesis_BF(fit, statements, seed = 1, columns = "all")
+  call <- function(statements) hypothesis_BF(fit, statements, seed = 1)
   .hypothesis_model_test_expect_combined_equals_single(call, equal_weights, "fit")
   same <- .hypothesis_model_test_expect_combined_equals_single(
     call, c("f[B] - f[A] = 0.1", "f[B] - f[A] = 0.2"), "same expression"
@@ -2823,7 +2884,7 @@ test_that("different level expressions with equal fitted weights are separate gr
                                              c("f[B] - f[A] = 0.1", "f[B] - f[A] = 0.2")),
                               `[[`, character(1), "group")), 1L)
   marginal_call <- function(statements){
-    hypothesis_BF_model(marginal, statements, seed = 1, columns = "all")
+    hypothesis_BF_model(marginal, statements, seed = 1)
   }
   .hypothesis_model_test_expect_combined_equals_single(marginal_call, equal_weights,
                                                        "marginal means")
