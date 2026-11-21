@@ -117,6 +117,22 @@ test_that("selection metadata omits unused draws while JAGS initialization is pr
     "The 'include_init' argument cannot contain NA/NaN values.", fixed = TRUE)
 })
 
+test_that("publication-bias mixtures compile only under the name 'bias'", {
+
+  mixtures <- list(
+    PET = prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1))), is_null = c(TRUE, FALSE)),
+    selection = prior_mixture(list(prior_none(), prior_weightfunction("one-sided", .05, wf_cumulative(c(1, 1)))),
+                              is_null = c(TRUE, FALSE))
+  )
+  for (kind in names(mixtures)) {
+    expect_match(JAGS_add_priors("model{}", list(bias = mixtures[[kind]])), "bias_indicator", fixed = TRUE)
+    expect_error(JAGS_add_priors("model{}", list(adjustment = mixtures[[kind]])),
+                 "must be named 'bias' in the prior list, not 'adjustment'", fixed = TRUE, info = kind)
+  }
+  # single publication-bias priors keep their own names
+  expect_match(JAGS_add_priors("model{}", list(PET = prior_PET("normal", list(0, 1)))), "PET", fixed = TRUE)
+})
+
 test_that("selection context vector rules follow rows while branch models stay fixed", {
 
   branches <- list(
