@@ -2316,34 +2316,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   out
 }
 
-.marginal_posterior_parameter_prior_densities <- function(samples, parameter){
-
-  parameter_samples <- samples[[parameter]]
-
-  if(is.list(parameter_samples)){
-    out <- lapply(parameter_samples, .bt_meta_get, field = "prior_density")
-  }else{
-    out <- list(.bt_meta_get(parameter_samples, "prior_density"))
-    names(out) <- parameter
-  }
-
-  out
-}
-
-.marginal_posterior_parameter_posterior_densities <- function(samples, parameter){
-
-  parameter_samples <- samples[[parameter]]
-
-  if(is.list(parameter_samples)){
-    out <- .posterior_density_child_attributes(parameter_samples)
-  }else{
-    out <- list(.bt_meta_get(parameter_samples, "posterior_density"))
-    names(out) <- parameter
-  }
-
-  out
-}
-
 # The per-draw multipliers of a formula term (the 'multiply_by' of the term's
 # prior in the model of each draw), or NULL when no draw scales the term.
 .marginal_posterior_term_multiplier <- function(term, prior_list, posterior, model_component, simple_list = FALSE){

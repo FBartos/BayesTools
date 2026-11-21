@@ -1,6 +1,7 @@
 .plot_data_prior_factor_density_transformed <- function(prior_density_context, samples, parameter, prior_list, n_points, x_range = NULL,
                                                         transformation = NULL, transformation_arguments = NULL,
-                                                        transformation_settings = FALSE, prior_densities = NULL){
+                                                        transformation_settings = FALSE, prior_densities = NULL,
+                                                        selected = NULL){
 
   if(is.null(samples[[parameter]]) || !inherits(samples[[parameter]], "mixed_posteriors.factor")){
     return(NULL)
@@ -35,7 +36,8 @@
   }
 
   plot_data <- list()
-  for(level_i in seq_len(nrow(factor_weights))){
+  if(is.null(selected)) selected <- seq_len(nrow(factor_weights))
+  for(level_i in selected){
     if(!is.null(prior_densities)){
       # Attached laws already describe the current output scale, including
       # any earlier posterior_transform(); do not rebuild them from sources.
@@ -196,7 +198,8 @@
 }
 
 .plot_data_prior_density_context <- function(prior_density_context, samples, parameter, prior_list, n_points, x_range = NULL,
-                                             transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE){
+                                             transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
+                                             selected = NULL){
 
   prior_density_context <- .plot_data_prior_context_for_plot(
     prior_density_context = prior_density_context,
@@ -210,6 +213,7 @@
 
   if(any(vapply(prior_list, is.prior.factor, logical(1)))){
     return(.plot_data_prior_factor_density_transformed(
+      selected                  = selected,
       prior_density_context      = prior_density_context,
       samples                   = samples,
       parameter                 = parameter,
@@ -248,7 +252,7 @@
                                               x_range = NULL,
                                               transformation = NULL,
                                               transformation_arguments = NULL,
-                                              transformation_settings = FALSE){
+                                              transformation_settings = FALSE, selected = NULL){
 
   if(is.null(samples[[parameter]])){
     return(NULL)
@@ -258,7 +262,7 @@
     prior_densities <- .bt_meta_get(samples[[parameter]], "prior_densities")
     if(!is.null(prior_densities) && inherits(samples[[parameter]], "mixed_posteriors.ordered_transformed")){
       return(.plot_data_prior_factor_density_transformed(
-        prior_density_context = NULL, samples = samples, parameter = parameter,
+        selected = selected, prior_density_context = NULL, samples = samples, parameter = parameter,
         prior_list = .simplify_prior_list(attr(samples[[parameter]], "prior_list")),
         n_points = n_points, x_range = x_range, transformation = transformation,
         transformation_arguments = transformation_arguments,
