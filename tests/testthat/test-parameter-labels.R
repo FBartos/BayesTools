@@ -1276,8 +1276,7 @@ test_that("hypotheses reference levels in the catalog's escaped level form", {
   reference <- hypothesis_BF(
     make_posterior(c("A", "B")),
     hypothesis = "mu[A] > mu[B]",
-    seed       = 1,
-    columns    = "all"
+    seed       = 1
   )
   posterior <- make_posterior(c("w{1}", "v}"))
   for(hypothesis in c(
@@ -1285,8 +1284,7 @@ test_that("hypotheses reference levels in the catalog's escaped level form", {
     "mu[w%7B1%7D] > mu[v%7D]",
     "mu[\"w%7B1%7D\"] > `mu[v}]`"
   )){
-    out <- hypothesis_BF(posterior, hypothesis = hypothesis, seed = 1,
-                         columns = "all")
+    out <- hypothesis_BF(posterior, hypothesis = hypothesis, seed = 1)
     expect_equal(attr(out, "raw_BF"), attr(reference, "raw_BF"),
                  tolerance = 1e-12, info = hypothesis)
   }

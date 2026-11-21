@@ -1,0 +1,6 @@
+type	name	elapsed	memory_gb	r_version	platform
+fit	mean_rating	6.460000000	0.517188	4.6.0	Windows/x86_64-w64-mingw32
+fit	rating_regression	4.670000000	0.526172	4.6.0	Windows/x86_64-w64-mingw32
+text	mean-compact	1.720000000	0.479199	4.6.0	Windows/x86_64-w64-mingw32
+text	mean-reporting	0.610000000	0.508496	4.6.0	Windows/x86_64-w64-mingw32
+text	regression-reporting	1.320000000	0.505078	4.6.0	Windows/x86_64-w64-mingw32

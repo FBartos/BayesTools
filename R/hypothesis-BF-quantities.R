@@ -652,17 +652,19 @@
 
   valid_symbols <- unique(level_refs[["symbol"]])
   for(hypothesis in statements){
-    if(!.hypothesis_sides_point_complement(hypothesis[["left"]],
-                                           hypothesis[["right"]]) &&
-       !.hypothesis_sides_point_complement(hypothesis[["right"]],
-                                           hypothesis[["left"]])){
-      return(TRUE)
-    }
-
-    point_side <- if(identical(hypothesis[["left"]][["type"]], "point")){
-      hypothesis[["left"]]
+    left  <- hypothesis[["left"]]
+    right <- hypothesis[["right"]]
+    if(identical(left$type, "point")){
+      point_side <- left
+      other_side <- right
     }else{
-      hypothesis[["right"]]
+      point_side <- right
+      other_side <- left
+    }
+    if(!identical(point_side$type, "point") ||
+       !(identical(other_side$type, "unconstrained") ||
+         .hypothesis_sides_point_complement(point_side, other_side))){
+      return(TRUE)
     }
     symbol <- .hypothesis_direct_symbol(
       .hypothesis_side_expression(point_side)

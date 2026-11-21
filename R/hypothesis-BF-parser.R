@@ -177,16 +177,40 @@ hypothesis_normalize_level_references <- function(text){
 }
 
 
-.hypothesis_parse_statement_spec <- function(hypothesis) {
+.hypothesis_parse_statement_spec <- function(hypothesis, original = hypothesis,
+                                            mask = original) {
 
+  # Keep positions in the input for display. Quoted names, catalog aliases and
+  # level labels can themselves contain whitespace, relations, or 'vs'.
+  chars <- strsplit(mask, "", fixed = TRUE)[[1L]]
+  chars[.hypothesis_quoted_characters(chars)] <- "x"
+  mask <- paste0(chars, collapse = "")
+  brackets <- gregexpr("\\[[^][]*\\]", mask, perl = TRUE)
+  matches <- regmatches(mask, brackets)[[1L]]
+  regmatches(mask, brackets) <- list(strrep("x", nchar(matches)))
+  # The labels, 'vs', and complements are read from the text, so a comment
+  # would change them; the grammar has none.
+  if(grepl("#", mask, fixed = TRUE)){
+    stop("Hypothesis statements cannot contain comments ('#').", call. = FALSE)
+  }
+  spaces <- gregexpr("[[:space:]]+", mask)
+  regmatches(original, spaces) <- list(rep(" ", length(regmatches(mask, spaces)[[1L]])))
+  mask <- gsub("[[:space:]]+", " ", mask)
+  labels <- Map(.hypothesis_parameter_left_label,
+                .hypothesis_split_vs(original, mask), .hypothesis_split_vs(mask, mask))
   hypothesis <- .hypothesis_normalize_level_references(hypothesis)
   .hypothesis_reject_assignment_arrow(hypothesis)
   parts <- .hypothesis_split_vs(hypothesis)
-  left  <- .parse_hypothesis_side(parts[[1L]])
+  if(any(parts == "unconstrained") &&
+     (length(parts) != 2L || all(parts == "unconstrained"))){
+    stop("'unconstrained' must be one side of an explicit 'vs' comparison with a point ('=') or a region.",
+         call. = FALSE)
+  }
+  left  <- .parse_hypothesis_side(parts[[1L]], labels[[1L]]$label)
   right <- if(length(parts) == 2L) {
-    .parse_hypothesis_side(parts[[2L]])
+    .parse_hypothesis_side(parts[[2L]], labels[[2L]]$label)
   }else{
-    .hypothesis_complement_side(left)
+    .hypothesis_complement_side(left, labels[[1L]]$mask)
   }
 
   list(
@@ -195,6 +219,42 @@ hypothesis_normalize_level_references <- function(text){
     right    = right,
     explicit = length(parts) == 2L
   )
+}
+
+
+# The display label of a side keeps its notation, except that one relation
+# with a constant on the left and a parameter expression on the right reads
+# parameter-left ("0 > x" as "x < 0"), each operand as written. 'mask' is the
+# label with quoted names and levels masked, so that it locates the relation.
+.hypothesis_parameter_left_label <- function(label, mask) {
+
+  out <- list(label = label, mask = mask)
+  operators <- .hypothesis_top_operators(mask)
+  if(identical(label, "unconstrained") || length(operators) != 1L){
+    return(out)
+  }
+  relation <- operators[[1L]]
+  flipped  <- switch(relation$operator, "<" = ">", "<=" = ">=", ">" = "<", ">=" = "<=",
+                     "=" = "=", "==" = "==", "!=" = "!=", NULL)
+  lhs <- substr(mask, 1L, relation$start - 1L)
+  rhs <- substring(mask, relation$end + 1L)
+  if(is.null(flipped) || .hypothesis_text_has_symbols(lhs) ||
+     !.hypothesis_text_has_symbols(rhs)){
+    return(out)
+  }
+  flip <- function(text){
+    paste(trimws(substring(text, relation$end + 1L)), flipped,
+          trimws(substr(text, 1L, relation$start - 1L)))
+  }
+
+  list(label = flip(label), mask = flip(mask))
+}
+
+
+.hypothesis_text_has_symbols <- function(text) {
+
+  expression <- tryCatch(parse(text = text, keep.source = FALSE), error = function(e) NULL)
+  length(expression) == 1L && length(all.vars(expression[[1L]])) > 0L
 }
 
 
@@ -275,9 +335,9 @@ hypothesis_normalize_level_references <- function(text){
   quoted
 }
 
-.hypothesis_split_vs <- function(hypothesis) {
+.hypothesis_split_vs <- function(hypothesis, syntax = hypothesis) {
 
-  chars <- strsplit(hypothesis, "", fixed = TRUE)[[1L]]
+  chars <- strsplit(syntax, "", fixed = TRUE)[[1L]]
   quoted <- .hypothesis_quoted_characters(chars)
   depth <- 0L
   found <- integer()
@@ -329,24 +389,24 @@ hypothesis_normalize_level_references <- function(text){
 }
 
 
-.parse_hypothesis_side <- function(side) {
+.parse_hypothesis_side <- function(side, label) {
 
   side <- trimws(side)
   if(!nzchar(side)){
     stop("Empty hypothesis side.", call. = FALSE)
   }
 
-  relation <- if(.hypothesis_has_boolean(side)){
-    NULL
-  }else{
-    .hypothesis_find_relation(side)
+  if(identical(side, "unconstrained")){
+    return(list(type = "unconstrained", label = side))
   }
-  if(!is.null(relation) &&
-     relation[["operator"]] %in% c("=", "==", "!=")){
-    return(.hypothesis_parse_point_side(side, relation))
+  operators <- .hypothesis_top_operators(side)
+  if(length(operators) == 1L &&
+     operators[[1L]]$operator %in% c("=", "==", "!=") &&
+     !.hypothesis_has_boolean(side)){
+    return(.hypothesis_parse_point_side(side, operators[[1L]], label))
   }
 
-  expr <- .hypothesis_parse_expression(side)
+  expr <- .hypothesis_parse_region_expression(side, operators)
   if(.hypothesis_condition_has_equality(expr)){
     if(.hypothesis_region_has_negated_equality(expr)){
       stop(
@@ -389,7 +449,7 @@ hypothesis_normalize_level_references <- function(text){
     rhs <- .hypothesis_expression_text(rhs_expr)
     return(list(
       type      = "region",
-      label     = .hypothesis_display_text(side),
+      label     = label,
       condition = .hypothesis_expression_text(expr),
       condition_expression = expr,
       expr      = lhs,
@@ -408,8 +468,8 @@ hypothesis_normalize_level_references <- function(text){
 
   list(
     type      = "region",
-    label     = .hypothesis_display_text(side),
-    condition = side,
+    label     = label,
+    condition = .hypothesis_expression_text(expr),
     condition_expression = expr,
     simple    = FALSE
   )
@@ -453,7 +513,7 @@ hypothesis_normalize_level_references <- function(text){
   )
 }
 
-.hypothesis_parse_point_side <- function(side, relation){
+.hypothesis_parse_point_side <- function(side, relation, label){
 
   lhs <- trimws(substr(side, 1L, relation[["start"]] - 1L))
   rhs <- trimws(substr(side, relation[["end"]] + 1L, nchar(side)))
@@ -486,11 +546,7 @@ hypothesis_normalize_level_references <- function(text){
   }
   list(
     type  = if(op == "!=") "not_point" else "point",
-    label = paste(
-      .hypothesis_display_text(lhs),
-      if(op == "!=") "!=" else "=",
-      .hypothesis_display_text(rhs)
-    ),
+    label = label,
     expr  = .hypothesis_expression_text(expression),
     expression = expression,
     value = value
@@ -613,27 +669,21 @@ hypothesis_normalize_level_references <- function(text){
 }
 
 
-.hypothesis_complement_side <- function(side) {
+.hypothesis_complement_side <- function(side, mask) {
 
-  if(identical(side[["type"]], "point")){
-    out <- side
-    out[["type"]]  <- "not_point"
-    out[["label"]] <- paste(
-      .hypothesis_display_text(side[["expr"]]),
-      "!=",
-      .hypothesis_number_label(side[["value"]])
-    )
-    return(out)
+  label <- side$label
+  if(side$type %in% c("point", "not_point") || isTRUE(side$simple)){
+    # Flip the original relation to retain operand order and numeric spelling.
+    relation <- .hypothesis_top_operators(mask, outermost = TRUE)[[1L]]
+    complement <- switch(relation$operator, "!=" = "=", "==" = "!=", "=" = "!=",
+                         "<" = ">=", "<=" = ">", ">" = "<=", ">=" = "<")
+    label <- paste0(substr(label, 1L, relation$start - 1L), complement,
+                    substring(label, relation$end + 1L))
   }
-
-  if(identical(side[["type"]], "not_point")){
+  if(side$type %in% c("point", "not_point")){
     out <- side
-    out[["type"]]  <- "point"
-    out[["label"]] <- paste(
-      .hypothesis_display_text(side[["expr"]]),
-      "=",
-      .hypothesis_number_label(side[["value"]])
-    )
+    out$type <- if(side$type == "point") "not_point" else "point"
+    out$label <- label
     return(out)
   }
 
@@ -653,7 +703,7 @@ hypothesis_normalize_level_references <- function(text){
     ))
     return(list(
       type      = "region",
-      label     = .hypothesis_display_text(condition),
+      label     = label,
       condition = condition,
       condition_expression = condition_expression,
       expr      = side[["expr"]],
@@ -687,14 +737,17 @@ hypothesis_normalize_level_references <- function(text){
 }
 
 
-.hypothesis_find_relation <- function(text) {
+.hypothesis_top_operators <- function(text, outermost = FALSE) {
 
   chars       <- strsplit(text, "", fixed = TRUE)[[1L]]
   quoted      <- .hypothesis_quoted_characters(chars)
   depth       <- 0L
+  # Display labels may retain enclosing parentheses. In that case select the
+  # shallowest relation, excluding named arguments inside arithmetic functions.
+  op_depth    <- if(outermost) Inf else 0L
   found       <- list()
-  two_char    <- c("<=", ">=", "==", "!=")
-  one_char    <- c("<", ">", "=")
+  two_char    <- c("<=", ">=", "==", "!=", "&&", "||")
+  one_char    <- c("<", ">", "=", "&", "|")
 
   i <- 1L
   while(i <= length(chars)){
@@ -708,7 +761,7 @@ hypothesis_normalize_level_references <- function(text){
         depth <- depth + 1L
       }else if(ch == ")"){
         depth <- max(0L, depth - 1L)
-      }else if(depth == 0L){
+      }else if(depth <= op_depth){
         op <- NULL
         if(i < length(chars)){
           candidate <- paste0(chars[[i]], chars[[i + 1L]])
@@ -720,6 +773,10 @@ hypothesis_normalize_level_references <- function(text){
           op <- ch
         }
         if(!is.null(op)){
+          if(depth < op_depth){
+            found <- list()
+            op_depth <- depth
+          }
           found[[length(found) + 1L]] <- list(
             operator = op,
             start    = i,
@@ -733,15 +790,67 @@ hypothesis_normalize_level_references <- function(text){
     i <- i + 1L
   }
 
-  if(length(found) == 0L){
-    return(NULL)
+  return(found)
+}
+
+
+.hypothesis_parse_region_expression <- function(text, operators = NULL){
+
+  text <- trimws(text)
+  expr <- tryCatch(.hypothesis_parse_expression(text), error = identity)
+  if(!inherits(expr, "error")) return(expr)
+
+  # R handles ordinary expressions. For a chain, split only the outer region
+  # operators in precedence order and let R parse its arithmetic operands.
+  # A chain is the only permitted departure from R syntax. Substituting a
+  # chainable binary operator must yield a single syntactically valid expression.
+  syntax <- tryCatch(parse(text = gsub("[<>]=?", "*", text), keep.source = FALSE),
+                     error = function(e) NULL)
+  if(length(syntax) != 1L) stop(expr)
+  if(is.null(operators)) operators <- .hypothesis_top_operators(text)
+  ops <- vapply(operators, `[[`, character(1), "operator")
+  for(op in c("|", "&")){
+    split <- tail(which(ops == op), 1L)
+    if(length(split)){
+      at <- operators[[split]]$start
+      return(call(op,
+        .hypothesis_parse_region_expression(substr(text, 1L, at - 1L)),
+        .hypothesis_parse_region_expression(substring(text, at + 1L))))
+    }
   }
-  if(length(found) > 1L){
-    stop("Hypothesis side must contain exactly one top-level relation operator.",
-         call. = FALSE)
+  if(startsWith(text, "!") && !startsWith(text, "!=")){
+    return(call("!", .hypothesis_parse_region_expression(substring(text, 2L))))
+  }
+  if(!length(ops) && startsWith(text, "(") && endsWith(text, ")")){
+    return(call("(", .hypothesis_parse_region_expression(substr(text, 2L, nchar(text) - 1L))))
+  }
+  if(length(ops) != 2L || !all(ops %in% c("<", "<=", ">", ">="))){
+    stop(expr)
   }
 
-  return(found[[1L]])
+  direction <- substr(ops, 1L, 1L)
+  if(direction[[1L]] != direction[[2L]]){
+    stop("Interval inequalities must point in the same direction.", call. = FALSE)
+  }
+  first  <- operators[[1L]]
+  second <- operators[[2L]]
+  lhs    <- .hypothesis_parse_expression(substr(text, 1L, first$start - 1L))
+  target <- .hypothesis_parse_expression(substr(text, first$end + 1L, second$start - 1L))
+  rhs    <- .hypothesis_parse_expression(substring(text, second$end + 1L))
+  if(!length(.hypothesis_expression_symbols(target))){
+    stop("An interval must have a parameter expression between its bounds.", call. = FALSE)
+  }
+  if(length(c(.hypothesis_expression_symbols(lhs), .hypothesis_expression_symbols(rhs)))){
+    stop("Interval bounds must be finite numeric constants.", call. = FALSE)
+  }
+  left_value  <- .hypothesis_parse_number(lhs)
+  right_value <- .hypothesis_parse_number(rhs)
+  ordered <- if(direction[[1L]] == "<") left_value < right_value else left_value > right_value
+  if(!ordered){
+    stop("The lower interval bound must be less than the upper bound.", call. = FALSE)
+  }
+  reverse_first <- switch(ops[[1L]], "<" = ">", "<=" = ">=", ">" = "<", ">=" = "<=")
+  call("&", call(reverse_first, target, lhs), call(ops[[2L]], target, rhs))
 }
 
 

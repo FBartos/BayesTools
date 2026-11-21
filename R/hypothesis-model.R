@@ -267,7 +267,7 @@
     request   <- attached[["request"]]
   }
 
-  out <- hypothesis_BF.default(
+  out <- .hypothesis_BF_draws(
     posterior      = posterior,
     hypothesis     = hypothesis,
     parameter      = plan[["parameter"]],
@@ -340,7 +340,7 @@
     request <- requests[[1L]]
   }
 
-  out <- hypothesis_BF.default(
+  out <- .hypothesis_BF_draws(
     posterior      = posterior,
     hypothesis     = hypothesis,
     parameter      = plan[["parameter"]],
@@ -407,7 +407,7 @@
     request               <- attached[["request"]]
   }
 
-  out <- hypothesis_BF.default(
+  out <- .hypothesis_BF_draws(
     posterior      = target[["posterior"]],
     hypothesis     = target[["hypothesis"]],
     parameter      = target[["parameter"]],
@@ -652,14 +652,14 @@
 
 .hypothesis_model_restore_hypothesis_labels <- function(
     out, hypothesis, parameter_label = NULL, producer_parameter = NULL,
-    route = "scalar", roots = NULL) {
+    route = "scalar", roots = NULL, show_rownames = FALSE) {
 
   if (!is.data.frame(out)) {
     return(out)
   }
 
   statements <- hypothesis[["statements"]]
-  result_label <- function(statement, side_name, field = "label") {
+  result_label <- function(statement, side_name) {
 
     implicit_equality <- !isTRUE(statement[["explicit"]]) &&
       identical(statement[["left"]][["type"]], "point")
@@ -667,7 +667,7 @@
       side_name <- switch(side_name, left = "right", right = "left")
     }
 
-    statement[[side_name]][[field]]
+    statement[[side_name]][["label"]]
   }
   transformed_statements <- .hypothesis_model_result_statements(out)
   if (!is.list(transformed_statements) ||
@@ -710,32 +710,23 @@
   # ('roots') becomes the reference to the level ("f > 0" -> "f[a] > 0"),
   # in backticks unless it is a syntactic root and a level without brackets,
   # backticks, or backslashes ("`f[(0,1]]` > 0")
-  row_label <- function(display, side_name) {
+  row_label <- function(display) {
     labels <- display[statement_i]
     if (!identical(route, "levels") || is.null(roots)) {
       return(labels)
     }
     for (i in which(nzchar(suffix))) {
-      statement <- statements[[statement_i[[i]]]]
-      level     <- sub("^\\[(.*)\\]$", "\\1", suffix[[i]])
-      for (side in c("left", "right")) {
-        statement[[side]][["expression"]] <- .hypothesis_model_insert_level_node(
-          statement[[side]][["expression"]], roots[[statement_i[[i]]]], level
-        )
-        statement[[side]] <- .bt_hypothesis_refresh_side(statement[[side]])
-      }
-      labels[[i]] <- gsub(
-        "`([A-Za-z.][A-Za-z0-9._]*(\\[[^][`\\\\]+\\])?)`", "\\1",
-        result_label(statement, side_name, field = "source"), perl = TRUE
+      labels[[i]] <- .hypothesis_model_level_label(
+        labels[[i]], roots[[statement_i[[i]]]], suffix[[i]]
       )
     }
     labels
   }
   if ("Alternative" %in% names(out)) {
-    out[["Alternative"]] <- row_label(display_left, "left")
+    out[["Alternative"]] <- row_label(display_left)
   }
   if ("Null" %in% names(out)) {
-    out[["Null"]] <- row_label(display_right, "right")
+    out[["Null"]] <- row_label(display_right)
   }
 
   attr(out, "hypothesis_ast") <- hypothesis
@@ -750,9 +741,42 @@
       )
     )
   }
-  attr(out, "rownames") <- FALSE
+  attr(out, "rownames") <- show_rownames
 
   return(out)
+}
+
+
+# Add the expanded level to occurrences of a factor in its original label.
+# Quoted names and bracketed levels are single tokens and may contain a root.
+.hypothesis_model_level_label <- function(text, roots, suffix) {
+
+  if (!length(roots) || identical(text, "unconstrained")) return(text)
+  roots <- roots[order(nchar(roots), decreasing = TRUE)]
+  protected <- r"{`(?:\\.|[^`\\])*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\[[^][]*\]}"
+  plain <- paste(JAGS_regex_escape(roots), collapse = "|")
+  tokens <- gregexpr(paste0(protected, "|(?<![[:alnum:]_.])(?:", plain,
+                            ")(?![[:alnum:]_.])"), text, perl = TRUE)
+  words <- regmatches(text, tokens)[[1L]]
+  quoted <- encodeString(roots, quote = "`")
+  for (i in which(words %in% c(roots, quoted))) {
+    end <- tokens[[1L]][[i]] + nchar(words[[i]])
+    after <- substring(text, end)
+    before <- substr(text, 1L, tokens[[1L]][[i]] - 1L)
+    named_argument <- grepl("^\\s*=(?!=)", after, perl = TRUE) &&
+      grepl("[[:alnum:]_.]\\s*\\(\\s*$", before)
+    if (grepl("^\\s*[(\\[]", after) || named_argument) next
+    root <- if (words[[i]] %in% quoted) roots[match(words[[i]], quoted)] else words[[i]]
+    expanded <- paste0(root, suffix)
+    words[[i]] <- if (words[[i]] %in% quoted ||
+                      !grepl("^[A-Za-z.][A-Za-z0-9._]*(?::[A-Za-z.][A-Za-z0-9._]*)*\\[[^][`\\\\]+\\]$", expanded, perl = TRUE)) {
+      encodeString(expanded, quote = "`")
+    } else {
+      expanded
+    }
+  }
+  regmatches(text, tokens) <- list(words)
+  text
 }
 
 
@@ -828,7 +852,7 @@
       target[["posterior"]] <- attached[["posterior"]]
       request               <- attached[["request"]]
     }
-    out <- hypothesis_BF.default(
+    out <- .hypothesis_BF_draws(
       posterior      = target[["posterior"]],
       hypothesis     = target[["hypothesis"]],
       parameter      = target[["parameter"]],
@@ -874,7 +898,7 @@
   inference[["conditional"]] <- inference[[inference_type]]
   class(inference) <- unique(c(class(inference), "marginal_inference"))
 
-  out <- hypothesis_BF.default(
+  out <- .hypothesis_BF_draws(
     posterior      = inference,
     hypothesis     = hypothesis,
     parameter      = parameter,
@@ -1043,7 +1067,7 @@
 #'   random-effect quantities through [parameter_mixed_posterior()]. Without
 #'   it a point null on a quantity with a prior point mass at that value stops
 #'   with \code{BayesTools_point_mass_at_null}; region hypotheses are tested.
-#' @param logBF,BF01,seed,columns see [hypothesis_BF()].
+#' @param logBF,BF01,seed,include_densities,include_probabilities,include_method see [hypothesis_BF()].
 #' @param density_method the name of a registered density backend
 #'   ([hypothesis_density_backends()]); matching ignores case and accepts an
 #'   unambiguous partial name. \code{NULL} selects the first backend of the
@@ -1075,7 +1099,8 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
                                 conditional = FALSE, logBF = FALSE,
                                 BF01 = FALSE, seed = NULL,
                                 density_method = NULL, density_control = NULL,
-                                n_samples = 10000, columns = "default",
+                                n_samples = 10000, include_densities = FALSE,
+                                include_probabilities = FALSE, include_method = FALSE,
                                 parameter = NULL, conditional_omitted = FALSE){
 
   provider <- hypothesis_provider(object)
@@ -1100,7 +1125,6 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
   check_bool(logBF, "logBF", allow_NA = FALSE)
   check_bool(BF01, "BF01", allow_NA = FALSE)
   check_real(seed, "seed", check_length = 1, allow_NULL = TRUE, allow_NA = FALSE)
-  check_char(columns, "columns", check_length = 0, allow_NA = FALSE)
   check_int(n_samples, "n_samples", lower = 2)
   check_bool(conditional_omitted, "conditional_omitted", allow_NA = FALSE)
 
@@ -1109,7 +1133,8 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
       provider = provider, hypothesis = hypothesis, parameter = parameter,
       logBF = logBF, BF01 = BF01, seed = seed,
       density_method = density_method, density_control = density_control,
-      columns = columns
+      include_densities = include_densities, include_probabilities = include_probabilities,
+      include_method = include_method
     ))
   }
   if(!is.null(parameter)){
@@ -1133,6 +1158,9 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
   # refusals of the statements' references, which stop as statement errors.
   .hypothesis_model_catch_statement_resolution({
     ast <- .hypothesis_model_ast(hypothesis, metadata[["catalog"]])
+    columns <- .hypothesis_BF_output_columns(
+      ast, include_densities, include_probabilities, include_method
+    )
     plans <- .hypothesis_model_plans(
       provider         = provider,
       hypothesis       = ast,
@@ -1215,10 +1243,13 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
 .hypothesis_model_marginal_means <- function(provider, hypothesis, parameter,
                                              logBF, BF01, seed,
                                              density_method, density_control,
-                                             columns){
+                                             include_densities, include_probabilities, include_method){
 
   .hypothesis_model_catch_statement_resolution({
     ast <- hypothesis_parse(hypothesis)
+    columns <- .hypothesis_BF_output_columns(
+      ast, include_densities, include_probabilities, include_method
+    )
     if(is.null(density_method)){
       density_method <- provider[["density_method_default"]]()
     }
@@ -1227,8 +1258,10 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
     )
     backend <- .hypothesis_model_backend(density_method)
     cache   <- .hypothesis_model_plan_cache(provider)
-    plans   <- lapply(hypothesis_render(ast), function(statement) {
-      selected <- provider[["select"]](hypothesis_parse(statement), parameter)
+    plans   <- lapply(ast$statements, function(parsed) {
+      statement <- ast
+      statement$statements <- list(parsed)
+      selected <- provider[["select"]](statement, parameter)
       .hypothesis_model_plan_marginal_means(
         provider  = provider,
         statement = statement,
@@ -1269,8 +1302,9 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
     keys   <- vapply(plans, `[[`, character(1), "group")
     groups <- lapply(unique(keys), function(key) which(keys == key))
     results <- lapply(groups, function(rows) {
-      .hypothesis_model_plan_execute_marginal_means(
-        plans           = plans[rows],
+      group <- plans[rows]
+      out <- .hypothesis_model_plan_execute_marginal_means(
+        plans           = group,
         provider        = provider,
         backend         = backend,
         logBF           = logBF,
@@ -1279,6 +1313,14 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
         density_control = density_control,
         columns         = columns
       )
+      .hypothesis_model_restore_hypothesis_labels(
+        out                = out,
+        hypothesis         = .hypothesis_model_plan_group_ast(group, "statement"),
+        producer_parameter = group[[1L]][["parameter"]],
+        route              = group[[1L]][["route"]],
+        roots              = lapply(group, function(plan) hypothesis_symbols(plan[["statement"]])),
+        show_rownames      = attr(out, "rownames", exact = TRUE)
+      )
     })
     if (length(results) == 1L) {
       results[[1L]]
@@ -1286,7 +1328,7 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
       .hypothesis_model_bind_parameter_results(
         results    = results,
         groups     = groups,
-        hypothesis = .hypothesis_model_plan_group_ast(plans, "hypothesis"),
+        hypothesis = .hypothesis_model_plan_group_ast(plans, "statement"),
         backend    = backend
       )
     }

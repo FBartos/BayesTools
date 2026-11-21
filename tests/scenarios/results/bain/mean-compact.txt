@@ -1,0 +1,5 @@
+    Alternative:                 Null:    BF error%(BF)
+          mu = 0         unconstrained 3.969         NA
+          mu > 0               mu <= 0 0.783      1.425
+ -0.1 < mu < 0.1         unconstrained 3.817      0.957
+ -0.1 < mu < 0.1 not (-0.1 < mu < 0.1) 5.353      1.480

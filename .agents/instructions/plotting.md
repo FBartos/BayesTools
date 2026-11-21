@@ -74,8 +74,10 @@ the single decision whether a display range is automatic (below).
 `plot.prior_linear_density()` in `R/priors-plot.R` draws a prior linear density
 from `.prior_linear_density_to_plot_data()` through `.plot_prior_list.both()`. Model-averaging plot families live in
 `R/model-averaging-plots*.R`. JAGS diagnostic data and rendering live in
-`R/JAGS-diagnostics.R`. Inspect the current family before adding helpers or
-source files.
+`R/JAGS-diagnostics.R`. Indicator trace statistics use the declared mixture
+branches and a monitored indicator, with non-overlapping batches calculated
+separately in each chain in `R/JAGS-diagnostics-indicators.R`. Each branch,
+including each distinct weight function, has its own component trace.
 
 The density diagnostics reflect at the support of the whole prior: a mixture
 takes the union of the continuous supports of its components (points are

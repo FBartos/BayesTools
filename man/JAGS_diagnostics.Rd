@@ -21,7 +21,9 @@ JAGS_diagnostics(
   short_name = FALSE,
   parameter_names = FALSE,
   formula_prefix = TRUE,
-  ...
+  ...,
+  statistic = "value",
+  batch_size = NULL
 )
 
 JAGS_diagnostics_density(
@@ -48,7 +50,9 @@ JAGS_diagnostics_trace(
   short_name = FALSE,
   parameter_names = FALSE,
   formula_prefix = TRUE,
-  ...
+  ...,
+  statistic = "value",
+  batch_size = NULL
 )
 
 JAGS_diagnostics_autocorrelation(
@@ -116,6 +120,25 @@ printed}
 be printed. Defaults to \code{TRUE}.}
 
 \item{...}{additional arguments}
+
+\item{statistic}{trace quantity. \code{"value"} shows parameter draws.
+\code{"inclusion"} shows the fraction of each batch in the declared
+alternative group and needs every component declared null or alternative,
+with both present.
+\code{"component"} shows the fraction in each individual
+mixture component, on separate plots, including unvisited components. A
+binary null/alternative decision shows the alternative alone.
+\code{"switching"} shows the fraction of adjacent retained draws in the
+same batch that changed component, including switches within a group.
+The last three statistics need a trace plot without \code{transformations}
+and a sampled indicator: a mixture or spike-and-slab prior with at least two
+components (also as an ordered total) or a random-effect allocation gate.}
+
+\item{batch_size}{optional number of retained draws per batch for an indicator
+trace. An explicit width keeps the final partial batch. By default the
+shortest chain is divided into approximately the square root of its length
+in balanced batches; longer chains use the same approximate width.
+Switching needs at least two draws per batch and chain.}
 }
 \value{
 \code{diagnostics} returns either \code{NULL} if \code{plot_type = "base"}
@@ -127,6 +150,12 @@ Creates density plots, trace plots, and autocorrelation plots
 for a given parameter of a JAGS model.
 }
 \details{
+Indicator traces place each batch at its mean original iteration
+and keep chains separate. A final switching batch with one draw has no rate
+and is not drawn. The components of a publication-bias mixture are traced
+with \code{parameter = "bias"}. An unavailable indicator diagnostic raises a
+\code{BayesTools_plot_condition}.
+
 The trace shows the retained MCMC iteration of every draw on its
 x axis (thinned chains keep their original positions).
 Autocorrelation uses the retained original iteration positions.
@@ -148,7 +177,7 @@ autocorrelation diagnostics omit them when their draws are constant, and
 when nothing else remains the call returns \code{NULL} with a message, as for
 a spike prior; the trace is produced as for any other parameter. A parameter
 with a \code{\link[=prior_none]{prior_none()}} prior is not sampled: the call returns \code{NULL} with
-a message for every type.
+a message for every type of \code{statistic = "value"}.
 }
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}} \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}}

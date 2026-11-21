@@ -87,6 +87,7 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
   sides <- unlist(lapply(ast$statements, function(statement){
     list(statement$left, statement$right)
   }), recursive = FALSE)
+  sides <- Filter(function(side) side$type != "unconstrained", sides)
   forms <- lapply(sides, .hypothesis_linear_target_side, parameter = parameter)
   # every referenced level must exist, including the ones that cancel or have a
   # zero coefficient in the combination
@@ -534,6 +535,7 @@ hypothesis_linear_target_side <- function(side, parameter){
   form_i <- 0L
   statements <- vapply(ast$statements, function(statement){
     side_text <- vapply(c("left", "right"), function(side_name){
+      if(identical(statement[[side_name]]$type, "unconstrained")) return("unconstrained")
       form_i <<- form_i + 1L
       form <- forms[[form_i]]
       paste(

@@ -90,6 +90,73 @@ test_that("hypothesis parser implements the documented region grammar", {
 })
 
 
+test_that("interval chains preserve quoted names and boolean precedence", {
+
+  chain <- "!(0 < 2 * `x < y` <= 1 + 1) | 0.25 <= `x < y` < 1"
+  expanded <- paste("!(0 < 2 * `x < y` & 2 * `x < y` <= 1 + 1)",
+                    "| (0.25 <= `x < y` & `x < y` < 1)")
+  parsed <- hypothesis_parse(chain)
+  expect_identical(hypothesis_symbols(parsed), "x < y")
+
+  prior <- data.frame("x < y" = -3:3, check.names = FALSE)
+  posterior <- data.frame("x < y" = c(-3, 0, 0.5, 1, 1), check.names = FALSE)
+  evaluate <- function(hypothesis){
+    attr(hypothesis_BF(posterior, prior, hypothesis = hypothesis), "raw_BF")
+  }
+  expect_equal(evaluate(parsed), evaluate(expanded))
+  expect_equal(evaluate(hypothesis_render(parsed)), evaluate(expanded))
+})
+
+
+test_that("an unconstrained comparator uses the encompassing distribution of the tested expression", {
+
+  prior <- data.frame(beta = c(0, 1, 2, 3), gamma = c(0, 1, 0, 0))
+  posterior <- data.frame(beta = c(0, 1, 1, 2), gamma = c(0, 1, 2, 2))
+  region <- "-0.5 < beta - gamma < 0.5"
+  statements <- c(region, paste(region, "vs unconstrained"), paste("unconstrained vs", region))
+  result <- hypothesis_BF(posterior, prior, hypothesis = statements, include_probabilities = TRUE)
+
+  # Joint draws place 1/2 of the prior and 3/4 of the posterior inside the interval.
+  expect_equal(attr(result, "raw_BF"), c(3, 1.5, 2 / 3))
+  expect_equal(result$prior_prob_alt, c(0.5, 0.5, 1))
+  expect_equal(result$posterior_prob_alt, c(0.75, 0.75, 1))
+  expect_equal(result$prior_prob_null, c(0.5, 1, 0.5))
+  expect_equal(result$posterior_prob_null, c(0.25, 1, 0.75))
+})
+
+
+test_that("interval chains require one target between ordered finite bounds", {
+
+  invalid <- c(
+    "x < theta < 1"       = "bounds must be finite numeric constants",
+    "0 < 1 < 2"           = "must have a parameter expression between its bounds",
+    "0 < theta > 1"       = "must point in the same direction",
+    "0 < theta = 1"       = "Equality constraints cannot be combined",
+    "0 < theta < 1 < 2"   = "Could not parse",
+    "1 <= theta <= 1"     = "lower interval bound must be less than the upper bound",
+    "2 < theta < 1"       = "lower interval bound must be less than the upper bound",
+    "-Inf < theta < 1"    = "finite numeric literals",
+    "0 < theta < 1 / 0"   = "must evaluate to one finite numeric value",
+    "mu > 0; & 0 < x < 1" = "Could not parse",
+    # labels and complements are read from the text, so comments are refused
+    "(x > 0) # > comment"         = "cannot contain comments",
+    "0 < x < .8 # comment with >" = "cannot contain comments"
+  )
+  for (statement in names(invalid)) {
+    expect_error(hypothesis_parse(statement), invalid[[statement]], fixed = TRUE, info = statement)
+  }
+  expect_identical(hypothesis_parse("`x # y` > 0")$statements[[1L]]$right$label, "`x # y` <= 0")
+
+  # 'unconstrained' is one whole side, compared with a point or a region
+  for (statement in c("unconstrained", "unconstrained vs unconstrained",
+                      "unconstrained vs x != 0", "x != 0 vs unconstrained")) {
+    expect_error(hypothesis_parse(statement),
+                 "'unconstrained' must be one side of an explicit 'vs' comparison with a point ('=') or a region.",
+                 fixed = TRUE, info = statement)
+  }
+})
+
+
 test_that("point hypotheses accept literals or symbolic right-hand sides", {
 
   statements <- lapply(
@@ -129,13 +196,14 @@ test_that("constant-left relations use the canonical scalar target", {
     hypothesis_render(reversed),
     "theta < 0 vs theta = 0"
   )
+  # the display labels read parameter-left too
   expect_identical(
     reversed$statements[[1L]]$left$label,
-    "0 > theta"
+    "theta < 0"
   )
   expect_identical(
     reversed$statements[[1L]]$right$label,
-    "0 = theta"
+    "theta = 0"
   )
 
   point_reference <- hypothesis_parse_point_reference(
