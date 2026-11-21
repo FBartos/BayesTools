@@ -1,0 +1,6 @@
+type	name	elapsed	memory_gb	r_version	platform
+fit	product-space	1.980000000	0.123535	4.6.0	Windows/x86_64-w64-mingw32
+text	conditional-contrasts	0.000000000	0.064844	4.6.0	Windows/x86_64-w64-mingw32
+text	model-probabilities	0.000000000	0.064746	4.6.0	Windows/x86_64-w64-mingw32
+plot	signed-tension-levels	0.660000000	0.178320	4.6.0	Windows/x86_64-w64-mingw32
+plot	term-inclusion	0.000000000	0.067773	4.6.0	Windows/x86_64-w64-mingw32
