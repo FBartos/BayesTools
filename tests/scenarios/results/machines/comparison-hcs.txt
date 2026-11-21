@@ -1,17 +1,17 @@
        source      parameter estimate median    lCI    uCI
 1        lme4      intercept   -0.903     NA     NA     NA
-2  BayesTools      intercept   -0.803 -0.824 -1.281 -0.179
+2  BayesTools      intercept   -0.809 -0.829 -1.278 -0.212
 3        lme4     Machine[B]    0.986     NA     NA     NA
-4  BayesTools     Machine[B]    0.812  0.828  0.024  1.497
+4  BayesTools     Machine[B]    0.822  0.835  0.049  1.502
 5        lme4     Machine[C]    1.723     NA     NA     NA
-6  BayesTools     Machine[C]    1.569  1.593  0.975  2.018
+6  BayesTools     Machine[C]    1.578  1.596  1.019  2.019
 7        lme4          sigma    0.119     NA     NA     NA
-8  BayesTools          sigma    0.124  0.122  0.098  0.158
+8  BayesTools          sigma    0.123  0.122  0.098  0.158
 9        lme4 sd(Machine[A])    0.464     NA     NA     NA
-10 BayesTools sd(Machine[A])    0.620  0.574  0.328  1.179
+10 BayesTools sd(Machine[A])    0.617  0.569  0.328  1.183
 11       lme4 sd(Machine[B])    0.952     NA     NA     NA
-12 BayesTools sd(Machine[B])    1.138  1.087  0.670  1.902
+12 BayesTools sd(Machine[B])    1.136  1.084  0.668  1.893
 13       lme4 sd(Machine[C])    0.503     NA     NA     NA
-14 BayesTools sd(Machine[C])    0.653  0.610  0.354  1.194
+14 BayesTools sd(Machine[C])    0.652  0.607  0.354  1.209
 15       lme4            cor    0.738     NA     NA     NA
-16 BayesTools            cor    0.596  0.630  0.128  0.893
+16 BayesTools            cor    0.600  0.634  0.130  0.891
