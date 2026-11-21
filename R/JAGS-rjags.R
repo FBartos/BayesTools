@@ -28,8 +28,7 @@
   if(burnin > 0){
     stats::update(live_model, n.iter = burnin, progress.bar = progress)
   }
-  draws <- rjags::coda.samples(live_model, variable.names = monitor,
-    n.iter = as.double(sample) * thin, thin = thin, progress.bar = progress)
+  draws <- .bt_rjags_samples(live_model, monitor, sample, thin, progress)
   assignments <- rjags::list.samplers(live_model)
   samplers <- data.frame(
     Index.No = rep(seq_along(assignments), lengths(assignments)),
@@ -39,6 +38,64 @@
 
   list(mcmc = draws, end_state = live_model$state(internal = TRUE), samplers = samplers,
     live_model = if(keep_live) live_model)
+}
+
+# rjags 5-5 treats names containing an internal "_word_" like its reserved
+# monitors and passes their subscript to JAGS as part of the variable name.
+# Read those arrays by name, retaining just the coordinates the user requested.
+# Other indexed requests can still read a small slice of a large array.
+.bt_rjags_samples <- function(model, monitor, sample, thin, progress){
+
+  base <- .bt_jags_parameter_base(monitor)
+  indexed <- base != monitor
+  whole <- unique(c(base[!indexed], base[indexed & grepl("_[A-Za-z][A-Za-z0-9]*_", base)]))
+  native <- ifelse(base %in% whole, base, monitor)
+  draws <- rjags::coda.samples(model, variable.names = unique(unname(native)),
+    n.iter = as.double(sample) * thin, thin = thin, progress.bar = progress)
+
+  # JAGS returns variables in name order, and each array in column-major order.
+  # Retain the original request order across variables and overlapping slices.
+  columns <- colnames(draws[[1L]])
+  by_name <- split(seq_along(columns), .bt_jags_parameter_base(columns))
+  selection <- lapply(seq_along(monitor), function(i){
+    available <- by_name[[base[i]]]
+    if(!length(available)){
+      stop("JAGS returned no draws for requested monitor '", monitor[i], "'.", call. = FALSE)
+    }
+    if(!indexed[i]) return(stats::setNames(available, columns[available]))
+
+    spec <- .bt_fit_mcarray_parse_varname(monitor[i])
+    if(is.null(spec$lower) || any(!is.finite(c(spec$lower, spec$upper))) ||
+       any(spec$lower < 1 | spec$lower != floor(spec$lower) | spec$upper != floor(spec$upper))){
+      stop("Invalid JAGS monitor subset '", monitor[i], "'.", call. = FALSE)
+    }
+    size <- spec$upper - spec$lower + 1
+    if(prod(size) == 1){
+      requested <- paste0(base[i], "[", paste(spec$lower, collapse = ","), "]")
+    }else{
+      if(prod(size) > length(available)){
+        stop("JAGS did not return the full requested subset '", monitor[i], "'.", call. = FALSE)
+      }
+      requested <- rjags::expand.name(monitor[i], size)
+    }
+    position <- match(requested, columns)
+    # A full one-element array is returned under its bare name. Keep its
+    # explicit index when the caller selected the element by subscript.
+    if(length(available) == 1L && identical(columns[available], base[i]) &&
+       all(spec$lower == 1 & spec$upper == 1)) position <- available
+    if(anyNA(position)){
+      stop("JAGS did not return the full requested subset '", monitor[i], "'.", call. = FALSE)
+    }
+    stats::setNames(position, requested)
+  })
+  selection <- unlist(selection, use.names = TRUE)
+  selection <- selection[!duplicated(selection)]
+  if(identical(names(selection), columns)) return(draws)
+  coda::mcmc.list(lapply(draws, function(chain){
+    chain <- chain[, unname(selection), drop = FALSE]
+    colnames(chain) <- names(selection)
+    chain
+  }))
 }
 
 # Warnings emitted on a worker must reach the calling fit, including the

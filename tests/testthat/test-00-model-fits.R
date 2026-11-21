@@ -3397,6 +3397,14 @@ test_that("JAGS_extend works correctly", {
 
   # The adaptation of the fit (adapt = 100) reaches the driver for every
   # extension without 'adapt'; an override applies to its call only.
+  extend_with <- function(fit, ...) JAGS_extend(fit, autofit_control = extend_control, silent = TRUE, ...)
+  # Compare genuine installations across processes before replacing the
+  # coordinator's driver to record calls in the following serial checks.
+  parallel_override <- extend_with(fit_formula, adapt = 400, parallel = TRUE, cores = 2)
+  expect_identical(
+    attr(parallel_override, "adaptation")$extensions,
+    data.frame(adapt = 400L, rebuilt = TRUE)
+  )
   original_extend <- BayesTools:::.bt_rjags_extend
   backend_calls <- list()
   testthat::local_mocked_bindings(
@@ -3410,16 +3418,14 @@ test_that("JAGS_extend works correctly", {
     },
     .package = "BayesTools"
   )
-  extend_with <- function(fit, ...) JAGS_extend(fit, autofit_control = extend_control, silent = TRUE, ...)
   explicit <- extend_with(fit_formula, adapt = 100)
   override <- extend_with(fit_formula, adapt = 400)
   after    <- extend_with(override)
-  parallel_override <- extend_with(fit_formula, adapt = 400, parallel = TRUE, cores = 2)
 
-  expect_identical(lapply(backend_calls, `[[`, "adapt"), list(100L, 400L, 100L, 400L))
+  expect_identical(lapply(backend_calls, `[[`, "adapt"), list(100L, 400L, 100L))
   expect_identical(
     vapply(backend_calls, `[[`, integer(1), "workers"),
-    c(0L, 0L, 0L, 2L)
+    c(0L, 0L, 0L)
   )
   # the stored chain and generator states start each extension
   expect_identical(backend_calls[[1L]]$end_state, fit_formula$end_state)

@@ -5027,6 +5027,28 @@ test_that("seeded public functions leave the caller's random-number state unchan
   expect_identical(after_mix, .Random.seed)
 })
 
+test_that("generated JAGS names retain requested monitor cells and their order", {
+
+  model <- paste(
+    "model {",
+    "p1 ~ dnorm(0,1); p2 ~ dnorm(0,1); p10 ~ dnorm(0,1)",
+    "mu__xREx__id_scalar[1] <- p1",
+    "for (i in 1:4) { mu__xREx__id_vector[i] <- p2 + i }",
+    "}", sep = "\n"
+  )
+  fit <- .bt_rjags_fit(model, list(),
+    inits = list(list(.RNG.name = "base::Super-Duper", .RNG.seed = 91L)),
+    monitor = c("p2", "mu__xREx__id_vector[2:3]", "p10", "mu__xREx__id_vector[3]",
+                "p1", "mu__xREx__id_scalar[1]"),
+    adapt = 50L, burnin = 50L, sample = 20L, thin = 1L)
+  draws <- as.matrix(fit$mcmc)
+  expect_identical(colnames(draws), c("p2", "mu__xREx__id_vector[2]",
+    "mu__xREx__id_vector[3]", "p10", "p1", "mu__xREx__id_scalar[1]"))
+  expect_equal(draws[, "mu__xREx__id_vector[2]"], draws[, "p2"] + 2)
+  expect_equal(draws[, "mu__xREx__id_vector[3]"], draws[, "p2"] + 3)
+  expect_identical(draws[, "mu__xREx__id_scalar[1]"], draws[, "p1"])
+})
+
 test_that("data-block-only monitors and sampled cells survive model reconstruction", {
 
   fit <- JAGS_fit(

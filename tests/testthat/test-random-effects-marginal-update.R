@@ -1668,7 +1668,7 @@ test_that("an allocation-derived SD update holds the weights fixed and moves the
   direct_plan <- .random_update_test_plan(direct, "random_sd", "f[x]")
   expect_null(direct_plan$held_fixed)
   expect_null(random_effects_marginal_update_grid(
-    direct, direct_plan, values = 0.3, posterior_samples = as.matrix(direct)
+    direct, direct_plan, values = 0.3, posterior_samples = as.matrix(direct$mcmc)
   )$column_factor)
 })
 
