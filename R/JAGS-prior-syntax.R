@@ -510,6 +510,12 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
   if(inherits(prior_list, "prior.bias_mixture")){
 
+    # the compiled indicator ('bias_indicator') and branch nodes have fixed
+    # names, which every consumer of the fit expects under 'bias'
+    if(parameter_name != "bias")
+      stop("A publication-bias mixture must be named 'bias' in the prior list, not '",
+           parameter_name, "'.", call. = FALSE)
+
     # dispatch between publication bias prior mixture and a standard prior mixture
     components        <- .JAGS_bias_mixture_components(prior_list)
     is_PET            <- components$PET
