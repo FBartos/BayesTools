@@ -35,6 +35,9 @@ data frame. The schema helpers return data frames or a named list of them.
 \code{parameter_map()} returns the single versioned parameter map stored by
 \code{\link[=JAGS_fit]{JAGS_fit()}}. It contains concrete fitted \code{coordinates}, public semantic \code{quantities},
 exact \code{aliases} and directed \code{\link[=parameter_relationships]{parameter_relationships()}}.
+A complete pre-R2 version 22 map is read as version 23. Its saved coordinates,
+quantities and aliases are preserved, and its relationships are derived from
+the fitted model declarations.
 
 \code{parameter_coordinates()} returns the coordinate table from that map. Each
 row describes one sampled, structural, or unavailable fitted coordinate.

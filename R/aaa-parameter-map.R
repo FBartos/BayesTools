@@ -8,6 +8,9 @@
 #' `parameter_map()` returns the single versioned parameter map stored by
 #' [JAGS_fit()]. It contains concrete fitted `coordinates`, public semantic `quantities`,
 #' exact `aliases` and directed [parameter_relationships()].
+#' A complete pre-R2 version 22 map is read as version 23. Its saved coordinates,
+#' quantities and aliases are preserved, and its relationships are derived from
+#' the fitted model declarations.
 #'
 #' `parameter_coordinates()` returns the coordinate table from that map. Each
 #' row describes one sampled, structural, or unavailable fitted coordinate.
