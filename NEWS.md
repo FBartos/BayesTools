@@ -8,6 +8,7 @@
 - `plot_posterior()` and `plot_marginal()` can select factor levels by name and draw a separate plot for each selected level
 - `hypothesis_BF()` accepts interval hypotheses such as `"-0.1 <= mu <= 0.1"` and explicit comparisons with `unconstrained`
 - `hypothesis_BF()` can display the method, prior and posterior point densities, and region probabilities with separate switches
+- Selection contexts support observation-level publication-bias exemptions
 - `prior_regularized()` adds ridge, lasso and horseshoe priors with joint shrinkage for centered factors
 - `prior()` gains the Laplace distribution
 - `JAGS_diagnostics_trace()` gains `statistic` and `batch_size` to trace batched inclusion probabilities, mixture-component probabilities, and switching rates
