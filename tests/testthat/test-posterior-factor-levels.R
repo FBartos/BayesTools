@@ -10,6 +10,7 @@ source(testthat::test_path("common-functions.R"))
   columns <- .JAGS_prior_factor_names("mu_Month", info$prior_list$mu_Month)
   x <- seq(-1, 1, length.out = 120L)
   coefficients <- cbind(3 * x + shift, cos(x * 6) + 2 * shift)
+  if(is.prior.point(month_prior)) coefficients[] <- month_prior$parameters$location
   colnames(coefficients) <- columns
   draws <- cbind(mu_intercept = x, coefficients)
   if(is.prior.spike_and_slab(month_prior) || is.prior.mixture(month_prior)){
@@ -65,6 +66,8 @@ test_that("a selected centered level retains its curve, prior, atoms and colour"
     expect_equal(unique(selected[[3L]]$colour), july_colour)
     subset_plot <- ggplot2::ggplot_build(draw(level = c("Jul", "Jun")))$data
     expect_equal(unique(subset_plot[[3L]]$colour), july_colour)
+    reordered <- ggplot2::ggplot_build(draw(level = c("Jul", "Jun", "May")))$data
+    expect_equal(unique(reordered[[3L]]$colour), july_colour)
     expect_identical(july$scales$get_scales("colour")$breaks, "July")
     # An overlay is built against the receiving ggplot's probability scale.
     overlay <- plot_posterior(samples, "mu_Month", level = "Jul", add = TRUE,
@@ -130,6 +133,9 @@ test_that("base individual plots follow level order and overlays keep the active
       spike_colours <<- c(spike_colours, list(...)$col)
     }, .package = "graphics")
   plot_posterior(samples, "mu_Month", individual = TRUE, n_points = 64L)
+  expect_identical(pages, 3L)
+  expect_error(plot_posterior(samples, "mu_Month", individual = TRUE, add = TRUE),
+    "Separate factor figures require 'add = FALSE'", fixed = TRUE)
   expect_identical(pages, 3L)
   expect_equal(unlist(lapply(legends, "[[", "labels"), use.names = FALSE), c("May", "Jun", "Jul"))
   expect_equal(unname(spike_colours), unlist(lapply(legends, "[[", "col"), use.names = FALSE))
@@ -241,6 +247,54 @@ test_that("mixture, regularized, model-averaged and ordered effects use their fi
   expect_error(plot_posterior(ordered, "mu_f", level = "May"), "Jun.*Jul")
 })
 
+test_that("a shared point mass identifies every selected level in the ggplot legend", {
+  fit <- .month_level_fit(prior_factor("point", list(0), contrast = "treatment"))
+  samples <- as_mixed_posteriors(fit, "mu_Month")
+  for(levels in list(c("Jun", "Jul"), "Jul")){
+    plot <- plot_posterior(samples, "mu_Month", plot_type = "ggplot", level = levels)
+    built <- ggplot2::ggplot_build(plot)
+    scale <- built$plot$scales$get_scales("colour")
+    expect_identical(as.character(scale$get_breaks()), levels)
+    expect_length(built$data, 1L)
+    expect_equal(built$data[[1L]]$colour, scale$map(levels[[1L]]))
+    expect_equal(built$data[[1L]]$yend, 1)
+  }
+})
+
+test_that("model-averaged spikes shared by all levels use one fitted colour", {
+  priors <- list(prior_factor("normal", list(0, 1), contrast = "treatment"),
+    prior_factor("point", list(0), contrast = "treatment"),
+    prior_factor("point", list(.5), contrast = "treatment"))
+  models <- lapply(priors, function(p){
+    list(fit = .month_level_fit(p), marglik = bridgesampling_object(0), prior_weights = 1)
+  })
+  samples <- mix_posteriors(models, "mu_Month", list(c(FALSE, TRUE, TRUE)), seed = 90, n_samples = 300L)
+  for(levels in list(c("Jun", "Jul"), c("Jul", "Jun"))){
+    plot <- plot_posterior(samples, "mu_Month", level = levels, n_points = 32L, plot_type = "ggplot")
+    built <- ggplot2::ggplot_build(plot)
+    spikes <- Filter(function(layer) "yend" %in% names(layer), built$data)
+    expect_equal(vapply(spikes, "[[", numeric(1), "x"), c(0, .5))
+    expected <- built$plot$scales$get_scales("colour")$map(levels[[1L]])
+    expect_equal(vapply(spikes, "[[", character(1), "colour"), rep(expected, 2L))
+  }
+})
+
+test_that("selected levels keep their fitted colours beyond the first eight levels", {
+  samples <- ordered_plot_test_fixture(levels = month.abb)$samples
+  draw <- function(...){
+    plot_posterior(samples, "mu_f", plot_type = "ggplot", n_points = 32L, ...)
+  }
+  full <- draw()$scales$get_scales("colour")
+  palette <- full$palette(length(full$breaks))
+  expect_length(unique(palette), 11L)
+  for(colors in list(NULL, c("red", "blue"))){
+    combined <- draw(col = colors)$scales$get_scales("colour")
+    december <- draw(col = colors, level = "Dec")
+    expected <- combined$palette(length(combined$breaks))[["Dec"]]
+    expect_identical(unique(ggplot2::ggplot_build(december)$data[[1L]]$colour), expected)
+  }
+})
+
 test_that("factor-valued random-slope SDs select the fitted treatment levels", {
   months <- c("May", "Jun", "Jul")
   data <- data.frame(f = factor(rep(months, 4L), levels = months),
@@ -294,6 +348,7 @@ test_that("factor marginal plots select the original cells and their stored curv
   expect_equal(july[[2L]]$y, full[[4L]]$y[rows])
   expect_identical(figures[["Jul"]]$scales$get_scales("colour")$breaks, "July")
   expect_error(draw(level = "July"), "May.*Jun.*Jul")
+  expect_error(draw(individual = TRUE, add = TRUE), "Separate factor figures require 'add = FALSE'", fixed = TRUE)
 
   # Only July has a stored curve. Other levels retain their own KDEs.
   grid <- seq(-4, 4, length.out = 37)

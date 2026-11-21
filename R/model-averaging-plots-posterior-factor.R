@@ -299,13 +299,13 @@
   if(!is.null(level_point_data)){
     level_points <- list()
     for(k in seq_along(selected)){
-      level <- selected[[k]]
+      level_i <- selected[[k]]
       for(point_i in seq_along(level_point_data[[k]])){
         point_data <- level_point_data[[k]][[point_i]]
-        attr(point_data, "level")      <- level
-        attr(point_data, "level_name") <- colnames(samples)[level]
-        attr(point_data, "level_legend") <- level_legends[level]
-        level_points[[paste0("points", level, "_", point_i)]] <- point_data
+        attr(point_data, "level")      <- level_i
+        attr(point_data, "level_name") <- colnames(samples)[level_i]
+        attr(point_data, "level_legend") <- level_legends[level_i]
+        level_points[[paste0("points", level_i, "_", point_i)]] <- point_data
       }
     }
     out <- c(level_points, out)
@@ -384,6 +384,10 @@ posterior_factor_columns <- function(samples, parameter, level = NULL){
                                           plot_type, par_name, dots, dots_prior,
                                           legend, legend_title, legend_labels, legend_position){
 
+  if(individual && isTRUE(dots$add)){
+    stop("Separate factor figures require 'add = FALSE'. Use 'level' with 'individual = FALSE' to add to one plot.",
+         call. = FALSE)
+  }
   labels <- attr(data, "factor_level_universe", exact = TRUE)$label
   selected <- .plot_factor_level_indices(level, labels)
   dots$plot_type <- plot_type
@@ -405,15 +409,14 @@ posterior_factor_columns <- function(samples, parameter, level = NULL){
 
   draw <- function(visible, overlay_scale = NULL){
     posterior <- .plot_factor_visible_data(data, visible)
-    if(length(visible) == 1L || length(visible) < length(labels)){
-      # A shared spike is drawn once, in the first visible level's style.
-      universe <- attr(data, "factor_level_universe", exact = TRUE)
-      for(i in seq_along(posterior)){
-        if(inherits(posterior[[i]], "density.prior.point") &&
-           is.null(attr(posterior[[i]], "level", exact = TRUE))){
-          attr(posterior[[i]], "level") <- visible[[1L]]
-          attr(posterior[[i]], "level_name") <- universe$name[visible[[1L]]]
-        }
+    # Draw each shared spike once in the first visible level's style.
+    universe <- attr(data, "factor_level_universe", exact = TRUE)
+    for(i in seq_along(posterior)){
+      if(inherits(posterior[[i]], "density.prior.point") &&
+         is.null(attr(posterior[[i]], "level", exact = TRUE))){
+        attr(posterior[[i]], "level") <- visible[[1L]]
+        attr(posterior[[i]], "level_name") <- universe$name[visible[[1L]]]
+        attr(posterior[[i]], "shared_levels") <- length(visible) > 1L
       }
     }
     dots$plot_data <- posterior

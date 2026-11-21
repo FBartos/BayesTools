@@ -10,6 +10,7 @@
 #'
 #' @param individual whether to draw a separate figure for each selected factor
 #' level. With \code{plot_type = "ggplot"}, return a list named by level.
+#' To add levels to an existing plot, use \code{individual = FALSE}.
 #' @return Base graphics draws the figures and returns invisible \code{NULL}.
 #' With \code{plot_type = "ggplot"}, returns a ggplot or, for individual factor
 #' plots, a named list of ggplots even when one level is selected.

@@ -70,7 +70,8 @@ original seeded draws are attached without replacing the analytic measure.
 Other ordered families retain their existing sampling fallback.}
 
 \item{individual}{for factors, draw one base figure per selected level or
-return a named list of ggplots, including for a single level. For weight
+return a named list of ggplots, including for a single level. To add levels
+to an existing factor plot, use \code{individual = FALSE}. For weight
 functions, plot individual weights. For PET or PEESE, plot its coefficient.}
 
 \item{show_figures}{which figures should be returned in case of

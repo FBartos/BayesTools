@@ -27,7 +27,8 @@
 #' display order. The default uses all plotted levels in fitted order. For
 #' interactions, use the joint cell label shown in the default legend.
 #' @param individual for factors, draw one base figure per selected level or
-#' return a named list of ggplots, including for a single level. For weight
+#' return a named list of ggplots, including for a single level. To add levels
+#' to an existing factor plot, use \code{individual = FALSE}. For weight
 #' functions, plot individual weights. For PET or PEESE, plot its coefficient.
 #' @param legend whether factor legends should be drawn.
 #' @param legend_title optional title for factor legends.

@@ -102,7 +102,8 @@ display order. The default uses all plotted levels in fitted order. For
 interactions, use the joint cell label shown in the default legend.}
 
 \item{individual}{whether to draw a separate figure for each selected factor
-level. With \code{plot_type = "ggplot"}, return a list named by level.}
+level. With \code{plot_type = "ggplot"}, return a list named by level.
+To add levels to an existing plot, use \code{individual = FALSE}.}
 }
 \value{
 Base graphics draws the figures and returns invisible \code{NULL}.

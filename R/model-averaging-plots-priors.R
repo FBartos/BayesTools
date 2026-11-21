@@ -426,6 +426,12 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   attr(plot_data, "factor_level_universe") <- universe
   plot_data
 }
+.plot_factor_palette <- function(n_levels){
+
+  colors <- grDevices::palette.colors(palette = "Okabe-Ito")[-1L]
+  if(n_levels <= length(colors)) return(colors[seq_len(n_levels)])
+  c(colors, grDevices::hcl.colors(n_levels - length(colors), palette = "Dark 3"))
+}
 .plot_ordered_overlay_styles <- function(dots_prior, plot_data, dots){
 
   universe <- attr(plot_data, "factor_level_universe", exact = TRUE)
@@ -436,7 +442,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.null(dots_prior[["col"]])){
     dots_prior[["col"]] <- if(!is.null(dots[["col"]])) dots[["col"]] else if(
       is.null(dots[["lty"]]) || is.null(dots[["linetype"]])){
-      grDevices::palette.colors(n = nrow(universe) + 1L)[-1L]
+      .plot_factor_palette(nrow(universe))
     }else .plot.prior_settings()[["col"]]
   }
   if(is.null(dots_prior[["lty"]]) && is.null(dots_prior[["linetype"]])) dots_prior[["lty"]] <- 2
@@ -450,7 +456,10 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   if(length(values) == 1L){
     value <- values[[1L]]
-  }else if(length(values) == n_levels && length(level_id) == 1L && !is.na(level_id) && is.finite(level_id) && level_id >= 1L && length(values) >= level_id){
+  }else if(length(values) <= n_levels && length(level_id) == 1L && !is.na(level_id)){
+    # A short level palette leaves later levels at their default, including
+    # when a selected level is the first component being drawn.
+    if(level_id > length(values)) return(default)
     value <- values[[level_id]]
   }else if(length(component_id) == 1L && !is.na(component_id) && is.finite(component_id) && component_id >= 1L && length(values) >= component_id){
     value <- values[[component_id]]
@@ -548,6 +557,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.null(visible)) visible <- seq_along(level_names)
   plot_data_points     <- plot_data_normalized[["points"]]
   plot_data_factors    <- plot_data_normalized[["densities"]]
+  curve_levels         <- vapply(plot_data_factors, attr, integer(1), "level_id")
+  ordered              <- isTRUE(attr(plot_data_normalized$universe, "ordered", exact = TRUE))
   style_components     <- if(length(plot_data_factors) > 0L) plot_data_factors else plot_data_points
 
 
@@ -564,7 +575,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   dots[["legend"]] <- draw_legend
 
   if(is.null(dots[["col"]]) & (is.null(dots[["lty"]]) | is.null(dots[["linetype"]]))){
-    dots$col <- grDevices::palette.colors(n = length(level_names) + 1)[-1]
+    dots$col <- .plot_factor_palette(length(level_names))
   }
   if(length(dots[["col"]]) == 1)      dots[["col"]]      <- rep(dots[["col"]],      length(level_names))
   if(length(dots[["lty"]]) == 1)      dots[["lty"]]      <- rep(dots[["lty"]],      length(level_names))
@@ -669,13 +680,13 @@ plot_prior_list <- function(prior_list, plot_type = "base",
         n_levels     = length(level_names),
         default      = .plot.prior_settings()[["lty"]]
       )
-      args$.factor_level_mapped <- isTRUE(attr(plot_data_normalized$universe, "ordered", exact = TRUE)) &&
-        !isTRUE(args$hardcode) && !is.na(point_level)
+      args$.factor_level_mapped <- !isTRUE(args$hardcode) && !is.na(point_level) &&
+        (ordered || (!is.null(plot_data_normalized$universe) && !point_level %in% curve_levels))
       plot           <- c(plot, do.call(.geom_prior.point, args))
     }
 
     if(length(plot_data_factors) == 0L &&
-       isTRUE(attr(plot_data_normalized$universe, "ordered", exact = TRUE)) &&
+       !is.null(plot_data_normalized$universe) &&
        !isTRUE(dots$hardcode)){
       plot <- c(plot, list(
         ggplot2::scale_color_manual(name = dots$legend_title,
@@ -706,7 +717,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       args$col         <- level_col[visible]
       args$lty         <- if(!is.null(dots[["linetype"]])) level_linetype[visible] else level_lty[visible]
       args$linetype    <- if(!is.null(dots[["linetype"]])) level_linetype[visible] else NULL
-      args$.factor_universe_ordered <- isTRUE(attr(plot_data_normalized$universe, "ordered", exact = TRUE))
+      args$.factor_universe_ordered <- ordered
 
       plot <- c(plot, do.call(.geom_prior.factors, args))
     }
