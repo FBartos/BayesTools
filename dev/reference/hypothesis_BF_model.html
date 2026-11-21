@@ -28,7 +28,7 @@ methods to evaluate a point hypothesis are the density backends
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9007</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9008</span>
       </span>
     </div>
 
@@ -104,7 +104,9 @@ methods to evaluate a point hypothesis are the density backends
 <span>  density_method <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  density_control <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  n_samples <span class="op">=</span> <span class="fl">10000</span>,</span>
-<span>  columns <span class="op">=</span> <span class="st">"default"</span>,</span>
+<span>  include_densities <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  include_probabilities <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  include_method <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  parameter <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  conditional_omitted <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -158,7 +160,7 @@ it a point null on a quantity with a prior point mass at that value stops
 with <code>BayesTools_point_mass_at_null</code>; region hypotheses are tested.</p></dd>
 
 
-<dt id="arg-logbf-bf-seed-columns">logBF, BF01, seed, columns<a class="anchor" aria-label="anchor" href="#arg-logbf-bf-seed-columns"></a></dt>
+<dt id="arg-logbf-bf-seed-include-densities-include-probabilities-include-method">logBF, BF01, seed, include_densities, include_probabilities, include_method<a class="anchor" aria-label="anchor" href="#arg-logbf-bf-seed-include-densities-include-probabilities-include-method"></a></dt>
 <dd><p>see <code><a href="hypothesis_BF.html">hypothesis_BF()</a></code>.</p></dd>
 
 

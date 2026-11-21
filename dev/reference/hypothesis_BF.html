@@ -36,7 +36,7 @@ marginal-posterior list is reused for matching level hypotheses."><meta name="ro
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9007</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9008</span>
       </span>
     </div>
 
@@ -119,7 +119,9 @@ marginal-posterior list is reused for matching level hypotheses.</p>
 <span>  BF01 <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  density_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"KDE"</span>, <span class="st">"normal"</span>, <span class="st">"precomputed"</span><span class="op">)</span>,</span>
-<span>  columns <span class="op">=</span> <span class="st">"default"</span>,</span>
+<span>  include_densities <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  include_probabilities <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  include_method <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -137,7 +139,9 @@ marginal-posterior list is reused for matching level hypotheses.</p>
 <span>  density_method <span class="op">=</span> <span class="st">"KDE"</span>,</span>
 <span>  density_control <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  n_samples <span class="op">=</span> <span class="fl">10000</span>,</span>
-<span>  columns <span class="op">=</span> <span class="st">"default"</span>,</span>
+<span>  include_densities <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  include_probabilities <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  include_method <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -228,15 +232,32 @@ so finite point hypotheses outside those ranges use kernel-tail density
 estimates.</p></dd>
 
 
-<dt id="arg-columns">columns<a class="anchor" aria-label="anchor" href="#arg-columns"></a></dt>
-<dd><p>output columns. <code>"default"</code> returns <code>Alternative</code>,
-<code>Null</code>, <code>BF</code>, and <code>BF_error</code>. <code>"all"</code> also returns
-<code>prior</code>, <code>posterior</code>, and <code>method</code> columns. The
-<code>prior</code> and <code>posterior</code> columns are diagnostics, not always
-probabilities: point tests report density heights, region tests report odds,
-and transitive point-vs-region tests report <code>NA</code>. The default
-<code>BF_error</code> column is printed as <code>error%(BF)</code>. Individual columns
-are selected by these column names; other spellings are rejected.</p></dd>
+<dt id="arg-include-densities">include_densities<a class="anchor" aria-label="anchor" href="#arg-include-densities"></a></dt>
+<dd><p>whether to add <code>prior_density</code> and <code>posterior_density</code>
+when the request contains a point hypothesis. These report the prior and
+posterior density at the tested point on its requested scale.</p></dd>
+
+
+<dt id="arg-include-probabilities">include_probabilities<a class="anchor" aria-label="anchor" href="#arg-include-probabilities"></a></dt>
+<dd><p>whether to add <code>prior_prob_alt</code>, <code>posterior_prob_alt</code>,
+<code>prior_prob_null</code>, and <code>posterior_prob_null</code> when the request
+contains a region or an explicit <code>unconstrained</code> side. Each probability
+is the mass of the labelled side under the encompassing prior or posterior
+on the selected scale and conditioning event. An unconstrained side has
+mass one. Inapplicable cells in a mixed table are <code>NA</code>.</p></dd>
+
+
+<dt id="arg-include-method">include_method<a class="anchor" aria-label="anchor" href="#arg-include-method"></a></dt>
+<dd><p>whether to add the <code>method</code> used for each Bayes factor.
+Point tests identify the posterior density estimator, for example
+<code>"Savage-Dickey (KDE)"</code>. A precomputed density reports the estimator
+recorded by the provider when available. Comparing two regions reports
+<code>"prior-posterior odds"</code>. Comparing a region with <code>unconstrained</code>
+in either direction reports <code>"encompassing prior"</code>.
+All three display options default to <code>FALSE</code>. The default table contains
+<code>Alternative</code>, <code>Null</code>, <code>BF</code>, and <code>BF_error</code>
+(printed as <code>error%(BF)</code>). <code>BF01</code> inverts the displayed Bayes
+factor and preserves the hypothesis labels, densities, and probabilities.</p></dd>
 
 
 <dt id="arg-namespace-component-transform-scaled-conditional-density-control-n-samples">namespace, component, transform_scaled, conditional, density_control, n_samples<a class="anchor" aria-label="anchor" href="#arg-namespace-component-transform-scaled-conditional-density-control-n-samples"></a></dt>
@@ -344,17 +365,22 @@ when intermediate diagnostic odds are outside the natural-scale range.
 A transitive ratio with both a numerically zero posterior point ordinate and
 zero posterior region mass is undefined and returns <code>NA</code> with a warning
 recorded in the result.</p>
-<p>The hypothesis language deliberately accepts only a small,
-non-programmable subset of R expressions:</p>
+<p>The hypothesis language accepts arithmetic expressions, logical regions,
+and chained inequalities for intervals:</p>
 <div class="sourceCode"><pre><code>
 hypothesis := statement [ "vs" statement ]
+            | comparand "vs" "unconstrained"
+            | "unconstrained" "vs" comparand
 statement  := point | region
+comparand  := arithmetic ( "=" | "==" ) finite_number | region
 point      := arithmetic ( "=" | "==" | "!=" ) finite_number
-region     := relation
+region     := relation | interval
             | "(" region ")"
             | "!" region
             | region ( "&amp;" | "|" ) region
 relation   := arithmetic ( "&lt;" | "&lt;=" | "&gt;" | "&gt;=" ) arithmetic
+interval   := lower ( "&lt;" | "&lt;=" ) arithmetic ( "&lt;" | "&lt;=" ) upper
+            | upper ( "&gt;" | "&gt;=" ) arithmetic ( "&gt;" | "&gt;=" ) lower
 </code></pre></div>
 
 <p>Arithmetic expressions may contain parameter identifiers, finite numeric
@@ -367,6 +393,17 @@ another parameter expression. Symbolic right-hand sides are normalized to a
 difference from zero. Relations with a constant on the left and a parameter
 expression on the right are normalized to the equivalent parameter-left
 form.</p>
+<p>An interval has two finite constant bounds with the lower below the upper.
+For example, <code>"-0.1 &lt;= mu &lt;= 0.1"</code> compares practical equivalence
+with its complement, using posterior odds of the interval divided by its
+prior odds. A BF10 above one favors the interval. A strict inequality
+excludes a point mass at that endpoint. An explicit comparison such as
+<code>"-0.1 &lt;= mu &lt;= 0.1 vs mu &gt; 0.1"</code> compares the interval with the
+upper tail alone. Use <code>"-0.1 &lt;= mu &lt;= 0.1 vs unconstrained"</code>
+to compare the interval with the full model. This BF is the posterior
+probability of the interval divided by its prior probability. Reversing
+the two sides gives the reciprocal. The full model retains the fitted
+prior, parameter support, and conditioning selected for the test.</p>
 <p>Equality defines a point hypothesis and may appear only as the top-level
 relation of a statement. It cannot be parenthesized inside, negated, or
 combined as a region. Region relations may be parenthesized, negated, and

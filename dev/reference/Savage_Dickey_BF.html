@@ -18,7 +18,7 @@ based on the change of height from prior to posterior distribution at the test v
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9007</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9008</span>
       </span>
     </div>
 
@@ -130,7 +130,9 @@ resulting density is scaled by the remaining continuous mass.</p></dd>
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>Savage_Dickey_BF</code> returns a Bayes factor. The prior ordinate
+    <p><code>Savage_Dickey_BF</code> returns a Bayes factor. When a stored density
+or ordinate supplies its estimator name, the <code>posterior_density_estimator</code>
+attribute records the estimator used at the tested value. The prior ordinate
 at the null follows the exactness rule of <code><a href="hypothesis_BF.html">hypothesis_BF()</a></code> point
 hypotheses, with the same condition classes: a prior point mass at the null
 value stops with an error of class <code>BayesTools_point_mass_at_null</code>, a
