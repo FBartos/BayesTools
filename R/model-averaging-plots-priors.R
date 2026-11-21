@@ -577,6 +577,13 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.null(dots[["col"]]) & (is.null(dots[["lty"]]) | is.null(dots[["linetype"]]))){
     dots$col <- .plot_factor_palette(length(level_names))
   }
+  # Posterior styles index the fitted levels. A longer palette must not be
+  # interpreted as one colour per density or spike after selecting a subset.
+  if(!is.null(plot_data_normalized$universe)){
+    for(style in c("col", "lty", "linetype")){
+      if(length(dots[[style]]) > length(level_names)) dots[[style]] <- dots[[style]][seq_along(level_names)]
+    }
+  }
   if(length(dots[["col"]]) == 1)      dots[["col"]]      <- rep(dots[["col"]],      length(level_names))
   if(length(dots[["lty"]]) == 1)      dots[["lty"]]      <- rep(dots[["lty"]],      length(level_names))
   if(length(dots[["linetype"]]) == 1) dots[["linetype"]] <- rep(dots[["linetype"]], length(level_names))

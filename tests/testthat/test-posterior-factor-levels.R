@@ -287,7 +287,7 @@ test_that("selected levels keep their fitted colours beyond the first eight leve
   full <- draw()$scales$get_scales("colour")
   palette <- full$palette(length(full$breaks))
   expect_length(unique(palette), 11L)
-  for(colors in list(NULL, c("red", "blue"))){
+  for(colors in list(NULL, c("red", "blue"), grDevices::rainbow(12L))){
     combined <- draw(col = colors)$scales$get_scales("colour")
     december <- draw(col = colors, level = "Dec")
     expected <- combined$palette(length(combined$breaks))[["Dec"]]
