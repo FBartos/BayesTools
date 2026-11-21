@@ -1,7 +1,9 @@
 name: Set up JAGS 4
 description: >
   Installs JAGS 4 for BayesTools and the BayesToolsVerse packages, which
-  support JAGS 4.x only, and exports the variables their build scripts read.
+  support JAGS 4.x only, and exports the variables their build scripts read,
+  including RJAGS_VERSION, the last rjags release for JAGS 4 (rjags 5 requires
+  JAGS 5), which the workflows install instead of CRAN's current rjags.
   Used by the workflows of BayesTools (./.github/actions/setup-jags) and of the
   dependent packages (FBartos/BayesTools/.github/actions/setup-jags@development).
 
@@ -18,6 +20,12 @@ inputs:
 runs:
   using: composite
   steps:
+    # bayestools-source adds it to the pak specs of the dependent packages;
+    # BayesTools' own workflows install it from the CRAN archive.
+    - name: Pin rjags to its last release for JAGS 4
+      shell: bash
+      run: echo "RJAGS_VERSION=4-18" >> "$GITHUB_ENV"
+
     # The installer also registers JAGS, which rjags looks up at run time, so a
     # cached copy of the files alone is not enough.
     - name: Install JAGS (Windows)

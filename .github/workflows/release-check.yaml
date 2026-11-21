@@ -52,6 +52,7 @@ jobs:
           extra-packages: |
             any::urlchecker
             any::pkgdown
+            rjags@${{ env.RJAGS_VERSION }}
             local::.
 
       # CRAN's site can take longer to connect than the checker's 5 second limit.

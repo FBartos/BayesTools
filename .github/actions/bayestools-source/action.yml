@@ -3,7 +3,8 @@ description: >
   For a package that imports BayesTools, returns the pak spec to install:
   the CRAN release when it satisfies the package's `BayesTools (>= x)`
   import, otherwise the BayesTools development branch; empty for a package
-  that does not import BayesTools. Needs R on the PATH.
+  that does not import BayesTools. After setup-jags, the spec also pins
+  rjags to its RJAGS_VERSION. Needs R on the PATH.
 
 inputs:
   path:

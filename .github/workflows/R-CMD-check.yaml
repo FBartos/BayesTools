@@ -94,6 +94,15 @@ jobs:
         run: |
           options(repos = c(CRAN = "https://cloud.r-project.org"))
 
+          # rjags 5 requires JAGS 5; keep the last release for JAGS 4 that
+          # setup-jags names (also when a restored cache holds another one).
+          rjags_version <- Sys.getenv("RJAGS_VERSION")
+          if (!nzchar(system.file(package = "rjags")) ||
+              !identical(utils::packageDescription("rjags")[["Version"]], rjags_version)) {
+            install.packages(sprintf("https://cran.r-project.org/src/contrib/Archive/rjags/rjags_%s.tar.gz", rjags_version),
+                             repos = NULL, type = "source")
+          }
+
           # Check installation without loading namespaces: loading RoBMA would
           # load a cached BayesTools DLL that the installation step cannot
           # replace on Windows while this process holds it.

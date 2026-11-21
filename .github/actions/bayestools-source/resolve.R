@@ -51,6 +51,12 @@ pak_spec <- if (!imports_bayestools) {
   "any::BayesTools"
 }
 
+# setup-jags names the last rjags release for JAGS 4 (rjags 5 requires JAGS 5).
+rjags_version <- Sys.getenv("RJAGS_VERSION")
+if (nzchar(rjags_version)) {
+  pak_spec <- trimws(paste(pak_spec, paste0("rjags@", rjags_version)))
+}
+
 message(
   "BayesTools required: ", ifelse(is.na(required_version), "none", required_version),
   "; CRAN: ", ifelse(is.na(cran_version), "unavailable", cran_version),
