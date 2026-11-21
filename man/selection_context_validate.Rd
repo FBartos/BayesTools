@@ -95,8 +95,9 @@ p-hacking severity, in [0, 1)), the integer codes \code{phack_kind} (0 to 2),
 \code{bias_indicator} (the index of the branch of each row, from 1 to the
 number of branches), and the logical \code{use_normal}. The observation
 fields share one length: \code{obs_bin} (the integer selection bin of each
-observation, from 1 to the number of bins), \code{yi} (finite effect sizes)
-and \code{sei} (positive standard errors). A fractional or missing integer
+observation, from 1 to the number of bins), \code{yi} (finite effect sizes),
+\code{sei} (positive standard errors), and optional logical \code{bias_exempt}
+(observations exempt from the publication-bias model). A fractional or missing integer
 code is an error, never rounded or truncated onto another code.
 Native caches are reused only when effective static geometry and complete
 row-routing inputs are unchanged. Explicit segments take precedence over
