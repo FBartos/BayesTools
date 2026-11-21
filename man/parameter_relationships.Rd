@@ -41,7 +41,10 @@ by both their type and opaque ID. A fit gives the default original-scale
 graph. Use \code{parameter_relationships(parameter_catalog(fit, transform_scaled = FALSE))}
 for links to individual fitted SDs when original-scale SDs combine several
 covariance coordinates. Type \code{quantity} refers to
-\code{parameter_catalog(object)$quantities$quantity_id}. Type \code{coordinate}
+\code{parameter_catalog(object)$quantities$quantity_id}. Type \code{prior} denotes
+a named entry in the fitted prior list. Its native \code{prior_owns} edges
+identify the ordinary scalar or indexed model quantities it supplies.
+Type \code{coordinate}
 denotes a declared backend input, which may be data or unmonitored. Type
 \code{random_block} identifies the owning fitted block. Type \code{row_source} denotes a row-shaped
 source by its declared node name. A native \code{row_data} endpoint identifies
@@ -79,7 +82,9 @@ provenance. In particular, a child with its own inclusion gates can
 realize less variance than its incoming component was assigned.
 
 Provider declarations describe inputs of an existing model. A provider can
-declare the inputs of its extension quantities or ordinary model coordinates.
+declare the inputs of its extension quantities or model-syntax coordinates.
+A quantity with a fitted prior can supply another quantity. Its own inputs
+remain owned by that prior.
 An external scale used by a fitted allocation may be an unmonitored
 deterministic node in the model syntax. For example, if \code{random_sd} is
 computed from a total SD and a fraction, register both public quantity IDs

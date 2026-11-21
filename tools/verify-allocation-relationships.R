@@ -52,6 +52,9 @@ declarations <- data.frame(
   relation = c("sd_source", "complement_variance_fraction")
 )
 native <- parameter_relationships(fit)
+tau_owner <- native$relation == "prior_owns" & native$consumer_id == select("tau_total")$quantity_id
+stopifnot(identical(native$source_type[tau_owner], "prior"),
+          identical(native$source_id[tau_owner], "tau_total"))
 registered <- register_parameter_relationships(fit, declarations, "RoBMA")
 restored <- unserialize(serialize(registered, NULL))
 relationships <- parameter_relationships(restored)

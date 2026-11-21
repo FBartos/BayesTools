@@ -22,7 +22,10 @@
 #'   graph. Use `parameter_relationships(parameter_catalog(fit, transform_scaled = FALSE))`
 #'   for links to individual fitted SDs when original-scale SDs combine several
 #'   covariance coordinates. Type `quantity` refers to
-#'   `parameter_catalog(object)$quantities$quantity_id`. Type `coordinate`
+#'   `parameter_catalog(object)$quantities$quantity_id`. Type `prior` denotes
+#'   a named entry in the fitted prior list. Its native `prior_owns` edges
+#'   identify the ordinary scalar or indexed model quantities it supplies.
+#'   Type `coordinate`
 #'   denotes a declared backend input, which may be data or unmonitored. Type
 #'   `random_block` identifies the owning fitted block. Type `row_source` denotes a row-shaped
 #'   source by its declared node name. A native `row_data` endpoint identifies
@@ -60,7 +63,9 @@
 #'   realize less variance than its incoming component was assigned.
 #'
 #'   Provider declarations describe inputs of an existing model. A provider can
-#'   declare the inputs of its extension quantities or ordinary model coordinates.
+#'   declare the inputs of its extension quantities or model-syntax coordinates.
+#'   A quantity with a fitted prior can supply another quantity. Its own inputs
+#'   remain owned by that prior.
 #'   An external scale used by a fitted allocation may be an unmonitored
 #'   deterministic node in the model syntax. For example, if `random_sd` is
 #'   computed from a total SD and a fraction, register both public quantity IDs
@@ -204,6 +209,16 @@ register_parameter_relationships <- function(object, relationships, provider){
   ), stringsAsFactors = FALSE)
 }
 
+.bt_relationship_plain_model_node <- function(quantities){
+
+  plain <- quantities$provider == "BayesTools" & !quantities$internal &
+    !nzchar(quantities$owner_type) & quantities$role == "parameter"
+  plain[plain] <- vapply(quantities$extraction_key[plain], function(key){
+    identical(key$type, "coordinate")
+  }, logical(1))
+  plain
+}
+
 .bt_validate_provider_relationships <- function(extra, native, quantities){
 
   allowed_types <- c("quantity", "coordinate", "row_source")
@@ -230,10 +245,11 @@ register_parameter_relationships <- function(object, relationships, provider){
   }
   quantity_edges <- extra[extra$consumer_type == "quantity", , drop = FALSE]
   targets <- quantities[match(quantity_edges$consumer_id, quantities$quantity_id), , drop = FALSE]
-  plain_model_node <- targets$provider == "BayesTools" & !nzchar(targets$owner_type) &
-    targets$role == "parameter" & vapply(targets$extraction_key, function(key){
-      identical(key$type, "coordinate")
-    }, logical(1))
+  prior_owned <- native$consumer_id[native$relation == "prior_owns"]
+  if(any(quantity_edges$consumer_id %in% prior_owned)){
+    .bt_relationship_stop("The inputs of a prior-owned model quantity are already declared by its fitted prior.")
+  }
+  plain_model_node <- .bt_relationship_plain_model_node(targets)
   if(any(targets$provider != quantity_edges$provider & !plain_model_node)){
     .bt_relationship_stop("A provider can declare inputs only for its own quantities or ordinary model coordinates.")
   }
@@ -250,7 +266,8 @@ register_parameter_relationships <- function(object, relationships, provider){
     .bt_relationship_stop("Parameter relationships must follow the registered edge schema.")
   }
   if(!nrow(edges)) return(invisible(TRUE))
-  types <- c("quantity", "coordinate", "row_source", "row_data", "constant", "allocation", "allocation_component", "random_block")
+  types <- c("quantity", "coordinate", "row_source", "row_data", "constant", "prior",
+             "allocation", "allocation_component", "random_block")
   if(!all(c(edges$source_type, edges$consumer_type) %in% types) ||
      any(!nzchar(edges$source_id)) || any(!nzchar(edges$consumer_id)) ||
      any(!nzchar(edges$relation)) || any(!nzchar(edges$provider))){
@@ -262,6 +279,20 @@ register_parameter_relationships <- function(object, relationships, provider){
     .bt_relationship_stop("A relationship references an unknown public quantity ID.")
   }
   native <- edges$provider == "BayesTools"
+  owns <- edges$relation == "prior_owns"
+  if(any(edges$consumer_type == "prior") || any(owns != (edges$source_type == "prior")) ||
+     any(owns & (!native | edges$consumer_type != "quantity"))){
+    .bt_relationship_stop("A fitted prior ownership edge must run from a native prior to a public quantity.")
+  }
+  if(any(owns)){
+    targets <- quantities[match(edges$consumer_id[owns], quantities$quantity_id), , drop = FALSE]
+    prior_names <- edges$source_id[owns]
+    coordinates <- targets$canonical_name
+    if(anyDuplicated(targets$quantity_id) || !all(.bt_relationship_plain_model_node(targets)) ||
+       any(prior_names != coordinates & prior_names != .bt_parameter_coordinates_base(coordinates))){
+      .bt_relationship_stop("A prior-owned quantity must identify one fitted prior for its ordinary model coordinate.")
+    }
+  }
   if(any(!native)){
     .bt_validate_provider_relationships(edges[!native, , drop = FALSE], edges[native, , drop = FALSE], quantities)
   }
@@ -305,7 +336,7 @@ register_parameter_relationships <- function(object, relationships, provider){
 
 .bt_validate_relationships <- function(edges, quantities){
 
-  .bt_validate_once("parameter_relationships", list(edges, quantities$quantity_id, quantities$internal,
+  .bt_validate_once("parameter_relationships", list(edges, quantities$quantity_id, quantities$canonical_name, quantities$internal,
     quantities$provider, quantities$owner_type, quantities$role, quantities$extraction_key),
     function() .bt_validate_relationship_rows(edges, quantities))
 }
@@ -319,6 +350,19 @@ register_parameter_relationships <- function(object, relationships, provider){
       rows[[length(rows) + 1L]] <<- .bt_relationship_rows(source_type, source_id,
         consumer_type, consumer_id, relation, formula_parameter, allocation, component, normalization, block)
     }
+  }
+  # An ordinary sampled coordinate can belong to a fitted prior or to the
+  # model syntax. Register only exact prior entries or their indexed cells.
+  priors <- names(prior_list)[vapply(prior_list, is.prior, logical(1))]
+  if(length(priors)){
+    plain <- quantities[.bt_relationship_plain_model_node(quantities), , drop = FALSE]
+    coordinates <- plain$canonical_name
+    owner <- match(coordinates, priors)
+    indexed <- is.na(owner)
+    owner[indexed] <- match(.bt_parameter_coordinates_base(coordinates[indexed]), priors)
+    registered <- which(!is.na(owner))
+    add("prior", priors[owner[registered]], "quantity", plain$quantity_id[registered], "prior_owns",
+        formula_parameter = plain$formula_parameter[registered])
   }
   for(design in .bt_random_effect_summary_designs(formula_design)){
     if(length(design$random_effects) || length(design$random_allocations)){

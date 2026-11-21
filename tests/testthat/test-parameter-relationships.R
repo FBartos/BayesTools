@@ -2,13 +2,17 @@ skip_if_not_test_profile("unit")
 
 test_that("relationships join declared public IDs and survive catalog and map round trips", {
 
-  names <- c("tau_total", "random_sd", "moderator_sd", "rho")
-  priors <- stats::setNames(lapply(names, function(x) prior("normal", list(0, 1))), names)
-  map <- .bt_build_parameter_map(names, prior_list = priors)
+  priors <- list(tau_total = prior("gamma", list(2, 3)), rho = prior("beta", list(2, 2)))
+  map <- .bt_build_parameter_map(c(names(priors), "random_sd", "moderator_sd"), prior_list = priors)
   catalog <- .bt_parameter_map_catalog(map)
   expect_identical(parameter_relationships(map), parameter_relationships(catalog))
   expect_identical(names(parameter_relationships(map)), parameter_map_schema()$relationships$field)
   id <- function(x) parameter_catalog_resolve(catalog, x)$quantity_id
+  native <- parameter_relationships(map)
+  expect_identical(native$source_type, rep("prior", 2))
+  expect_identical(native$source_id, names(priors))
+  expect_identical(native$relation, rep("prior_owns", 2))
+  expect_identical(native$consumer_id, c(id("tau_total"), id("rho")))
   declarations <- data.frame(
     source_id = c(id("tau_total"), id("rho"), id("tau_total"), id("rho")),
     consumer_id = c(rep(id("random_sd"), 2), rep(id("moderator_sd"), 2)),
@@ -16,8 +20,8 @@ test_that("relationships join declared public IDs and survive catalog and map ro
     component = rep(c("random", "moderators"), each = 2)
   )
   updated <- register_parameter_relationships(map, declarations, "RoBMA")
-  expect_identical(nrow(parameter_relationships(map)), 0L)
-  expect_identical(parameter_relationships(updated)$provider, rep("RoBMA", 4))
+  expect_identical(parameter_relationships(map), native)
+  expect_identical(parameter_relationships(updated)$provider, c(native$provider, rep("RoBMA", 4)))
   expect_identical(parameter_relationships(unserialize(serialize(updated, NULL))), parameter_relationships(updated))
   expect_identical(register_parameter_relationships(updated, declarations, "RoBMA"), updated)
   expect_identical(parameter_relationships(register_parameter_relationships(catalog, declarations, "RoBMA")),
@@ -26,8 +30,10 @@ test_that("relationships join declared public IDs and survive catalog and map ro
   expect_identical(updated$quantities, map$quantities)
   expect_error(register_parameter_relationships(updated, declarations, "Other"),
                class = "BayesTools_parameter_relationship_error")
-  cycle <- data.frame(source_id = id("random_sd"), consumer_id = id("tau_total"), relation = "model_input")
-  expect_error(register_parameter_relationships(updated, cycle, "RoBMA"), "cycle",
+  supplied <- data.frame(source_id = id("random_sd"), consumer_id = id("moderator_sd"), relation = "model_input")
+  linked <- register_parameter_relationships(updated, supplied, "RoBMA")
+  cycle <- data.frame(source_id = id("moderator_sd"), consumer_id = id("random_sd"), relation = "model_input")
+  expect_error(register_parameter_relationships(linked, cycle, "RoBMA"), "cycle",
                class = "BayesTools_parameter_relationship_error")
   duplicate_root <- transform(cycle, source_id = id("rho"), consumer_id = id("random_sd"), relation = "sd_source")
   expect_error(register_parameter_relationships(updated, duplicate_root, "RoBMA"), "one declared SD source",
@@ -37,6 +43,32 @@ test_that("relationships join declared public IDs and survive catalog and map ro
                class = "BayesTools_parameter_relationship_error")
   expect_error(register_parameter_relationships(map, declarations, "BayesTools"),
                class = "BayesTools_parameter_relationship_error")
+  owned <- data.frame(source_id = id("rho"), consumer_id = id("tau_total"), relation = "model_input")
+  for(object in list(map, catalog, unserialize(serialize(updated, NULL)))){
+    expect_error(register_parameter_relationships(object, owned, "RoBMA"), "fitted prior",
+                 class = "BayesTools_parameter_relationship_error")
+  }
+  forged <- transform(owned, source_type = "prior", source_id = "tau_total",
+                      consumer_id = id("random_sd"), relation = "prior_owns")
+  expect_error(register_parameter_relationships(map, forged, "RoBMA"), "native prior",
+               class = "BayesTools_parameter_relationship_error")
+})
+
+test_that("an indexed ordinary coordinate keeps the exact fitted prior-list owner", {
+
+  priors <- list(p = prior("dirichlet", list(alpha = c(2, 3))))
+  columns <- c("p[1]", "p[2]", "p_copy", "prior_par_eta_p[1]", "prior_par_eta_p[2]")
+  map <- .bt_build_parameter_map(columns, prior_list = priors)
+  catalog <- .bt_parameter_map_catalog(map)
+  id <- function(x) parameter_catalog_resolve(catalog, x)$quantity_id
+  native <- parameter_relationships(map)
+  expect_identical(native$source_id, c("p", "p"))
+  expect_identical(native$consumer_id, c(id("p[1]"), id("p[2]")))
+  input <- data.frame(source_id = id("p[1]"), consumer_id = id("p_copy"), relation = "model_input")
+  registered <- register_parameter_relationships(map, input, "RoBMA")
+  expect_equal(sum(parameter_relationships(registered)$provider == "RoBMA"), 1L)
+  expect_error(register_parameter_relationships(map, transform(input, consumer_id = id("p[2]")), "RoBMA"),
+               "fitted prior", class = "BayesTools_parameter_relationship_error")
 })
 
 test_that("a nested allocation links the consumed component and retains the external source", {
@@ -188,7 +220,7 @@ test_that("a provider connects an unmonitored random-effect SD to its public var
                class = "BayesTools_parameter_relationship_error")
   inverse <- data.frame(source_id = "random_sd", source_type = "coordinate", consumer_id = id("tau_total"),
                         relation = "model_input")
-  expect_error(register_parameter_relationships(registered, inverse, "RoBMA"), "cycle",
+  expect_error(register_parameter_relationships(registered, inverse, "RoBMA"), "fitted prior",
                class = "BayesTools_parameter_relationship_error")
 })
 
@@ -234,7 +266,7 @@ test_that("provider row endpoints use their fitted shape and respect native call
     class = "BayesTools_parameter_relationship_error")
   # Including a row source as an input is distinct from redefining its callback.
   cycle <- data.frame(source_type = "row_source", source_id = "callback_sd",
-                      consumer_id = tau, relation = "model_input")
+                      consumer_type = "coordinate", consumer_id = "offset[2]", relation = "model_input")
   expect_error(register_parameter_relationships(registered, cycle, "RoBMA"), "cycle",
                class = "BayesTools_parameter_relationship_error")
 })

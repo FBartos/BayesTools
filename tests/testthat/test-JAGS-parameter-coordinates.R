@@ -1059,7 +1059,7 @@ test_that("the auxiliary coordinates of a coefficient take the fitted scale of t
 test_that("complete pre-R2 map 22 fits have a coherent metadata-only read view", {
 
   priors <- list(tau = prior("gamma", list(2, 3)), sigma = prior("gamma", list(3, 4)))
-  map <- .bt_build_parameter_map(names(priors), prior_list = priors)
+  map <- .bt_build_parameter_map(c(names(priors), "derived_sd"), prior_list = priors)
   saved <- .bt_attach_fit_contract(structure(list(), class = "BayesTools_fit"))
   attr(saved, "prior_list") <- priors
   map$relationships <- NULL
@@ -1070,7 +1070,10 @@ test_that("complete pre-R2 map 22 fits have a coherent metadata-only read view",
   view <- parameter_map(saved)
   expect_identical(view$schema_version, 23L)
   for(field in c("coordinates", "quantities", "aliases")) expect_identical(view[[field]], map[[field]])
-  expect_identical(parameter_relationships(saved), .bt_empty_relationships())
+  owners <- parameter_relationships(saved)
+  expect_identical(owners$relation, rep("prior_owns", 2L))
+  expect_identical(owners$source_type, rep("prior", 2L))
+  expect_identical(owners$source_id, names(priors))
   expect_identical(parameter_map(saved), view)
   expect_identical(JAGS_fit_contract(saved)$parameter_map_version, 23L)
   expect_identical(JAGS_validate_fit_contract(saved, "parameter_map")$parameter_map_version, 23L)
@@ -1078,14 +1081,18 @@ test_that("complete pre-R2 map 22 fits have a coherent metadata-only read view",
   expect_identical(attr(saved, "fit_contract")$parameter_map_version, 22L)
 
   ids <- stats::setNames(view$quantities$quantity_id, view$quantities$canonical_name)
-  updated <- register_parameter_relationships(saved,
+  expect_identical(owners$consumer_id, unname(ids[names(priors)]))
+  expect_error(register_parameter_relationships(saved,
     data.frame(source_id = unname(ids["tau"]), consumer_id = unname(ids["sigma"]), relation = "model_input"),
+    "RoBMA"), "fitted prior", class = "BayesTools_parameter_relationship_error")
+  updated <- register_parameter_relationships(saved,
+    data.frame(source_id = unname(ids["tau"]), consumer_id = unname(ids["derived_sd"]), relation = "model_input"),
     "RoBMA")
-  expect_identical(parameter_relationships(updated)$provider, "RoBMA")
+  expect_identical(parameter_relationships(updated)$provider, c(owners$provider, "RoBMA"))
   expect_identical(attr(updated, "parameter_map")$schema_version, 23L)
   expect_identical(attr(updated, "fit_contract")$parameter_map_version, 23L)
   expect_identical(parameter_relationships(unserialize(serialize(updated, NULL))), parameter_relationships(updated))
-  expect_identical(parameter_relationships(saved), .bt_empty_relationships())
+  expect_identical(parameter_relationships(saved), owners)
   expect_identical(JAGS_fit_contract(.bt_parameter_fitted_fit(saved))$parameter_map_version, 23L)
 
   refuses <- function(x){

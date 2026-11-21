@@ -696,6 +696,11 @@ model builder's additional declared inputs with
 `register_parameter_relationships()`; keep those rows when extending catalogs,
 requesting the fitted predictor scale, or serializing a fit.
 
+For an ordinary public model coordinate, the native `prior_owns` edge identifies
+its fitted prior-list entry, including the base entry of an indexed coordinate.
+A provider may use that quantity as a source. Additional provider inputs belong
+to model-defined coordinates and the provider's own derived quantities.
+
 For a saved pre-R² map 22 with complete fitted declarations, the fit accessors
 preserve its coordinate, quantity and alias tables and derive the new relationship
 table from the stored model metadata. The read view is memoized by its inputs.
