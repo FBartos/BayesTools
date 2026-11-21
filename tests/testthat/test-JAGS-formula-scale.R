@@ -878,6 +878,19 @@ test_that("Manual and automatic scaling produce equivalent results", {
   fit_manual <- readRDS(file.path(temp_fits_dir, "fit_formula_manual_scaled.RDS"))
   fit_auto   <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
 
+  # For these fixed data, integrating out the four normal coefficients gives
+  # y | sigma ~ N(0, sigma^2 I + X diag(25, 1, 1, 1) X'). Quadrature over
+  # log(sigma) with its N(0,1) prior gives E[sigma | y] = 698029.2 and
+  # SD[sigma | y] = 46697.7. Matching manual and automatic fits could both be
+  # stuck in the same transient. Require the mean within five MCSEs and an
+  # MCSE below 5% of the posterior SD (about 400 effective draws).
+  for(fit in list(fit_manual, fit_auto)){
+    sigma <- coda::as.mcmc.list(fit)[, "sigma", drop = FALSE]
+    mcse <- summary(sigma)$statistics[["Time-series SE"]]
+    expect_lt(abs(mean(as.matrix(sigma)) - 698029.2), 5 * mcse)
+    expect_lt(mcse, 0.05 * 46697.7)
+  }
+
   # Check that automatic scaling has formula_scale attribute with nested structure
   expect_true(!is.null(attr(fit_auto, "formula_scale")))
   expect_true("mu" %in% names(attr(fit_auto, "formula_scale")))

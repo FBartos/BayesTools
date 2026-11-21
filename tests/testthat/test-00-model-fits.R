@@ -1006,7 +1006,7 @@ test_that("Formula-based interaction models fit correctly", {
     model_syntax = model_syntax, data = data_scale, prior_list = prior_list,
     formula_list = formula_list_scale, formula_data_list = formula_data_list_manual,
     formula_prior_list = formula_prior_list_scale,
-    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+    chains = 2, adapt = 5000, burnin = 5000, sample = 5000, seed = 2)
   # Store scaling info as attribute for comparison
   attr(fit_formula_manual_scaled, "manual_scale") <- list(
     mu_x_cont1 = list(mean = x_cont1_mean, sd = x_cont1_sd),
@@ -1026,7 +1026,7 @@ test_that("Formula-based interaction models fit correctly", {
     formula_list = formula_list_scale, formula_data_list = formula_data_list_auto,
     formula_prior_list = formula_prior_list_scale,
     formula_scale_list = formula_scale_list_auto,
-    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+    chains = 2, adapt = 5000, burnin = 5000, sample = 5000, seed = 2)
   result <- save_fit(fit_formula_auto_scaled, "fit_formula_auto_scaled",
                      formulas = TRUE, interactions = TRUE, simple_priors = TRUE,
                      note = "Automatic scaling of continuous predictors")

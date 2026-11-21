@@ -617,7 +617,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_formula_scale = character(),
       oracle_type = "formula-scale-fixture-metadata",
       expected_chains = 2L,
-      expected_iterations = 500L,
+      expected_iterations = 5000L,
       tolerance = 1e-10,
       flags = list(simple_priors = TRUE, formulas = TRUE, interactions = TRUE)
     ),
@@ -640,7 +640,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_formula_scale = c("mu_x_cont1", "mu_x_cont2"),
       oracle_type = "formula-scale-fixture-metadata",
       expected_chains = 2L,
-      expected_iterations = 500L,
+      expected_iterations = 5000L,
       tolerance = 1e-10,
       flags = list(simple_priors = TRUE, formulas = TRUE, interactions = TRUE)
     ),
