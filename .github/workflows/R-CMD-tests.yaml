@@ -121,6 +121,7 @@ jobs:
       - name: Run Test Profile
         shell: pwsh
         env:
+          BAYESTOOLS_TEST_INSTALLED: "true"
           TESTTHAT_MAX_FAILS: Inf
         run: |
           Rscript tools/test-profile.R "$env:BAYESTOOLS_CI_PROFILE"

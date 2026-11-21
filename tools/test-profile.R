@@ -120,6 +120,9 @@ env_flag <- function(name, default) {
 }
 
 stop_on_failure <- env_flag("BAYESTOOLS_TEST_STOP_ON_FAILURE", TRUE)
+load_mode <- if (env_flag("BAYESTOOLS_TEST_INSTALLED", FALSE)) "installed" else "source"
+message("Testing ", if (load_mode == "installed") find.package("BayesTools") else project_root,
+        " (", load_mode, ")")
 reporter_object <- if (identical(reporter, "llm")) {
   if (env_flag("BAYESTOOLS_TEST_QUIET_SKIPS", FALSE)) {
     bayestools_quiet_llm_reporter()
@@ -165,8 +168,7 @@ tryCatch(
   # PSOCK workers load the installed DLL. A separate pkgload compilation of
   # the same source can have a different binary fingerprint on Windows.
   testthat::test_local(
-    load_package = if ("fit" %in% selected_profiles &&
-                       (is.null(filter) || grepl(filter, "00-model-fits"))) "installed" else "source",
+    load_package = load_mode,
     filter = test_filter,
     stop_on_failure = stop_on_failure,
     reporter = reporter_object

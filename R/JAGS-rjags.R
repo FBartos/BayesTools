@@ -46,12 +46,13 @@
 # Other indexed requests can still read a small slice of a large array.
 .bt_rjags_samples <- function(model, monitor, sample, thin, progress){
 
-  base <- .bt_jags_parameter_base(monitor)
+  monitor <- unname(trimws(monitor))
+  base <- trimws(.bt_jags_parameter_base(monitor))
   indexed <- base != monitor
   whole <- unique(c(base[!indexed], base[indexed & grepl("_[A-Za-z][A-Za-z0-9]*_", base)]))
   native <- ifelse(base %in% whole, base, monitor)
   draws <- rjags::coda.samples(model, variable.names = unique(unname(native)),
-    n.iter = as.double(sample) * thin, thin = thin, progress.bar = progress)
+    n.iter = as.double(sample) * thin, thin = thin, na.rm = FALSE, progress.bar = progress)
 
   # JAGS returns variables in name order, and each array in column-major order.
   # Retain the original request order across variables and overlapping slices.
@@ -88,6 +89,13 @@
     }
     stats::setNames(position, requested)
   })
+  # Validate ranges against the declared array above, before applying coda's
+  # omission of cells undefined in any chain (e.g. x[1] and x[3] are defined
+  # while x[2] is not). A hole does not make x[1:3] an out-of-bounds request.
+  if(any(vapply(draws, anyNA, logical(1)))){
+    defined <- Reduce(`&`, lapply(draws, function(chain) colSums(is.na(chain)) == 0))
+    selection <- lapply(selection, function(index) index[defined[index]])
+  }
   selection <- unlist(selection, use.names = TRUE)
   selection <- selection[!duplicated(selection)]
   if(identical(names(selection), columns)) return(draws)

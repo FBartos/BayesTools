@@ -267,6 +267,20 @@ test_that("cataloged fixture files expose expected monitors and metadata", {
           expected_chains = row$expected_chains,
           expected_iterations = row$expected_iterations
         )
+        if(model_name %in% c("fit_autofit_error", "fit_autofit_ess")){
+          # These fixtures start with 100 draws and extend by 100 until their
+          # single stated criterion is met. The stopping batch varies by engine.
+          samples <- coda::as.mcmc.list(fit)
+          batches <- seq_len(1L + nrow(attr(fit, "adaptation")$extensions))
+          expect_identical(vapply(samples, nrow, integer(1L)), rep(100L * max(batches), length(samples)))
+          passed <- vapply(batches, function(batch){
+            prefix <- stats::window(samples, end = stats::start(samples) + (100L * batch - 1L) * coda::thin(samples))
+            if(model_name == "fit_autofit_ess") return(unname(coda::effectiveSize(prefix)) >= 200)
+            se <- summary(prefix, quantiles = NULL)$statistics[["Time-series SE"]]
+            se <= 0.05
+          }, logical(1L))
+          expect_identical(which(passed), max(batches))
+        }
       }
 
       if (isTRUE(row$has_marglik)) {

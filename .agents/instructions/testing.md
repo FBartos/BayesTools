@@ -20,9 +20,12 @@ For ad hoc `devtools::test()` calls, set `AGENT=1` and pass
 `testthat::LlmReporter$new()`. Run the narrowest relevant profile first; do not
 use repeated full-suite runs as an iteration loop.
 
-Install the current checkout in the private library before a fixture-generating
-or certification run. The coordinator and PSOCK workers use that same
-installed BayesTools binary. Unit tests ordinarily load the checkout directly.
+The default loads the working checkout. To test an installed build, install
+the current checkout in the private library first, then set
+`BAYESTOOLS_TEST_INSTALLED=true` for that run. Use this for PSOCK fits when
+the local source build and installed worker DLL have different fingerprints.
+Run cached fixture consumers with the same build as their fit generator. CI
+sets this option immediately after installing its checkout.
 
 The runner also has a `filter` mode that runs the test files matching a
 testthat filter, with the profile set to `all`:

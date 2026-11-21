@@ -1179,7 +1179,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       prior_features = "simple,autofit",
       expected_monitor = "m",
       expected_chains = 2L,
-      expected_iterations = 300L,
+      expected_iterations = NA_integer_,
       flags = list(simple_priors = TRUE, autofit = TRUE)
     ),
     catalog_row(
@@ -1190,7 +1190,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       prior_features = "simple,autofit",
       expected_monitor = "m",
       expected_chains = 2L,
-      expected_iterations = 200L,
+      expected_iterations = NA_integer_,
       flags = list(simple_priors = TRUE, autofit = TRUE)
     ),
     catalog_row(

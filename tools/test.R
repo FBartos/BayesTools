@@ -17,8 +17,4 @@ Sys.setenv(
   VDIFFR_RUN_TESTS            = "true"
 )
 
-testthat::test_local(
-  load_package = "installed",
-  stop_on_failure = TRUE,
-  reporter = testthat::LlmReporter$new()
-)
+source(file.path("tools", "test-profile.R"))

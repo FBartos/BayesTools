@@ -5047,6 +5047,11 @@ test_that("generated JAGS names retain requested monitor cells and their order",
   expect_equal(draws[, "mu__xREx__id_vector[2]"], draws[, "p2"] + 2)
   expect_equal(draws[, "mu__xREx__id_vector[3]"], draws[, "p2"] + 3)
   expect_identical(draws[, "mu__xREx__id_scalar[1]"], draws[, "p1"])
+
+  sparse <- .bt_rjags_fit("model { x[1] <- 1; x[3] <- 3 }", list(),
+    inits = list(list(.RNG.name = "base::Super-Duper", .RNG.seed = 92L)),
+    monitor = "x[1:3]", adapt = 50L, burnin = 50L, sample = 20L, thin = 1L)
+  expect_identical(colnames(as.matrix(sparse$mcmc)), c("x[1]", "x[3]"))
 })
 
 test_that("data-block-only monitors and sampled cells survive model reconstruction", {
