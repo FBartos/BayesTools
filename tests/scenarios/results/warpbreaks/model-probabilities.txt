@@ -1,0 +1,5 @@
+             model BayesTools exact
+1          Tension      0.578 0.578
+2 Wool and tension      0.378 0.378
+3          Neither      0.029 0.029
+4             Wool      0.015 0.016
