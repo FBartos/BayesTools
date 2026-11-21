@@ -132,7 +132,7 @@ ttest_data <- list(
 )
 ```
 
-Then, I pass the arguments into the `JAGS_fit()` function that wraps around the runjags R package [@runjags], specifying the prior distributions, preparing the starting values, etc...
+Then, I pass the model and priors to `JAGS_fit()`, which prepares the starting values and samples the model using rjags.
 
 ```{r fit-comparison-models, cache_fits = c("ttest_model_H0", "ttest_model_Hp")}
 ttest_model_H0 <- JAGS_fit(
@@ -150,10 +150,10 @@ ttest_model_Hp <- JAGS_fit(
 ) 
 ```
 
-I can print the estimated model summary with `runjags_estimates_table()` function.
+I can print the estimated model summary with `JAGS_estimates_table()`.
 
 ```{r}
-runjags_estimates_table(ttest_model_Hp)
+JAGS_estimates_table(ttest_model_Hp)
 ```
 
 To compute the Bayes factor in favor of $\mathcal{H}_0$ over $\mathcal{H}_+$, I need to first obtain the marginal likelihoods. The only additional step is specifying an R function that returns the log likelihood of the model. Here, instead of writing out the loops, I take advantage of the fact that summation on the log scale equals to multiplication on the original scale.

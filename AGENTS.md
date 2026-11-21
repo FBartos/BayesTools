@@ -72,8 +72,8 @@ formatting, including the blank line after a function's opening brace.
 
 ## Development and backend
 
-Requires R >= 4.3.0 and JAGS 4.x (>= 4.3.0; the native module does not
-support JAGS 5), through `runjags`/`rjags`. In the
+Requires R >= 4.3.0, JAGS >= 5.0.0 and rjags >= 5-5. BayesTools owns
+the fitted object, coda coercions and continuation through `JAGS_extend()`. In the
 workspace, use its configured R and private agent library for these commands:
 
 ```r
