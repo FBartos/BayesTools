@@ -116,6 +116,19 @@ test_that("base row labels are positioned using the current layout panel", {
   expect_equal(label_gaps, rep(0.1, 3L))
 })
 
+test_that("base plots reject margins that leave no room for the panel", {
+  skip_if_not_test_profile("unit")
+  cells <- data.frame(model = "m", row = "effect", label = strrep("Long row label ", 5L), state = "included")
+  withr::local_pdf(file = NULL, width = 2, height = 2)
+  margins <- graphics::par("mai")
+  expect_error(
+    plot_model_probabilities(c(m = 1), cells),
+    "The current figure is too small for the plot margins. Enlarge the graphics device or shorten the labels.",
+    fixed = TRUE
+  )
+  expect_identical(graphics::par("mai"), margins)
+})
+
 test_that("states wholly beyond the probability axis are absent from the legend", {
   skip_if_not_test_profile("unit")
   probabilities <- c(a = 0.6, b = 0.40000001, c = 1e-9)

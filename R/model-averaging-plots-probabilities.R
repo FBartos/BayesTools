@@ -228,6 +228,11 @@ plot_model_probabilities <- function(model_probabilities, cells, plot_type = "ba
     legend_side <- if(legend_at == "top") 3L else 1L
     margins[legend_side] <- margins[legend_side] + (legend_rows + 0.5) * line_inches
   }
+  plot_inches <- figure_inches - c(margins[2L] + margins[4L], margins[1L] + margins[3L])
+  if(any(plot_inches <= 0)){
+    stop("The current figure is too small for the plot margins. Enlarge the graphics device or shorten the labels.",
+         call. = FALSE)
+  }
   graphics::par(mai = margins)
   graphics::plot.window(c(0, 1), c(0.5, nrow(rows) + 0.5), xaxs = "i", yaxs = "i")
   graphics::rect(cells$xmin, cells$ymin, cells$xmax, cells$ymax, col = data$palette[cells$state], border = NA)
