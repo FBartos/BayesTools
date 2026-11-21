@@ -130,7 +130,7 @@ test_that("JAGS_extend error handling", {
   # Test error when fit is not a BayesTools_fit
   expect_error(
     JAGS_extend(list(), autofit_control = list()),
-    "'fit' must be a 'BayesTools_fit'"
+    "'fit' must be a fitted 'BayesTools_fit'"
   )
 
 })
@@ -735,6 +735,31 @@ test_that("centered and noncentered fits preserve substantive output schemas", {
     index = factor(rep(c("i1", "i2"), 10L)),
     id = factor(rep(paste0("g", seq_len(4L)), each = 5L))
   )
+  # Integrate the Gaussian intercept and the two correlated effects per group.
+  # The marginal observation covariance is I / 4 + 11' + Z Sigma Z'.
+  # Regular quadrature on log SD and Fisher z then gives the posterior means
+  # independently of either JAGS parameterization.
+  log_sd <- seq(-16, 4, length.out = 101)
+  fisher_z <- seq(-4.5, 4.5, length.out = 81)
+  grid <- expand.grid(log_sd = log_sd, z = fisher_z)
+  grid$sd <- exp(grid$log_sd)
+  grid$rho <- tanh(grid$z)
+  group <- outer(as.integer(df$id), as.integer(df$id), "==")
+  level <- outer(as.integer(df$index), as.integer(df$index), "==")
+  fixed_cov <- 1 + diag(0.25, nrow(df))
+  moments <- vapply(seq_len(nrow(grid)), function(i) {
+    covariance <- fixed_cov + group * grid$sd[i]^2 * ifelse(level, 1, grid$rho[i])
+    upper <- chol(covariance)
+    residual <- forwardsolve(t(upper), df$y)
+    c(loglik = -sum(log(diag(upper))) - sum(residual^2) / 2,
+      intercept = sum(backsolve(upper, residual)))
+  }, numeric(2L))
+  log_weight <- moments["loglik", ] + stats::dgamma(grid$sd, 2, rate = 2, log = TRUE) +
+    grid$log_sd + stats::dnorm(grid$z, 0, 0.5, log = TRUE)
+  weight <- exp(log_weight - max(log_weight))
+  reference <- vapply(list(moments["intercept", ], grid$sd, grid$rho),
+                      stats::weighted.mean, numeric(1L), w = weight)
+
   fit_parameterization <- function(parameterization, seed){
 
     suppressWarnings(JAGS_fit(
@@ -756,10 +781,10 @@ test_that("centered and noncentered fits preserve substantive output schemas", {
           parameterization = parameterization
         )
       )),
-      chains = 1,
-      adapt = 100,
-      burnin = 200,
-      sample = 400,
+      chains = 4,
+      adapt = 1000,
+      burnin = 1800,
+      sample = 5000,
       silent = TRUE,
       seed = seed
     ))
@@ -774,21 +799,15 @@ test_that("centered and noncentered fits preserve substantive output schemas", {
   rho_name      <- centered_term$correlation$rho_name
 
   expect_setequal(colnames(centered_draws), colnames(noncentered_draws))
-  expect_equal(
-    mean(centered_draws[, "mu_intercept"]),
-    mean(noncentered_draws[, "mu_intercept"]),
-    tolerance = 0.2
-  )
-  expect_equal(
-    mean(centered_draws[, sd_name]),
-    mean(noncentered_draws[, sd_name]),
-    tolerance = 0.25
-  )
-  expect_equal(
-    mean(centered_draws[, rho_name]),
-    mean(noncentered_draws[, rho_name]),
-    tolerance = 0.25
-  )
+  for (fit in list(centered, noncentered)) {
+    columns <- c("mu_intercept", sd_name, rho_name)
+    chains <- coda::as.mcmc.list(fit)[, columns, drop = FALSE]
+    draws <- as.matrix(chains)
+    ess <- coda::effectiveSize(chains)
+    mcse <- apply(draws, 2L, stats::sd) / sqrt(ess)
+    expect_gt(min(ess), 150)
+    expect_lt(max(abs(colMeans(draws) - reference) / mcse), 4)
+  }
   expect_identical(centered_term$parameterization_resolved, "centered")
 })
 
@@ -965,8 +984,9 @@ test_that("JAGS_fit stores formula design metadata on failed sampling objects", 
 
   design <- JAGS_formula_design(fit, "mu")
 
-  expect_s3_class(fit, "BayesTools_fit")
   expect_s3_class(fit, "error")
+  expect_false(inherits(fit, "BayesTools_fit"))
+  expect_match(conditionMessage(fit), "missing_node", fixed = TRUE)
   expect_s3_class(design, "BayesTools_formula_design")
   expect_equal(unname(design$model_matrix[, "x"]), df$x)
 })
@@ -1569,22 +1589,14 @@ test_that("known-sigma Gaussian JAGS formula fit matches closed-form posterior",
 
 .eval_jags_lkj_geometry <- function(function_name, u, K, declared = FALSE){
 
-  syntax <- switch(function_name,
-    bt_lkj_cholesky = if(declared){
-      "model{ out[1:9] <- bt_lkj_cholesky(u, K) }"
-    }else{
-      "model{ out <- bt_lkj_cholesky(u, K) }"
-    },
-    bt_lkj_corr = if(declared){
-      "model{ out[1:9] <- bt_lkj_corr(u, K) }"
-    }else{
-      "model{ out <- bt_lkj_corr(u, K) }"
-    }
-  )
+  target <- if(declared) "out[1:9]" else "out"
+  data <- list(u = u, K = K)
+  if(function_name == "bt_lkj_cholesky_ordered") data$position <- 1:2
+  syntax <- sprintf("model{ %s <- %s(%s) }", target, function_name, paste(names(data), collapse = ", "))
   con <- textConnection(syntax)
   on.exit(close(con), add = TRUE)
   model <- rjags::jags.model(
-    file = con, data = list(u = u, K = K), n.chains = 1L,
+    file = con, data = data, n.chains = 1L,
     n.adapt = 0L, quiet = TRUE
   )
   samples <- rjags::coda.samples(
@@ -1601,7 +1613,7 @@ test_that("native JAGS LKJ transforms reject invalid geometry before evaluation"
     isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)),
     "BayesTools JAGS module is unavailable."
   )
-  for(function_name in c("bt_lkj_cholesky", "bt_lkj_corr")){
+  for(function_name in c("bt_lkj_cholesky", "bt_lkj_cholesky_ordered", "bt_lkj_corr")){
     for(setting in list(
       list(K = 65537, u = rep(.5, 32768L)),
       list(K = 2^32, u = .5),
@@ -1610,7 +1622,7 @@ test_that("native JAGS LKJ transforms reject invalid geometry before evaluation"
     )){
       expect_error(
         .eval_jags_lkj_geometry(function_name, setting$u, setting$K),
-        "Zero dimension for variable out", fixed = TRUE
+        "Invalid LKJ geometry", fixed = TRUE
       )
     }
     expect_error(
@@ -1619,10 +1631,10 @@ test_that("native JAGS LKJ transforms reject invalid geometry before evaluation"
     )
     expect_error(
       .eval_jags_lkj_geometry(function_name, .5, 3, declared = TRUE),
-      "Dimension mismatch", fixed = TRUE
+      "Invalid LKJ geometry", fixed = TRUE
     )
 
-    expected <- if(function_name == "bt_lkj_cholesky"){
+    expected <- if(function_name != "bt_lkj_corr"){
       c(1, 0, -.5, sqrt(3) / 2)
     }else{
       c(1, -.5, -.5, 1)
@@ -1631,7 +1643,7 @@ test_that("native JAGS LKJ transforms reject invalid geometry before evaluation"
       .eval_jags_lkj_geometry(function_name, .25, 2), expected,
       tolerance = 1e-12
     )
-    expected_extension <- if(function_name == "bt_lkj_cholesky"){
+    expected_extension <- if(function_name != "bt_lkj_corr"){
       c(1, 0, -1, 0)
     }else{
       c(1, -1, -1, 1)
@@ -1728,10 +1740,7 @@ test_that("native JAGS LKJ module of a unit layout matches its R evaluator", {
     file = con, n.chains = 1L, n.adapt = 100L, quiet = TRUE,
     inits = list(.RNG.name = "base::Wichmann-Hill", .RNG.seed = 1L)
   )
-  samples <- as.matrix(rjags::coda.samples(
-    model = model, variable.names = module$monitor, n.iter = 200L,
-    quiet = TRUE, progress.bar = "none"
-  ))
+  samples <- as.matrix(.bt_rjags_samples(model, module$monitor, 200L, 1L, "none"))
   node <- .bt_dnode_lkj(
     "Omega", K = 4, include_correlation = TRUE, include_primitives = TRUE,
     unit_columns = c(2L, 4L)
@@ -2410,13 +2419,7 @@ expect_formula_random_prior_only_bridge <- function(formula, data, prior_list,
     n.chains = 2,
     quiet = TRUE
   )
-  samples <- rjags::coda.samples(
-    model = model,
-    variable.names = monitor,
-    n.iter = n_iter,
-    quiet = TRUE,
-    progress.bar = "none"
-  )
+  samples <- .bt_rjags_samples(model, monitor, n_iter, 1L, "none")
   completed_scale <- .bt_formula_scale_finalize(formula_result$formula_scale,
     formula_result$formula_design, formula_result$prior_list, formula_result$data, owner_scope = "fit")
   formula_result$formula_design$formula_scale <- completed_scale
@@ -3569,13 +3572,7 @@ test_that("JAGS bridgesampling supports formula random effects through prior_ran
     n.chains = 2,
     quiet = TRUE
   )
-  samples <- rjags::coda.samples(
-    model = model,
-    variable.names = monitor,
-    n.iter = 5000,
-    quiet = TRUE,
-    progress.bar = "none"
-  )
+  samples <- .bt_rjags_samples(model, monitor, 5000L, 1L, "none")
   completed_scale <- .bt_formula_scale_finalize(formula_result$formula_scale,
     formula_result$formula_design, formula_result$prior_list, formula_result$data, owner_scope = "fit")
   formula_result$formula_design$formula_scale <- completed_scale
@@ -5908,9 +5905,11 @@ test_that("factor slice blocks sample members whose transformed coordinate is be
     w_tail = list(series = function(x) as.numeric(log(abs(x[, "x"])) > -714), target = stats::pnorm(-1))
   )
   cases <- list(
-    lower_wide = list(member = "x ~ dnorm(0, 100)T(0, 1e308)", data = list(), inits = list(),
+    # At this scale JAGS's truncated-normal RNG overflows while standardizing
+    # the far bound. Supply interior starts to exercise the block sampler.
+    lower_wide = list(member = "x ~ dnorm(0, 100)T(0, 1e308)", data = list(), inits = list(x = 0.1),
                       quantities = normal_quantities(1)),
-    upper_wide = list(member = "x ~ dnorm(0, 100)T(-1e308, 0)", data = list(), inits = list(),
+    upper_wide = list(member = "x ~ dnorm(0, 100)T(-1e308, 0)", data = list(), inits = list(x = -0.1),
                       quantities = normal_quantities(-1)),
     lower_unit = list(member = "x ~ dunif(0, 1)\n  z ~ dnorm(log(x), 0.25)", data = list(z = -720),
                       inits = list(x = exp(-714)), quantities = log_quantities),
@@ -6513,31 +6512,25 @@ model{
   }
 })
 
-test_that("an infinite density of the block at the current state stops the fit", {
+test_that("an infinite density of the block at initialization stops the fit", {
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
 
-  # JAGS refuses a start with a NaN density when it initializes the model, but
-  # accepts +Inf: the start b2 = 0.8 overflows the precision exp(1000 b2) and
-  # b1 = y makes the likelihood density +Inf
+  # At b2 = 0.8 the precision overflows. With b1 = y, the observed node's
+  # density is +Inf and JAGS 5 rejects the supplied starting state.
   markers <- .sampler_test_block_markers(c("b1", "b2"))
-  model <- rjags::jags.model(
-    textConnection(sprintf("
+  con <- textConnection(sprintf("
 model{
   b1 ~ dnorm(0, 1)
   b2 ~ dnorm(0, 1)
   precision <- exp(1000 * b2)
   y ~ dnorm(b1, precision)
   %s
-}", markers$syntax)),
-    data = c(list(y = 0.8), markers$data), n.chains = 1L, n.adapt = 0, quiet = TRUE,
-    inits = list(b1 = 0.8, b2 = 0.8, .RNG.name = "base::Mersenne-Twister", .RNG.seed = 3)
-  )
-  expect_identical(names(rjags::list.samplers(model)), "BayesTools::FactorSlice")
+}", markers$syntax))
+  on.exit(close(con))
   expect_error(
-    rjags::adapt(model, 10, end.adaptation = TRUE, progress.bar = "none"),
-    paste0("Factor slice sampler: failure to calculate the log density of the block at the current state: ",
-           "the summed log density of the block whose first member is this node is +Inf"),
-    fixed = TRUE
+    rjags::jags.model(con, data = c(list(y = 0.8), markers$data), n.chains = 1L, n.adapt = 0L,
+      quiet = TRUE, inits = list(b1 = 0.8, b2 = 0.8, .RNG.name = "base::Mersenne-Twister", .RNG.seed = 3L)),
+    "Error in node y\nInfinite log density", fixed = TRUE
   )
 })
 

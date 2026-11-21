@@ -1,5 +1,6 @@
 #include "BTLKJCholesky.h"
 #include "../lkj/BTLKJCore.h"
+#include <module/ModuleError.h>
 
 #include <cmath>
 #include <limits>
@@ -28,6 +29,17 @@ namespace jags {
         }
 
         return lengths[0] == bayestools::lkj::n_cpc(as_K(K_value));
+      }
+
+      unsigned long matrix_length(Function const *function, std::vector<double const *> const &args,
+                                  std::vector<unsigned long> const &lengths)
+      {
+        if(!valid_geometry(args, lengths)){
+          throwFuncError(function, "Invalid LKJ geometry: K must be an integer >= 2 whose square "
+                         "fits in an unsigned int, and u must have K * (K - 1) / 2 elements.");
+        }
+        const unsigned int K = as_K(*args[1]);
+        return K * K;
       }
 
       bool finite_transform_u(double const *u, unsigned long length)
@@ -69,11 +81,7 @@ namespace jags {
     unsigned long BTLKJCholesky::length(std::vector<unsigned long> const &lengths,
                                        std::vector<double const *> const &args) const
     {
-      if(!valid_geometry(args, lengths)){
-        return 0;
-      }
-      unsigned int K = as_K(*args[1]);
-      return K * K;
+      return matrix_length(this, args, lengths);
     }
 
     bool BTLKJCholesky::checkParameterLength(std::vector<unsigned long> const &lengths) const
@@ -123,11 +131,7 @@ namespace jags {
     unsigned long BTLKJCholeskyOrdered::length(std::vector<unsigned long> const &lengths,
                                               std::vector<double const *> const &args) const
     {
-      if(!valid_geometry(args, lengths)){
-        return 0;
-      }
-      unsigned int K = as_K(*args[1]);
-      return K * K;
+      return matrix_length(this, args, lengths);
     }
 
     bool BTLKJCholeskyOrdered::checkParameterLength(std::vector<unsigned long> const &lengths) const
@@ -174,11 +178,7 @@ namespace jags {
     unsigned long BTLKJCorr::length(std::vector<unsigned long> const &lengths,
                                    std::vector<double const *> const &args) const
     {
-      if(!valid_geometry(args, lengths)){
-        return 0;
-      }
-      unsigned int K = as_K(*args[1]);
-      return K * K;
+      return matrix_length(this, args, lengths);
     }
 
     bool BTLKJCorr::checkParameterLength(std::vector<unsigned long> const &lengths) const
