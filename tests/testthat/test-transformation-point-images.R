@@ -131,7 +131,7 @@ test_that("region indicators refuse positive-source underflow and preserve true-
   fit <- coda::mcmc(cbind(mu_intercept = seq(-1, 1, length.out = 201),
     "mu_fac[1]" = seq(-1, 2, length.out = 201),
     "mu_fac[2]" = seq(-2, 1, length.out = 201)))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(fit)
   attr(fit, "prior_list") <- formula$prior_list
   fit <- attach_test_parameter_map(fit)
   marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac",

@@ -11,8 +11,7 @@ skip_if_not_test_profile("unit")
 }
 
 .point_replay_fit <- function(carrier){
-  fit <- coda::mcmc.list(coda::mcmc(as.matrix(carrier)))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(as.matrix(carrier))))
   for(name in c("prior_list", "formula_design", "formula_scale")) attr(fit, name) <- attr(carrier, name)
   fit <- .bt_attach_parameter_map(fit)
   fit <- .bt_attach_draw_geometry(fit)

@@ -486,7 +486,7 @@ test_that("JAGS_evaluate_formula preserves factor metadata and validates edge ca
 
   prior_list_scaled <- formula_result$prior_list
   attr(prior_list_scaled$mu_x, "multiply_by") <- 0
-  zero_x_samples <- as.matrix(fit)
+  zero_x_samples <- as.matrix(fit$mcmc)
   zero_x_samples[, "mu_x"] <- 0
   zero_x_fit <- coda::mcmc(zero_x_samples)
   attr(zero_x_fit, "formula_design") <- attr(fit, "formula_design")

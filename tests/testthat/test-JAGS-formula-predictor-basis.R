@@ -3,8 +3,7 @@ skip_if_not_test_profile("unit")
 .formula_predictor_basis_fit <- function(formula_result, samples,
                                          extra_priors = list()) {
 
-  samples <- coda::mcmc(as.matrix(samples))
-  class(samples) <- c("BayesTools_fit", class(samples))
+  samples <- test_fit_from_chains(coda::mcmc(as.matrix(samples)))
   parameter <- formula_result$formula_design$parameter
   attr(samples, "prior_list") <- c(
     formula_result$prior_list,
@@ -26,8 +25,7 @@ skip_if_not_test_profile("unit")
 .formula_predictor_basis_multi_fit <- function(formula_results, samples,
                                                extra_priors = list()) {
 
-  samples <- coda::mcmc(as.matrix(samples))
-  class(samples) <- c("BayesTools_fit", class(samples))
+  samples <- test_fit_from_chains(coda::mcmc(as.matrix(samples)))
   attr(samples, "prior_list") <- c(
     do.call(c, unname(lapply(formula_results, `[[`, "prior_list"))),
     extra_priors
@@ -43,8 +41,7 @@ skip_if_not_test_profile("unit")
 # A fit object carrying the finalized designs of a JAGS_formula_draws() result.
 .formula_predictor_basis_carrier_fit <- function(carrier) {
 
-  fit <- coda::mcmc.list(coda::mcmc(as.matrix(carrier)))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(as.matrix(carrier))))
   for (name in c("prior_list", "formula_design", "formula_scale")) {
     attr(fit, name) <- attr(carrier, name)
   }
@@ -172,8 +169,7 @@ test_that("formula predictor bases take declared scalar constants as multipliers
   design <- result$formula_design
   design$formula_scale <- scale
   constant_fit <- function(draws, extra_priors = list()) {
-    fit <- coda::mcmc(draws)
-    class(fit) <- c("BayesTools_fit", class(fit))
+    fit <- test_fit_from_chains(coda::mcmc(draws))
     priors <- c(result$prior_list, extra_priors)
     attr(fit, "prior_list") <- priors
     attr(fit, "formula_design") <- list(mu = design)
@@ -219,7 +215,7 @@ test_that("formula predictor bases take declared scalar constants as multipliers
   # supplied draws still align the rows of the directions
   basis <- JAGS_formula_predictor_basis(
     with_column, directions = c(mu_x = 1),
-    posterior_samples = as.matrix(with_column)
+    posterior_samples = as.matrix(with_column$mcmc)
   )
   expect_equal(unname(basis$basis), matrix(3 * x_column, nrow = 2L, ncol = 3L, byrow = TRUE))
 })

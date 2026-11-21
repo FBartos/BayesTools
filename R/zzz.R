@@ -10,6 +10,8 @@
   .BayesTools_private$native_routines_loaded <- FALSE
   .BayesTools_private$native_dll_path <- NULL
   .BayesTools_private$native_dll_loaded_manually <- FALSE
+  loaded <- FALSE
+  on.exit(if(!loaded) .onUnload(libname))
 
   # pkgload may source the R code without a compiled DLL during documentation.
   source_only <- is.null(.BayesTools_private$module_location) &&
@@ -21,6 +23,7 @@
     }
   }
   .freeze_fit_backend_fingerprint()
+  loaded <- TRUE
 }
 
 .onUnload <- function(libpath){

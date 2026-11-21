@@ -24,8 +24,7 @@ skip_if_not_test_profile("unit")
     "beta[2]" = c(7, 6, 5, 4, 3, 2)
   )
 
-  fit <- coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)))
   attr(fit, "prior_list") <- list(
     theta = prior("normal", list(0, 1)),
     beta = prior("mnormal", list(mean = 0, sd = 1, K = 2))
@@ -149,8 +148,7 @@ test_that("diagnostic density plot data reflects bounded prior support", {
   chain_1 <- cbind(theta = seq(.005, .995, length.out = 400))
   chain_2 <- cbind(theta = rev(chain_1[, "theta"]))
 
-  fit <- coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)))
   prior_list <- list(theta = prior("uniform", list(0, 1)))
 
   plot_data <- .diagnostics_plot_data(
@@ -178,8 +176,7 @@ test_that("diagnostic density plot data reflects simplex coordinate support", {
   chain_1 <- cbind("w[1]" = w1, "w[2]" = 1 - w1)
   chain_2 <- cbind("w[1]" = rev(w1), "w[2]" = rev(1 - w1))
 
-  fit <- coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)))
   prior_list <- list(w = prior("dirichlet", list(alpha = c(1, 1))))
 
   expect_equal(
@@ -231,8 +228,7 @@ test_that("diagnostic density resolves heterogeneous composite-bias support by c
     alpha = rev(alpha)
   )
 
-  fit <- coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)))
   prior_list <- list(bias = bias)
 
   plot_data <- .diagnostics_plot_data(
@@ -266,8 +262,7 @@ test_that("diagnostic density does not reflect after custom transformations", {
   chain_1 <- cbind(theta = seq(.005, .995, length.out = 100))
   chain_2 <- cbind(theta = rev(chain_1[, "theta"]))
 
-  fit <- coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)))
   prior_list <- list(theta = prior("uniform", list(0, 1)))
 
   plot_data <- .diagnostics_plot_data(
@@ -371,8 +366,7 @@ test_that("diagnostic plot data selects and names weightfunction omega bins", {
     "omega[2]" = seq(.3, .8, length.out = 6),
     "omega[3]" = seq(.7, .2, length.out = 6)
   )
-  fit <- coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)))
   prior_list <- list(
     omega = prior_weightfunction("one-sided", c(.025, .05), wf_fixed(c(1, .7, .3)))
   )
@@ -406,8 +400,7 @@ test_that("diagnostic plot data masks spike-and-slab spike rows", {
     theta = c(6, 7, 8, 9, 10, 11, 12, 13),
     theta_indicator = c(1, 1, 0, 1, 1, 1, 1, 0)
   )
-  fit <- coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)))
   slab_prior <- prior("normal", list(mean = 0, sd = 1))
   prior_list <- list(
     theta = prior_spike_and_slab(
@@ -455,8 +448,7 @@ test_that("diagnostic plot data rejects malformed transformations and insufficie
 
   chain_1 <- cbind(theta = 1:6, theta_indicator = c(1, 0, 0, 0, 0, 0))
   chain_2 <- cbind(theta = 7:12, theta_indicator = c(0, 1, 0, 0, 0, 0))
-  sparse_fit <- coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
-  class(sparse_fit) <- c("BayesTools_fit", class(sparse_fit))
+  sparse_fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)))
   sparse_prior_list <- list(
     theta = prior_spike_and_slab(prior("normal", list(mean = 0, sd = 1)))
   )
@@ -480,8 +472,8 @@ test_that("diagnostic plot data rejects malformed transformations and insufficie
   indicator <- as.integer(seq_len(200L) %in% c(1L, 30L, 90L))
   fit <- list(mcmc = coda::mcmc.list(lapply(seq_len(chains), function(i){
     coda::mcmc(cbind(theta = values, theta_indicator = indicator))
-  })), summary.pars = list(mutate = NULL))
-  class(fit) <- c("BayesTools_fit", "runjags")
+  })))
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- list(theta = prior_spike_and_slab(
     prior("normal", list(0, 1)), prior_inclusion = prior("point", list(.5))))
   attach_test_parameter_map(fit)
@@ -576,7 +568,7 @@ test_that("physical short chains pad requested lags without recomputation", {
     coda::mcmc(draws),
     coda::mcmc(draws[rev(seq_len(nrow(draws))), , drop = FALSE])
   )
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(fit)
   fit
 }
 
@@ -716,9 +708,8 @@ test_that("a bias mixture is drawn as the components of its branches", {
   draws <- cbind(mu = seq(-1, 1, length.out = 120), bias_indicator = rep(1:3, 40L),
                  "omega[1]" = 1, "omega[2]" = grid, PET = grid)
   fit <- structure(list(
-    mcmc = coda::mcmc.list(coda::mcmc(draws[1:60, ]), coda::mcmc(draws[61:120, ])),
-    summary.pars = list(mutate = NULL)
-  ), class = c("BayesTools_fit", "runjags"))
+    mcmc = coda::mcmc.list(coda::mcmc(draws[1:60, ]), coda::mcmc(draws[61:120, ]))
+  ), class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = bias)
   fit <- attach_test_parameter_map(fit)
 
@@ -735,8 +726,7 @@ test_that("the trace axis shows the retained MCMC iteration of thinned chains", 
 
   chain_1 <- coda::mcmc(cbind(theta = seq(-1, 1, length.out = 6)), start = 11, thin = 2)
   chain_2 <- coda::mcmc(cbind(theta = seq(1, -1, length.out = 6)), start = 11, thin = 2)
-  fit <- coda::mcmc.list(chain_1, chain_2)
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(chain_1, chain_2))
   plot_data <- .diagnostics_plot_data(
     fit = fit,
     parameter = "theta",
@@ -758,9 +748,8 @@ test_that("PET and PEESE diagnostics of a bias prior without that branch are ref
   draws <- cbind(mu = seq(-1, 1, length.out = 60), "omega[1]" = 1,
                  "omega[2]" = seq(.01, .99, length.out = 60))
   fit <- structure(list(
-    mcmc = coda::mcmc.list(coda::mcmc(draws)),
-    summary.pars = list(mutate = NULL)
-  ), class = c("BayesTools_fit", "runjags"))
+    mcmc = coda::mcmc.list(coda::mcmc(draws))
+  ), class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = bias)
   fit <- attach_test_parameter_map(fit)
 
@@ -789,9 +778,8 @@ test_that("JAGS_diagnostics() draws the components of a single bias prior", {
     pi_null    = upper * grid
   )
   fit <- structure(list(
-    mcmc = coda::mcmc.list(coda::mcmc(draws)),
-    summary.pars = list(mutate = NULL)
-  ), class = c("BayesTools_fit", "runjags"))
+    mcmc = coda::mcmc.list(coda::mcmc(draws))
+  ), class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = bias)
   fit <- attach_test_parameter_map(fit)
 
@@ -833,9 +821,8 @@ test_that("diagnostic plot data masks the spike rows of every coefficient of a f
     "mu_f[2]"      = indicator * (seq_along(indicator) + 1)
   )
   fit <- structure(list(
-    mcmc = coda::mcmc.list(coda::mcmc(draws)),
-    summary.pars = list(mutate = NULL)
-  ), class = c("BayesTools_fit", "runjags"))
+    mcmc = coda::mcmc.list(coda::mcmc(draws))
+  ), class = "BayesTools_fit")
   attr(fit, "prior_list")     <- info$prior_list
   attr(fit, "formula_design") <- list(mu = info$formula_design)
   fit <- attach_test_parameter_map(fit)
@@ -878,9 +865,8 @@ test_that("diagnostic plot data masks the spike rows of every coefficient of a f
     "mu_f[2]"      = coefficients[, 2]
   )
   fit <- structure(list(
-    mcmc = coda::mcmc.list(coda::mcmc(draws)),
-    summary.pars = list(mutate = NULL)
-  ), class = c("BayesTools_fit", "runjags"))
+    mcmc = coda::mcmc.list(coda::mcmc(draws))
+  ), class = "BayesTools_fit")
   attr(fit, "prior_list")     <- info$prior_list
   attr(fit, "formula_design") <- list(mu = info$formula_design)
   attach_test_parameter_map(fit)
@@ -983,9 +969,8 @@ test_that("density diagnostics of a factor mixture use the support of the whole 
 .diagnostics_bias_fit_for_test <- function(bias, draws){
 
   fit <- structure(list(
-    mcmc = coda::mcmc.list(coda::mcmc(draws), coda::mcmc(draws[rev(seq_len(nrow(draws))), , drop = FALSE])),
-    summary.pars = list(mutate = NULL)
-  ), class = c("BayesTools_fit", "runjags"))
+    mcmc = coda::mcmc.list(coda::mcmc(draws), coda::mcmc(draws[rev(seq_len(nrow(draws))), , drop = FALSE]))
+  ), class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = bias)
   attach_test_parameter_map(fit)
 }
@@ -1057,9 +1042,8 @@ test_that("the structural columns of the diagnostics are the coordinates with th
       list(intercept = prior("point", list(0)), f = f_prior)
     )
     fit <- structure(list(
-      mcmc = coda::mcmc.list(coda::mcmc(draws), coda::mcmc(draws[rev(seq_len(nrow(draws))), , drop = FALSE])),
-      summary.pars = list(mutate = NULL)
-    ), class = c("BayesTools_fit", "runjags"))
+      mcmc = coda::mcmc.list(coda::mcmc(draws), coda::mcmc(draws[rev(seq_len(nrow(draws))), , drop = FALSE]))
+    ), class = "BayesTools_fit")
     attr(fit, "prior_list")     <- info$prior_list
     attr(fit, "formula_design") <- list(mu = info$formula_design)
     attach_test_parameter_map(fit)
@@ -1154,9 +1138,8 @@ test_that("a weightfunction with fixed weights is diagnosed like a spike prior",
     mcmc = coda::mcmc.list(
       coda::mcmc(cbind("omega[1]" = rep(1, 40), "omega[2]" = rep(.5, 40))),
       coda::mcmc(cbind("omega[1]" = rep(1, 40), "omega[2]" = rep(.5, 40)))
-    ),
-    summary.pars = list(mutate = NULL)
-  ), class = c("BayesTools_fit", "runjags"))
+    )
+  ), class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(omega = prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5))))
   fit <- attach_test_parameter_map(fit)
 
@@ -1177,9 +1160,8 @@ test_that("a parameter with a prior_none() prior has no diagnostics to draw", {
     mcmc = coda::mcmc.list(
       coda::mcmc(cbind(mu = seq(-1, 1, length.out = 40))),
       coda::mcmc(cbind(mu = seq(1, -1, length.out = 40)))
-    ),
-    summary.pars = list(mutate = NULL)
-  ), class = c("BayesTools_fit", "runjags"))
+    )
+  ), class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = prior_none())
   fit <- attach_test_parameter_map(fit)
 
@@ -1248,8 +1230,8 @@ test_that("a diagnostic transformation applies to the PET and PEESE column and t
   # through JAGS_diagnostics(): the plotted values follow the transformation
   draws <- cbind(mu = seq(-1, 1, length.out = 120), PET = seq(.005, 2.995, length.out = 120))
   bias  <- prior_PET("normal", list(0, 1), truncation = list(0, Inf))
-  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), summary.pars = list(mutate = NULL)),
-    class = c("BayesTools_fit", "runjags"))
+  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws))),
+    class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = bias)
   fit <- attach_test_parameter_map(fit)
   plain   <- JAGS_diagnostics(fit, "bias", "trace", plot_type = "ggplot")
@@ -1268,9 +1250,8 @@ test_that("the atom draws of a point-plus-continuous mixture stay out of its den
     mu_indicator = indicator
   )
   fit <- structure(list(
-    mcmc = coda::mcmc.list(coda::mcmc(draws[c(1:100, 201:300), ]), coda::mcmc(draws[c(101:200, 301:400), ])),
-    summary.pars = list(mutate = NULL)
-  ), class = c("BayesTools_fit", "runjags"))
+    mcmc = coda::mcmc.list(coda::mcmc(draws[c(1:100, 201:300), ]), coda::mcmc(draws[c(101:200, 301:400), ]))
+  ), class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(mu = mixture)
   fit <- attach_test_parameter_map(fit)
 

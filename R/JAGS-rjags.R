@@ -85,9 +85,6 @@
 .bt_rjags_fit <- function(model, data, inits, monitor, adapt, burnin, sample, thin,
                           cl = NULL, silent = TRUE){
 
-  prepared <- .bt_rjags_realize_data(model, data, inits[[1L]][[".RNG.seed"]])
-  model <- prepared$model
-  data <- prepared$data
   out <- .bt_rjags_run(model, data, inits, monitor, adapt, burnin, sample, thin, cl, silent)
   # Public chain indices count the requested adaptation and burn-in, even
   # when JAGS selects only samplers that never require adaptation.
@@ -106,10 +103,10 @@
   out
 }
 
-# A stochastic BUGS data block makes one data set for the entire fit. Run
-# that block once, otherwise workers and later extensions would each simulate
-# their own observations and hence target different posteriors.
-.bt_rjags_realize_data <- function(model, data, seed){
+# Realize a BUGS data block once so the fit records exactly which elements
+# are observed, including partly generated arrays. Re-running a stochastic
+# data block on different workers or extensions would change the posterior.
+.bt_rjags_realize_data <- function(model, data, seed, monitor){
 
   if(!grepl("data", model, fixed = TRUE)) return(list(model = model, data = data))
   masked <- .JAGS_mask_comments(model)
@@ -119,20 +116,32 @@
   if(model_at < data_at){
     stop("The BUGS data block must precede the model block.", call. = FALSE)
   }
-  if(!grepl("~", substr(masked, data_at, model_at - 1L), fixed = TRUE)){
-    return(list(model = model, data = data))
-  }
   prefix <- substr(model, 1L, model_at - 1L)
   inputs <- .bt_sampler_tokens(prefix)
-  anchor <- utils::tail(make.unique(c(inputs, "BayesTools_data_anchor")), 1L)
+  symbols <- .bt_sampler_tokens(model)
+  anchor <- utils::tail(make.unique(c(symbols, "BayesTools_data_anchor")), 1L)
   connection <- textConnection(paste0(prefix, "\nmodel { ", anchor, " <- 0 }"))
   on.exit(close(connection))
-  rjags::jags.seed(seed)
+  if(grepl("~", substr(masked, data_at, model_at - 1L), fixed = TRUE)){
+    rjags::jags.seed(seed)
+  }
   generator <- rjags::jags.model(connection, data = data[names(data) %in% inputs],
     n.chains = 1L, n.threads = 1L, n.adapt = 0L, quiet = TRUE)
   generated <- generator$data()
   data[names(generated)] <- generated
-  sampling_model <- paste0(substr(model, 1L, data_at - 1L), substring(model, model_at))
+  declarations <- substr(model, 1L, data_at - 1L)
+  sampling_block <- substring(model, model_at)
+  sampling_model <- paste0(declarations, sampling_block)
+  # An observed array may be requested as a monitor even if it was referenced
+  # solely in the original data graph. Keep its name in the rebuilt program:
+  # rjags discards input data whose name does not occur in the model text.
+  monitored_data <- intersect(.bt_jags_parameter_base(monitor), names(generated))
+  extra <- setdiff(monitored_data, .bt_sampler_tokens(sampling_model))
+  if(length(extra)){
+    references <- paste0(anchor, "[", seq_along(extra), "] <- length(", extra, ")")
+    sampling_model <- paste(declarations, "data {", paste(references, collapse = "\n"),
+      "}", sampling_block, sep = "\n")
+  }
   list(model = sampling_model, data = data[names(data) %in% .bt_sampler_tokens(sampling_model)])
 }
 

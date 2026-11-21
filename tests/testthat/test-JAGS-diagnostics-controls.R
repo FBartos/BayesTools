@@ -9,10 +9,9 @@ skip_if_not_test_profile("unit")
     mcmc = coda::mcmc.list(
       coda::mcmc(cbind(theta = theta)),
       coda::mcmc(cbind(theta = rev(theta)))
-    ),
-    summary.pars = list(mutate = NULL)
+    )
   )
-  class(fit) <- c("BayesTools_fit", "runjags")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- list(
     theta = prior("normal", list(0, 1))
   )
@@ -169,8 +168,8 @@ test_that("JAGS autocorrelation diagnostics retain requested unavailable lags", 
     coda::mcmc(cbind(theta = seq_along(state), theta_indicator = state),
                start = 101, thin = 2)
   })
-  fit <- structure(list(mcmc = coda::mcmc.list(chains), summary.pars = list(mutate = NULL)),
-                   class = c("BayesTools_fit", "runjags"))
+  fit <- structure(list(mcmc = coda::mcmc.list(chains)),
+                   class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(theta = prior)
   attach_test_parameter_map(fit)
 }
@@ -267,9 +266,8 @@ test_that("each weight-function prior has its own component trace even with no v
                           is_null = c(TRUE, FALSE, FALSE))
   draws <- cbind(mu = 1:6, bias_indicator = c(1, 2, 2, 1, 1, 1),
                  "omega[1]" = 1, "omega[2]" = .8, "omega[3]" = .6)
-  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)),
-                        summary.pars = list(mutate = NULL)),
-                   class = c("BayesTools_fit", "runjags"))
+  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws))),
+                   class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = priors)
   fit <- attach_test_parameter_map(fit)
 
@@ -286,9 +284,8 @@ test_that("indicator traces refuse bias leaves and invalid display arguments", {
   priors <- prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1))),
                           is_null = c(TRUE, FALSE))
   draws <- cbind(mu = 1:4, PET = 0, bias_indicator = c(2, 2, 1, 2))
-  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)),
-                        summary.pars = list(mutate = NULL)),
-                   class = c("BayesTools_fit", "runjags"))
+  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws))),
+                   class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = priors)
   fit <- attach_test_parameter_map(fit)
   for (parameter in c("PET", "PEESE", "omega", "alpha", "pi_null")) {

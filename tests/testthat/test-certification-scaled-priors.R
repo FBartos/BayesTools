@@ -1,6 +1,5 @@
 skip_if_not_test_profile("certification")
 skip_if_not_installed("rjags")
-skip_if_not_installed("runjags")
 skip_if_not_installed("bridgesampling")
 
 # Coefficient priors scaled by the residual SD ('multiply_by' = "sigma", the

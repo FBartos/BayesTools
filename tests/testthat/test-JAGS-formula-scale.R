@@ -736,8 +736,7 @@ test_that("transform_prior_samples respects seed and validates formula_scale", {
     mu_x1 = rnorm(32)
   )
 
-  fit <- coda::mcmc(posterior_samples)
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(posterior_samples))
   attr(fit, "prior_list") <- list(
     mu_intercept = prior("normal", list(0, 1)),
     mu_x1 = prior("normal", list(0.25, 0.5))
@@ -808,8 +807,7 @@ test_that("transform_prior_samples handles scaled multi-factor interactions", {
     }
   }), use.names = FALSE)
 
-  fit <- coda::mcmc(matrix(0, nrow = 4, ncol = length(posterior_columns), dimnames = list(NULL, posterior_columns)))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(matrix(0, nrow = 4, ncol = length(posterior_columns), dimnames = list(NULL, posterior_columns))))
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
@@ -2274,8 +2272,7 @@ test_that("lm validation: factor interactions with multiple scaled continuous", 
 # stores a formula that was standardized by hand.
 .manual_scale_carrier_fit <- function(carrier){
 
-  fit <- coda::mcmc.list(coda::mcmc(as.matrix(carrier)))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(as.matrix(carrier))))
   for(name in c("prior_list", "formula_design", "formula_scale")){
     attr(fit, name) <- attr(carrier, name)
   }

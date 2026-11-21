@@ -1,6 +1,5 @@
 skip_if_not_test_profile("certification")
 skip_if_not_installed("rjags")
-skip_if_not_installed("runjags")
 
 # Live assertions of the post-fit interface: input validation of JAGS_fit() and
 # its helpers, convergence checks, formula and random-effect fits, the native
@@ -171,7 +170,6 @@ test_that("required packages are checked locally and on parallel workers", {
 
 test_that("JAGS_fit rejects unrecognized formula_scale_list entries", {
 
-  skip_if_not_installed("runjags")
 
   data <- data.frame(x = c(-1, 0, 1))
   expect_error(
@@ -191,7 +189,6 @@ test_that("JAGS_fit rejects unrecognized formula_scale_list entries", {
 
 test_that("JAGS_fit stores formula design metadata on fitted formula models", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   skip_on_cran()
 
@@ -233,7 +230,6 @@ test_that("JAGS_fit stores formula design metadata on fitted formula models", {
 
 test_that("JAGS_fit does not emit unused sampled data for marginalized random effects", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   skip_on_cran()
 
@@ -303,7 +299,6 @@ test_that("JAGS_fit does not emit unused sampled data for marginalized random ef
 
 test_that("JAGS_fit runs dummy structured random-effect formula models", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   skip_on_cran()
 
@@ -423,7 +418,6 @@ test_that("JAGS_fit runs dummy structured random-effect formula models", {
 
 test_that("emitted marginal random-effect covariance JAGS syntax reproduces random_effects_marginal_vcov()", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   skip_on_cran()
 
@@ -590,7 +584,6 @@ test_that("emitted marginal random-effect covariance JAGS syntax reproduces rand
 
 test_that("JAGS_fit monitors random coefficients for observed-level prediction", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   skip_on_cran()
 
@@ -643,7 +636,6 @@ test_that("JAGS_fit monitors random coefficients for observed-level prediction",
 
 test_that("JAGS_fit predicts observed random effects from latent monitors", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   skip_on_cran()
 
@@ -697,7 +689,6 @@ test_that("JAGS_fit predicts observed random effects from latent monitors", {
 
 test_that("mean-centered fits read the semantic predictor through their group locations", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
 
   # four groups observed twice on each level of a three-level factor; the
@@ -735,7 +726,6 @@ test_that("mean-centered fits read the semantic predictor through their group lo
 
 test_that("centered and noncentered fits preserve substantive output schemas", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   skip_on_cran()
 
@@ -804,7 +794,6 @@ test_that("centered and noncentered fits preserve substantive output schemas", {
 
 test_that("group-local structured fits monitor only active latent cells", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   skip_on_cran()
 
@@ -869,7 +858,6 @@ test_that("group-local structured fits monitor only active latent cells", {
 
 test_that("JAGS_fit predicts row-indexed external SD random effects from latent monitors", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   skip_on_cran()
 
@@ -952,7 +940,6 @@ test_that("JAGS_fit predicts row-indexed external SD random effects from latent 
 
 test_that("JAGS_fit stores formula design metadata on failed sampling objects", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   skip_on_cran()
 
@@ -1024,10 +1011,9 @@ test_that("JAGS_check_convergence ignores indicator variables unless requested",
   chain_1 <- cbind(mu = rnorm(100), mu_indicator = rep(1, 100))
   chain_2 <- cbind(mu = rnorm(100), mu_indicator = rep(2, 100))
   fit <- list(
-    mcmc         = coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)),
-    summary.pars = list(mutate = NULL)
+    mcmc         = coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
 
   # The mixture prior declares 'mu_indicator' as its component indicator.
   prior_list <- list(mu = prior_mixture(list(
@@ -1067,10 +1053,9 @@ test_that("JAGS_check_convergence ignores add_parameters without priors", {
   chain_1 <- cbind(mu = rnorm(100), "aux[1]" = rep(0, 100))
   chain_2 <- cbind(mu = rnorm(100), "aux[1]" = rep(1, 100))
   fit <- list(
-    mcmc         = coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)),
-    summary.pars = list(mutate = NULL)
+    mcmc         = coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
 
   prior_list <- list(mu = prior("normal", list(0, 1)))
   attr(fit, "prior_list") <- prior_list
@@ -1128,8 +1113,7 @@ test_that("single-chain fits skip R-hat and retain the remaining criteria", {
   expect_true(convergence)
   expect_true(is.na(attr(convergence, "diagnostics")$Rhat))
 
-  # runjags warns that the prior-only model has no data
-  expect_warning(expect_warning(autofit <- JAGS_fit(
+  expect_warning(autofit <- JAGS_fit(
     "model{}", prior_list = prior_list, chains = 1,
     adapt = 50, burnin = 50, sample = 1000, seed = 1, silent = TRUE,
     autofit = TRUE,
@@ -1137,8 +1121,8 @@ test_that("single-chain fits skip R-hat and retain the remaining criteria", {
       max_error = NULL, max_SD_error = NULL, max_extend = 1,
       max_time = NULL, sample_extend = 100, restarts = 1,
       check_indicators = FALSE)
-  ), "Only one chain was run", fixed = TRUE), "No data was specified", fixed = TRUE)
-  expect_s3_class(autofit, "runjags")
+  ), "Only one chain was run", fixed = TRUE)
+  expect_s3_class(autofit, "BayesTools_fit")
   expect_equal(nrow(.extract_posterior_samples(autofit, as_list = TRUE)[[1L]]), 1000)
   expect_false(any(grepl("max_extend", attr(autofit, "warnings"), fixed = TRUE)))
 
@@ -1540,22 +1524,15 @@ test_that("known-sigma Gaussian JAGS formula fit matches closed-form posterior",
     include_primitives = TRUE
   )
 
-  user_silent.jags <- runjags::runjags.getOption("silent.jags")
-  user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
-  on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags), add = TRUE)
-  runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
 
-  fit <- suppressWarnings(runjags::run.jags(
+  fit <- suppressWarnings(.bt_rjags_fit(
     model = paste0("model{\n", module$syntax, "\n}"),
+    data = list(),
     monitor = module$monitor,
-    n.chains = 2,
     adapt = 500,
     burnin = 500,
     sample = sample,
     thin = 1,
-    method = "rjags",
-    summarise = FALSE,
-    plots = FALSE,
     inits = lapply(seq_len(2), function(i){
       list(.RNG.name = "base::Wichmann-Hill", .RNG.seed = seed + i)
     })
@@ -1771,7 +1748,6 @@ test_that("native JAGS LKJ module of a unit layout matches its R evaluator", {
 test_that("native JAGS LKJ blocks with an exchangeable unit extend their fits", {
 
   skip_if_not_installed("rjags")
-  skip_if_not_installed("runjags")
   skip_if_not(
     isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)),
     "BayesTools JAGS module is unavailable."
@@ -2063,23 +2039,15 @@ test_that("native JAGS LKJ primitive sampling refuses a draw rounded to the boun
     "}\n"
   )
 
-  user_silent.jags <- runjags::runjags.getOption("silent.jags")
-  user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
-  on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags), add = TRUE)
-  runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
 
-  fit <- suppressWarnings(runjags::run.jags(
+  fit <- suppressWarnings(.bt_rjags_fit(
     model = model,
     data = list(y = y, eta = eta, N = nrow(y), zeros = rep(0, nrow(y)), C = 100),
     monitor = "rho",
-    n.chains = 2,
     adapt = 1000,
     burnin = 1000,
     sample = sample,
     thin = 1,
-    method = "rjags",
-    summarise = FALSE,
-    plots = FALSE,
     inits = lapply(seq_len(2), function(i){
       list(u = c(0.5), .RNG.name = "base::Wichmann-Hill", .RNG.seed = seed + i)
     })
@@ -4635,29 +4603,15 @@ test_that(".fit_to_posterior handles vector parameters in jags.samples", {
 
 })
 
-test_that("JAGS_bridgesampling handles runjags output", {
+test_that("JAGS_bridgesampling handles a BayesTools fit", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
 
   prior_list <- list(mu = prior("normal", list(0, 1)))
-  model_syntax <- JAGS_add_priors("model{}", prior_list)
   log_posterior <- STANDARD_LOG_POSTERIOR
-  old_silent.runjags <- runjags::runjags.getOption("silent.runjags")
-  on.exit(runjags::runjags.options(silent.runjags = old_silent.runjags), add = TRUE)
-  runjags::runjags.options(silent.runjags = TRUE)
-
-  set.seed(1)
-  fit <- suppressWarnings(runjags::run.jags(
-    model = model_syntax,
-    monitor = "mu",
-    n.chains = 2,
-    adapt = 100,
-    burnin = 100,
-    sample = 500,
-    silent.jags = TRUE,
-    modules = "glm"
-  ))
+  fit <- JAGS_fit("model{}", prior_list = prior_list, chains = 2, adapt = 100,
+                  burnin = 100, sample = 500, silent = TRUE, seed = 1,
+                  jags_modules = "glm")
 
   marglik <- JAGS_bridgesampling(
     fit, prior_list = prior_list, data = list(),
@@ -4728,7 +4682,6 @@ test_that("BayesTools JAGS module initializes truncated nonlocal priors", {
 
 test_that("BayesTools JAGS module samples nonlocal priors", {
   skip_if_not_installed("rjags")
-  skip_if_not_installed("runjags")
   skip_if_not_installed("bridgesampling")
   skip_on_cran()
 
@@ -4798,15 +4751,8 @@ test_that("Gamma-coordinate priors compile and sample with automatic and manual 
         rjags::jags.model(con, data = list(), inits = inits, n.chains = 1,
                           n.adapt = 0, quiet = TRUE)
       })
-      if(!manual && p$distribution %in% c("moment", "invmoment")){
-        positive_mode <- p$parameters$location + p$parameters$mode
-        negative_mode <- p$parameters$location - p$parameters$mode
-        mode_inside <- function(value) value >= p$truncation$lower && value <= p$truncation$upper
-        if(mode_inside(positive_mode)){
-          expect_equal(model$state()[[1L]]$theta, positive_mode, tolerance = 2e-15)
-        }else if(mode_inside(negative_mode)){
-          expect_equal(model$state()[[1L]]$theta, negative_mode, tolerance = 2e-15)
-        }
+      if(manual){
+        expect_equal(model$state()[[1L]]$theta, inits$theta)
       }
       draws <- as.matrix(rjags::coda.samples(model, "theta", n.iter = 100, progress.bar = "none"))[, "theta"]
       expect_true(all(is.finite(draws)))
@@ -4821,17 +4767,20 @@ test_that("JAGS numerical refusals leave the real backend session usable", {
   skip_on_cran()
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
 
-  compile <- function(p, value = NULL){
-    con <- textConnection(JAGS_add_priors("model{}", list(theta = p)))
+  compile <- function(p, value = NULL, observed = FALSE){
+    syntax <- if(observed) "model{ y ~ dnorm(theta, 1) }" else "model{}"
+    data <- if(observed) list(y = 0) else list()
+    con <- textConnection(JAGS_add_priors(syntax, list(theta = p)))
     on.exit(close(con), add = TRUE)
     inits <- list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = 621L)
     if(!is.null(value)) inits$theta <- value
-    rjags::jags.model(con, data = list(), inits = inits, n.chains = 1,
+    rjags::jags.model(con, data = data, inits = inits, n.chains = 1,
                       n.adapt = 0, quiet = TRUE)
   }
   unresolved <- prior("invgamma", list(shape = .Machine$double.xmin * .Machine$double.eps, scale = 1),
                        list(lower = .4, upper = .5))
-  expect_error(compile(unresolved), "numerically unavailable", fixed = TRUE)
+  # An observed child forces JAGS to initialize its parent at compilation.
+  expect_error(compile(unresolved, observed = TRUE), "numerically unavailable", fixed = TRUE)
   manual_unresolved <- compile(unresolved, .45)
   expect_error(rjags::coda.samples(manual_unresolved, "theta", n.iter = 2, progress.bar = "none"),
                "numerically unavailable", fixed = TRUE)
@@ -4840,7 +4789,7 @@ test_that("JAGS numerical refusals leave the real backend session usable", {
   expect_identical(lpdf(central, 0), -Inf)
   manual_central <- compile(central, 0)
   expect_identical(manual_central$state()[[1L]]$theta, 0)
-  automatic_central <- compile(central)
+  automatic_central <- compile(central, observed = TRUE)
   automatic_value <- automatic_central$state()[[1L]]$theta
   expect_true(automatic_value >= central$truncation$lower && automatic_value <= central$truncation$upper)
   expect_true(is.finite(lpdf(central, automatic_value)))
@@ -4852,12 +4801,11 @@ test_that("JAGS numerical refusals leave the real backend session usable", {
 
 test_that("fully structural fits retain deterministic draw geometry", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   skip_on_cran()
 
   fit <- NULL
-  expect_warning(
+  expect_silent(
     fit <- JAGS_fit(
       model_syntax = "model{}",
       prior_list = list(theta = prior("point", list(0))),
@@ -4867,8 +4815,7 @@ test_that("fully structural fits retain deterministic draw geometry", {
       sample = 100,
       silent = TRUE,
       seed = 1
-    ),
-    "No data was specified or found"
+    )
   )
 
   coordinates <- parameter_coordinates(fit)
@@ -4939,25 +4886,17 @@ test_that("fully structural fits retain deterministic draw geometry", {
 
 test_that("prior-only JAGS draws differ between chains of adjacent seeds", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
 
   fit_prior_only <- function(seed){
-    withCallingHandlers(
-      JAGS_fit(
-        model_syntax = "model{}",
-        prior_list   = list(mu = prior("normal", list(0, 1))),
-        chains       = 2,
-        adapt        = 50,
-        burnin       = 50,
-        sample       = 100,
-        seed         = seed
-      ),
-      warning = function(w){
-        if(grepl("No data was specified", conditionMessage(w), fixed = TRUE)){
-          invokeRestart("muffleWarning")
-        }
-      }
+    JAGS_fit(
+      model_syntax = "model{}",
+      prior_list   = list(mu = prior("normal", list(0, 1))),
+      chains       = 2,
+      adapt        = 50,
+      burnin       = 50,
+      sample       = 100,
+      seed         = seed
     )
   }
   chain_draws <- function(fit, chain) as.numeric(fit$mcmc[[chain]][, "mu"])
@@ -4977,26 +4916,18 @@ test_that("prior-only JAGS draws differ between chains of adjacent seeds", {
 
 test_that("JAGS fits with priors only in the model syntax are reproducible for a seed", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
 
   fit_syntax_prior <- function(seed){
-    withCallingHandlers(
-      JAGS_fit(
-        model_syntax   = "model{ mu ~ dnorm(0, 1) }",
-        prior_list     = NULL,
-        add_parameters = "mu",
-        chains         = 2,
-        adapt          = 50,
-        burnin         = 50,
-        sample         = 100,
-        seed           = seed
-      ),
-      warning = function(w){
-        if(grepl("No data was specified", conditionMessage(w), fixed = TRUE)){
-          invokeRestart("muffleWarning")
-        }
-      }
+    JAGS_fit(
+      model_syntax   = "model{ mu ~ dnorm(0, 1) }",
+      prior_list     = NULL,
+      add_parameters = "mu",
+      chains         = 2,
+      adapt          = 50,
+      burnin         = 50,
+      sample         = 100,
+      seed           = seed
     )
   }
   chain_draws <- function(fit, chain) as.numeric(fit$mcmc[[chain]][, "mu"])
@@ -5016,7 +4947,6 @@ test_that("JAGS fits with priors only in the model syntax are reproducible for a
 # (test-JAGS-fit-settings.R); '.expect_scoped_rng()' is in common-functions.R.
 test_that("seeded public functions leave the caller's random-number state unchanged", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   withr::local_preserve_seed()
   withr::defer(RNGkind("default", "default", "default"))
@@ -5097,9 +5027,77 @@ test_that("seeded public functions leave the caller's random-number state unchan
   expect_identical(after_mix, .Random.seed)
 })
 
+test_that("data-block-only monitors and sampled cells survive model reconstruction", {
+
+  fit <- JAGS_fit(
+    model_syntax = paste(
+      "data { y[1] ~ dnorm(0, 1); y[3] <- -1; generated[1] <- 1; generated[2] ~ dnorm(0, 1) }",
+      "model { mu ~ dnorm(0, 1); for (i in 1:3) { y[i] ~ dnorm(mu, 1) } }", sep = "\n"
+    ),
+    add_parameters = c("mu", "generated[2]", "y"), chains = 2,
+    adapt = 50, burnin = 50, sample = 100, seed = 492, silent = TRUE
+  )
+  coordinates <- parameter_coordinates(fit)
+  roles <- setNames(coordinates$convergence_role, coordinates$coordinate_name)
+  expect_identical(roles[["y[2]"]], "sampled")
+  expect_identical(roles[["generated[2]"]], "structural")
+  expect_true(is.na(fit$data$y[2L]))
+  for(state in fit$end_state){
+    expect_identical(is.na(as.numeric(state$y)), c(TRUE, FALSE, TRUE))
+  }
+
+  extended <- JAGS_extend(unserialize(serialize(fit, NULL)),
+    autofit_control = list(max_Rhat = NULL, min_ESS = NULL, max_error = NULL,
+      max_SD_error = NULL, max_extend = 1, sample_extend = 25))
+  expect_identical(extended$data, fit$data)
+  for(chain in extended$mcmc){
+    expect_equal(nrow(chain), 125L)
+    expect_identical(as.numeric(chain[, "generated[2]"]), rep(fit$data$generated[2L], 125L))
+    expect_identical(as.numeric(chain[, "y[1]"]), rep(fit$data$y[1L], 125L))
+    expect_true(length(unique(chain[101:125, "y[2]"])) > 1L)
+  }
+})
+
+test_that("PSOCK workers and a reloaded extension share generated data and preserve thinned chains", {
+
+  fit_once <- function(){
+    JAGS_fit(
+      model_syntax = paste("data { y_raw ~ dnorm(0, 1) }",
+                           "model { y_raw ~ dnorm(mu, 1); y <- y_raw }", sep = "\n"),
+      prior_list = list(mu = prior("normal", list(0, 1))),
+      add_parameters = "y", chains = 3, cores = 2, parallel = TRUE,
+      adapt = 50, burnin = 50, sample = 100, thin = 3, seed = 49, silent = TRUE
+    )
+  }
+  fit <- fit_once()
+  expect_identical(class(fit), "BayesTools_fit")
+  expect_identical(coda::as.mcmc.list(fit), fit$mcmc)
+  expect_true(all(vapply(fit$end_state, function(chain) length(chain$.RNG.state) > 0L, logical(1))))
+  generated <- fit$data$y_raw
+  expect_true(length(generated) == 1L && is.finite(generated))
+  expect_identical(fit_once()$data$y_raw, generated)
+
+  saved <- unserialize(serialize(fit, NULL))
+  control <- list(max_Rhat = NULL, min_ESS = NULL, max_error = NULL, max_SD_error = NULL,
+                  max_extend = 1, sample_extend = 25)
+  extended <- JAGS_extend(saved, autofit_control = control, parallel = TRUE, cores = 2)
+  expect_identical(extended$data$y_raw, generated)
+  expect_length(extended$mcmc, 3L)
+  for(i in seq_along(fit$mcmc)){
+    before <- fit$mcmc[[i]]
+    after <- extended$mcmc[[i]]
+    expect_equal(nrow(before), 100)
+    expect_equal(nrow(after), 125)
+    expect_equal(coda::thin(after), 3)
+    expect_equal(stats::start(after), stats::start(before))
+    expect_equal(stats::end(after), stats::end(before) + 3 * 25)
+    expect_identical(as.matrix(after)[seq_len(100), , drop = FALSE], as.matrix(before))
+    expect_identical(as.numeric(after[, "y"]), rep(as.numeric(generated), 125L))
+  }
+})
+
 test_that("JAGS_extend draws depend only on the stored fit", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   withr::local_preserve_seed()
 
@@ -5129,15 +5127,16 @@ test_that("JAGS_extend draws depend only on the stored fit", {
   expect_identical(draws(other_caller), draws(first))
   expect_false(identical(draws(first), as.matrix(fit$mcmc)))
 
-  # Neither the fit nor its extension keeps runjags' compiled model. A fit
-  # that still carries one (as JAGS_fit() returned it before; compiled here by
-  # runjags from the fit) is larger by that model and extends to the same
-  # draws.
-  expect_null(fit$method.options$rjags)
-  expect_null(first$method.options$rjags)
+  # The public fit drops the compiled model and rebuilds from its saved state.
+  expect_null(fit$live_model)
+  expect_null(first$live_model)
   with_model <- fit
-  with_model$method.options$rjags <- runjags::as.jags(fit, adapt = 0, quiet = TRUE)
-  model_size <- length(serialize(with_model$method.options$rjags, NULL))
+  model_text <- textConnection(fit$model)
+  with_model$live_model <- rjags::jags.model(model_text, fit$data, fit$end_state,
+                                            n.chains = length(fit$mcmc),
+                                            n.threads = 1, n.adapt = 0, quiet = TRUE)
+  close(model_text)
+  model_size <- length(serialize(with_model$live_model, NULL))
   expect_gt(
     length(serialize(with_model, NULL)) - length(serialize(fit, NULL)),
     0.9 * model_size
@@ -5202,7 +5201,7 @@ test_that("heterogeneous weightfunction mixtures compile and adapt in JAGS", {
     seed       = 14
   ))
 
-  expect_s3_class(fit, "runjags")
+  expect_s3_class(fit, "BayesTools_fit")
   expect_false(inherits(fit, "condition"))
 })
 
@@ -5219,7 +5218,6 @@ test_that("heterogeneous weightfunction mixtures compile and adapt in JAGS", {
 
 test_that("a fit created in a function does not keep that function's frame", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   withr::local_preserve_seed()
 
@@ -6160,10 +6158,8 @@ test_that("declared fits run serially, in parallel, with autofit, and extend aft
   expect_identical(from_function$model, serial$model)
   expect_identical(as.matrix(from_function$mcmc), as.matrix(serial$mcmc))
   compiled_samplers <- function(fit){
-    environment <- new.env()
-    eval(parse(text = fit$data), envir = environment)
     .sampler_test_node_samplers(rjags::jags.model(
-      textConnection(fit$model), data = as.list(environment), n.chains = 1, n.adapt = 0, quiet = TRUE
+      textConnection(fit$model), data = fit$data, n.chains = 1, n.adapt = 0, quiet = TRUE
     ))
   }
   samplers <- compiled_samplers(from_function)
@@ -6279,9 +6275,7 @@ test_that("a block of a random-effect SD and a scalar correlation keeps the post
   expect_identical(declarations$blocks$node, c("mu_intercept", random_names))
   expect_identical(nrow(declarations$declined), 0L)
   expect_true(grepl("BayesTools_block_3 ~ dbt_block(mu__xREx__g_rho, 1)", declared$model, fixed = TRUE))
-  environment <- new.env()
-  eval(parse(text = declared$data), envir = environment)
-  model <- rjags::jags.model(textConnection(declared$model), data = as.list(environment),
+  model <- rjags::jags.model(textConnection(declared$model), data = declared$data,
                              n.chains = 1, n.adapt = 0, quiet = TRUE)
   samplers <- rjags::list.samplers(model)
   expect_identical(sum(names(samplers) == "BayesTools::FactorSlice"), 1L)
@@ -6314,14 +6308,8 @@ test_that("a block of a random-effect SD and a scalar correlation keeps the post
 test_that("guarded spike-and-slab priors keep stock samplers and refuse blocks", {
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
 
-  # the data of a fit, as runjags stores it
-  fit_data <- function(fit){
-    environment <- new.env()
-    eval(parse(text = fit$data), envir = environment)
-    as.list(environment)
-  }
   expect_stock <- function(fit, guarded){
-    data <- fit_data(fit)
+    data <- fit$data
     model <- rjags::jags.model(textConnection(fit$model), data = data, n.chains = 1, n.adapt = 0, quiet = TRUE)
     samplers <- .sampler_test_node_samplers(model)
     guarded_nodes <- names(samplers)[startsWith(names(samplers), guarded)]
@@ -6376,7 +6364,7 @@ test_that("the new samplers report incomplete adaptation until their first adapt
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
 
   # models whose only adaptive sampler is a factor slice block or a gated node:
-  # runjags runs the adaptation phase only when rjags::adapt(model, 0) is FALSE
+  # Both sampler factories initially report that adaptation is pending.
   block <- paste0("
 model{
   b1 ~ dnorm(0, 1e-4)

@@ -366,7 +366,7 @@ NULL
   rebuilt <- !is.null(cl) || is.null(fit[["live_model"]])
   run <- .bt_collect_adaptation_warnings(.JAGS_run_backend(
     .bt_rjags_extend,
-    list(fit = fit, sample = sample, adapt = adapt, cl = cl, silent = silent),
+    list(fit = fit, sample = sample, adapt = as.integer(adapt), cl = cl, silent = silent),
     parallel = !is.null(cl)
   ))
   list(
@@ -595,9 +595,6 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   add_parameters <- unique(c(add_parameters, formula_add_parameters))
   jags_modules <- unique(c(jags_modules, formula_jags_modules))
   required_packages <- unique(c(required_packages, formula_required_packages))
-  # Fully observed data are constants of the model; the convergence roles of
-  # monitored deterministic nodes are derived from them.
-  data_names <- names(data)[vapply(data, function(x) !anyNA(x), logical(1))]
 
   if(.JAGS_prior_list_uses_BayesTools_module(prior_list)){
     jags_modules <- unique(c(jags_modules, "BayesTools"))
@@ -700,9 +697,18 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     }
     run$value
   }
+  # Keep generated observations fixed when a new set of chain inits is tried.
+  prepared <- tryCatch(.bt_rjags_realize_data(model_call$model, model_call$data,
+    model_call$inits[[1L]][[".RNG.seed"]], model_call$monitor), error = identity)
+  if(!inherits(prepared, "error")){
+    model_call[c("model", "data")] <- prepared
+  }
   # special fitting procedure for JASP
   # singlcore interrupted fits allowing for bar progression
-  if(isTRUE(dots[["is_JASP"]])){
+  if(inherits(prepared, "error")){
+    fit <- prepared
+    report_run(fit)
+  }else if(isTRUE(dots[["is_JASP"]])){
 
     model_call_adapt  <- model_call
     model_call_adapt[["sample"]] <- 1 # at least one burnin & adapt need to be specified
@@ -766,6 +772,11 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   if(inherits(fit, "error") & !silent)
     warning(paste0("The model estimation failed with the following error: ", fit$message), immediate. = TRUE)
 
+  # A BUGS data block can generate observations. Determine convergence roles
+  # from the actual sampled model and its realized, fully observed inputs.
+  sampling_model <- model_call$model
+  data_names <- names(model_call$data)[vapply(model_call$data, function(x) !anyNA(x), logical(1))]
+
   extension_failed <- FALSE
   last_valid_runtime_state <- NULL
   last_valid_capture_warnings <- character()
@@ -795,7 +806,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
           formula_scale = formula_scale_info,
           backend_anchor = backend_anchor,
           add_parameters = add_parameters,
-          model_syntax = model_syntax,
+          model_syntax = sampling_model,
           data_names = data_names
         )
       }
@@ -910,6 +921,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   fit <- .bt_attach_parameter_map(
     fit,
     monitor_names = model_call$monitor,
+    model_syntax = sampling_model,
     data_names = data_names
   )
   fit <- .bt_attach_draw_geometry(fit)

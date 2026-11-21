@@ -17,7 +17,7 @@ skip_if_not_test_profile("unit")
   fit <- coda::mcmc(cbind(mu_intercept = seq(-1, 1, length.out = 201),
     "mu_fac[1]" = seq(-1, 2, length.out = 201),
     "mu_fac[2]" = seq(-2, 1, length.out = 201)))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(fit)
   attr(fit, "prior_list") <- formula$prior_list
   fit <- attach_test_parameter_map(fit)
   marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac",
@@ -157,7 +157,7 @@ test_that("marginal table known prior refusals preserve reasons and scalar stric
 
   fit <- coda::mcmc(cbind(beta = seq(.1, 2, length.out = 20),
                           beta_indicator = rep(1L, 20)))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(fit)
   attr(fit, "prior_list") <- list(beta = prior_spike_and_slab(
     prior("normal", list(0, 1)), prior_inclusion = prior("point", list(.5))))
   fit <- attach_test_parameter_map(fit)

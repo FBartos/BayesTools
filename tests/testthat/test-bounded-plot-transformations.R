@@ -225,7 +225,7 @@ test_that("exp_lin keeps the curve of a root map when the source density is infi
 }
 .kde_mixed_posteriors <- function(columns, prior_list){
 
-  fit <- structure(coda::mcmc(columns), class = c("mcmc", "BayesTools_fit"))
+  fit <- test_fit_from_chains(coda::mcmc(columns))
   attr(fit, "prior_list") <- prior_list
   fit <- BayesTools:::.bt_attach_parameter_map(fit, monitor_names = NULL)
   fit <- BayesTools:::.bt_attach_draw_geometry(fit)

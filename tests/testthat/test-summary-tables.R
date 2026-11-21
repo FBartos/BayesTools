@@ -426,7 +426,6 @@ test_that("ensemble_estimates_table handles multi-factor transformed interaction
 
 test_that("runjags_estimates_table unscales before parameter filtering", {
 
-  skip_if_not_installed("runjags")
 
   posterior <- matrix(
     c(
@@ -462,10 +461,9 @@ test_that("runjags_estimates_table unscales before parameter filtering", {
 
   fit <- list(
     mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-    summary.pars = list(mutate = NULL),
     monitor = colnames(posterior)
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_scale") <- list(mu = formula_scale)
   fit <- attach_test_parameter_map(

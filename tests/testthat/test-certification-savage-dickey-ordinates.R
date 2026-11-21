@@ -1,6 +1,5 @@
 skip_if_not_test_profile("certification")
 skip_if_not_installed("rjags")
-skip_if_not_installed("runjags")
 
 # Savage-Dickey ordinates away from the posterior mode. With a known residual
 # SD of 1 and N(0, 1) priors on the intercept and the slope, the slope has the

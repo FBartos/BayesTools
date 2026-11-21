@@ -120,8 +120,7 @@ test_that("replay propagates ordinary parent outputs to all dependent families",
     "mu__xRE_ALLOCx_split__weight[2]" = 1 - share,
     mu__xRE_ALLOCx_split__include_study_indicator = rep(c(0, 1), length.out = n)
   )
-  fit <- coda::mcmc.list(coda::mcmc(samples))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(samples)))
   attr(fit, "prior_list") <- result[["prior_list"]]
   attr(fit, "formula_design") <- list(mu = result[["formula_design"]])
   fit <- BayesTools:::.bt_attach_parameter_map(fit)
@@ -132,7 +131,7 @@ test_that("replay propagates ordinary parent outputs to all dependent families",
 test_that("JAGS_deterministic_evaluator() resolves the nodes once and reproduces their evaluators", {
 
   fit <- .dnode_gated_fit()
-  draws <- as.matrix(fit[[1L]])
+  draws <- as.matrix(fit$mcmc[[1L]])
   nodes <- c("mu__xREx__study_intercept", "mu__xREx__esid_intercept")
   registry <- BayesTools:::.bt_deterministic_nodes_fit(fit)
   prior_list <- attr(fit, "prior_list")
@@ -505,8 +504,7 @@ test_that("prior draws carry the auxiliary nodes of mixture and spike-and-slab p
                "mu_f_variable[1]", "mu_f_variable[2]",
                "m", "m_indicator", "m_inclusion", "m_variable", "t", "t_indicator")
   posterior <- matrix(.5, nrow = 4, ncol = length(columns), dimnames = list(NULL, columns))
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   fit <- attach_test_parameter_map(fit)
@@ -565,8 +563,7 @@ test_that("prior draws carry the fitted nodes of ordered-prior totals", {
   prior_fit <- function(formula, prior_list, total_columns){
     formula_result <- JAGS_formula(formula, "mu", data, prior_list)
     columns <- c(prior_columns(formula_result$prior_list), total_columns)
-    fit <- coda::mcmc(matrix(.5, nrow = 4, ncol = length(columns), dimnames = list(NULL, columns)))
-    class(fit) <- c("mcmc", "BayesTools_fit")
+    fit <- test_fit_from_chains(coda::mcmc(matrix(.5, nrow = 4, ncol = length(columns), dimnames = list(NULL, columns))))
     attr(fit, "prior_list") <- formula_result$prior_list
     attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
     attach_test_parameter_map(fit)

@@ -7,10 +7,9 @@ make_random_scale_table_fit <- function(formula_result, posterior){
     list(
       mcmc = coda::mcmc.list(coda::mcmc(posterior)),
       sample = nrow(posterior),
-      summary.pars = list(mutate = NULL),
       monitor = colnames(posterior)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -21,7 +20,6 @@ make_random_scale_table_fit <- function(formula_result, posterior){
 
 test_that("unscaled samples omit only internal latent and group coefficients", {
 
-  skip_if_not_installed("runjags")
 
   formula_result <- JAGS_formula(
     ~ 1 + x + us(1 + x | id), "mu",
@@ -80,7 +78,6 @@ test_that("unscaled samples omit only internal latent and group coefficients", {
 
 test_that("removing every random coordinate retains a zero-column matrix", {
 
-  skip_if_not_installed("runjags")
 
   formula_result <- JAGS_formula(
     ~ 1 + diag(1 | id), "mu", data.frame(id = factor(c("a", "a", "b", "b"))),
@@ -108,7 +105,6 @@ test_that("removing every random coordinate retains a zero-column matrix", {
 
 test_that("JAGS_estimates_table suppresses fixed warnings for random-only scaled slopes", {
 
-  skip_if_not_installed("runjags")
 
   df <- data.frame(
     x = c(1, 2, 3, 4),
@@ -156,7 +152,6 @@ test_that("JAGS_estimates_table suppresses fixed warnings for random-only scaled
 
 test_that("JAGS_estimates_table suppresses fixed warnings for homogeneous random-only slopes", {
 
-  skip_if_not_installed("runjags")
 
   df <- data.frame(
     x = c(1, 2, 3, 4),
@@ -205,7 +200,6 @@ test_that("JAGS_estimates_table suppresses fixed warnings for homogeneous random
 
 test_that("JAGS_estimates_table treats sd as a valid random-only predictor name", {
 
-  skip_if_not_installed("runjags")
 
   df <- data.frame(
     sd = c(1, 2, 3, 4),
@@ -254,7 +248,6 @@ test_that("JAGS_estimates_table treats sd as a valid random-only predictor name"
 
 test_that("JAGS_estimates_table still warns about genuinely unused scale entries", {
 
-  skip_if_not_installed("runjags")
 
   df <- data.frame(
     x = c(1, 2, 3, 4),
@@ -314,7 +307,6 @@ test_that("JAGS_estimates_table still warns about genuinely unused scale entries
 
 test_that("JAGS_estimates_table unscales diagonal random intercept-slope blocks without correlations", {
 
-  skip_if_not_installed("runjags")
 
   df <- data.frame(
     x = c(1, 2, 3, 4),
@@ -375,7 +367,6 @@ test_that("JAGS_estimates_table unscales diagonal random intercept-slope blocks 
 
 test_that("exchangeable factor random slopes unscale with their scaled interactions", {
 
-  skip_if_not_installed("runjags")
 
   df <- data.frame(
     x = c(1, 2, 3, 4, 5, 6),
@@ -450,7 +441,6 @@ test_that("exchangeable factor random slopes unscale with their scaled interacti
 
 test_that("JAGS_estimates_table keeps fixed and random scaled slope transforms together", {
 
-  skip_if_not_installed("runjags")
 
   df <- data.frame(
     x = c(1, 2, 3, 4),
@@ -516,7 +506,6 @@ test_that("JAGS_estimates_table keeps fixed and random scaled slope transforms t
 
 test_that("original-scale accessors exclude internal random coordinates", {
 
-  skip_if_not_installed("runjags")
 
   df <- data.frame(
     x = c(1, 2, 3, 4),
@@ -646,7 +635,6 @@ test_that("original-scale accessors exclude internal random coordinates", {
 
 test_that("transform_scaled selects fixed and random summary scales at every depth", {
 
-  skip_if_not_installed("runjags")
 
   data <- data.frame(x = c(2, 4, 7, 9), id = factor(c("a", "a", "b", "b")))
   compiled <- JAGS_formula(
@@ -760,7 +748,6 @@ test_that("transform_scaled selects fixed and random summary scales at every dep
 
 test_that("estimates tables report the share of draws with a defined original-scale correlation", {
 
-  skip_if_not_installed("runjags")
 
   # A zero slope SD (e.g., an excluded spike-and-slab SD) leaves the
   # original-scale intercept-slope correlation undefined (0/0): draws 3 and 4
@@ -896,7 +883,6 @@ test_that("estimates tables report the share of draws with a defined original-sc
 
 test_that("original-scale correlations of singular draws with positive SDs are +-1", {
 
-  skip_if_not_installed("runjags")
 
   # With a zero scaled intercept SD and a positive scaled slope SD, the
   # original-scale intercept -u1 m / s and slope u1 / s are perfectly
@@ -978,7 +964,6 @@ test_that("original-scale correlations of singular draws with positive SDs are +
 
 test_that("original-scale random-effect SDs beyond the double range are refused", {
 
-  skip_if_not_installed("runjags")
 
   df <- data.frame(
     x = c(1, 2, 3, 4),
@@ -1047,7 +1032,6 @@ test_that("original-scale random-effect SDs beyond the double range are refused"
 
 test_that("larger blocks define correlations entrywise in singular draws", {
 
-  skip_if_not_installed("runjags")
 
   # (1 + x + z | id) with a zero scaled intercept SD. Draw 1: the
   # original-scale intercept is a linear combination of both slopes, so the
@@ -1179,7 +1163,6 @@ test_that("original-scale correlations are defined entrywise and clamp rounding 
 
 test_that("parameter_draws declares undefined correlation draws for ensemble tables", {
 
-  skip_if_not_installed("runjags")
 
   # Zero slope SDs in draws 3 and 4 leave the original-scale correlation
   # undefined (NA).
@@ -1304,7 +1287,6 @@ test_that("correlation footnotes count only draws retained by conditioning", {
 
 test_that("scaled predictors are centered in terms without a free intercept", {
 
-  skip_if_not_installed("runjags")
 
   # Maintainer decision M52 (c): `~ 0 + x` with scaled x fits
   # mu = b (x - m) / s, so the original-scale intercept is -b m / s.
@@ -1444,8 +1426,7 @@ test_that("a hand-built formula_scale unscales random-effect SDs like the automa
   manual_scale <- list(mu = list(mu_x = list(mean = m, sd = s)))
   priors <- list(intercept = prior("normal", list(0, 5)), x = prior("normal", list(0, 2)))
   fit_of <- function(carrier){
-    fit <- coda::mcmc.list(coda::mcmc(as.matrix(carrier)))
-    class(fit) <- c("BayesTools_fit", class(fit))
+    fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(as.matrix(carrier))))
     for(name in c("prior_list", "formula_design", "formula_scale")){
       attr(fit, name) <- attr(carrier, name)
     }
@@ -1560,7 +1541,6 @@ random_block_scale_monitor <- function(correlation = FALSE){
 
 test_that("tiny predictor units retain the original-scale SD map and unit conversion", {
 
-  skip_if_not_installed("runjags")
 
   x <- as.numeric(scale(rep(c(-3, -2, -1, 1, 2, 3), 6L))) * 1e-12 + 5e-11
   results <- lapply(c(1, 1e12), function(units){
@@ -1596,7 +1576,6 @@ test_that("tiny predictor units retain the original-scale SD map and unit conver
 
 test_that("tiny-unit correlated blocks retain the covariance cross term", {
 
-  skip_if_not_installed("runjags")
 
   data <- data.frame(
     x = as.numeric(scale(rep(c(-3, -2, -1, 1, 2, 3), 6L))) * 1e-12 + 5e-11,
@@ -1634,7 +1613,6 @@ test_that("tiny-unit correlated blocks retain the covariance cross term", {
 
 test_that("random-effect SDs of a block with a factor-by-scaled-slope term follow the block design", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   m <- mean(df$x)
@@ -1711,7 +1689,6 @@ test_that("random-effect SDs of a block with a factor-by-scaled-slope term follo
 
 test_that("every consumer of the original-scale random-effect SDs uses the block design", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   grid <- expand.grid(f = factor(c("a", "b", "c")), x = c(-1, 0, 1, 2))
@@ -1755,7 +1732,6 @@ test_that("every consumer of the original-scale random-effect SDs uses the block
 
 test_that("a correlated block with a factor-by-scaled-slope term transforms its covariance by the block map", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   grid <- expand.grid(f = factor(c("a", "b", "c")), x = c(-1, 0, 1, 2))
@@ -1787,7 +1763,6 @@ test_that("a correlated block with a factor-by-scaled-slope term transforms its 
 
 test_that("blocks that share a grouping variable use their own design", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   grid <- expand.grid(f = factor(c("a", "b", "c")), x = c(-1, 0, 1, 2))
@@ -1816,7 +1791,6 @@ test_that("blocks that share a grouping variable use their own design", {
 
 test_that("a block with no original-scale representation keeps the documented drop policy", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   s <- stats::sd(df$x)
@@ -1854,7 +1828,6 @@ test_that("a block with no original-scale representation keeps the documented dr
 
 test_that("a logical predictor in a block with a scaled slope gets design-derived SDs", {
 
-  skip_if_not_installed("runjags")
 
   # `flag` enters the block through its main effect and through `flag:x`; the
   # interaction is indicator coded (flagFALSE:x, flagTRUE:x) and shares one SD.
@@ -1898,7 +1871,6 @@ test_that("a logical predictor in a block with a scaled slope gets design-derive
 
 test_that("the weights of a shared random-effect SD leaf are compared relative to their magnitude", {
 
-  skip_if_not_installed("runjags")
 
   # two columns that share leaf "a" (target rows 1 and 2) next to leaf "b" (column 3);
   # `first` and `second` are the weights of the two target rows on the two leaves
@@ -1983,7 +1955,6 @@ test_that("the weights of a shared random-effect SD leaf are compared relative t
 
 test_that("unequal shared logical-column SDs refuse even when a different source leaf has a tiny weight", {
 
-  skip_if_not_installed("runjags")
   data <- expand.grid(x = c(-1, 1), z = c(-1, 1), flag = c(FALSE, TRUE),
     id = letters[1:4], repeat_row = 1:2, KEEP.OUT.ATTRS = FALSE)
   data$z <- data$z + 1e-13
@@ -2088,7 +2059,6 @@ random_block_table_stub <- function(parameters){
 
 test_that("ensemble and marginal tables unscale random-effect SDs through the block design", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   grid <- expand.grid(f = factor(c("a", "b", "c")), x = c(-1, 0, 1, 2))
@@ -2126,7 +2096,6 @@ test_that("ensemble and marginal tables unscale random-effect SDs through the bl
 
 test_that("a mixture unscales the random-effect SDs of each model with the design of its own block", {
 
-  skip_if_not_installed("runjags")
 
   # the models share the formula and the SD parameters but not the design of
   # the block: `flag` is logical (two indicator columns of `flag:x` that share
@@ -2198,7 +2167,6 @@ test_that("a mixture unscales the random-effect SDs of each model with the desig
 
 test_that("tables without the fitted block design refuse random-effect SDs that pairing names cannot map", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   grid <- expand.grid(f = factor(c("a", "b", "c")), x = c(-1, 0, 1, 2))
@@ -2277,7 +2245,6 @@ test_that("tables without the fitted block design refuse random-effect SDs that 
 
 test_that("a logical predictor in a block with a scaled slope is refused without the block design and mapped with it", {
 
-  skip_if_not_installed("runjags")
 
   # `flagFALSE:x` and `flagTRUE:x` share one term name: pairing names finds the
   # partner `flag` of both, but their induced terms are different
@@ -2378,7 +2345,6 @@ test_that("a logical predictor in a block with a scaled slope is refused without
 
 test_that("a mixture of random-effect SDs with a model that has no formula design attaches no state", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   setup <- random_block_scale_fit(
@@ -2390,9 +2356,9 @@ test_that("a mixture of random-effect SDs with a model that has no formula desig
   plain <- structure(
     list(
       mcmc = coda::mcmc.list(coda::mcmc(cbind(theta = seq(-1, 1, length.out = 20)))),
-      sample = 20L, summary.pars = list(mutate = NULL), monitor = "theta"
+      sample = 20L, monitor = "theta"
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(plain, "prior_list") <- list(theta = prior("normal", list(0, 1)))
   plain <- attach_test_parameter_map(plain)
@@ -2417,7 +2383,6 @@ test_that("a mixture of random-effect SDs with a model that has no formula desig
 
 test_that("the no-design gate admits a block only when pairing names gives its design-derived map", {
 
-  skip_if_not_installed("runjags")
 
   set.seed(7)
   df <- data.frame(
@@ -2534,7 +2499,6 @@ test_that("the no-design gate admits a block only when pairing names gives its d
 
 test_that("shared random-effect SD leaves keep one coordinate per design column in the name-paired map", {
 
-  skip_if_not_installed("runjags")
 
   # the columns of one shared leaf have one term name; each is its own coordinate
   # and puts no weight on the others
@@ -2689,7 +2653,6 @@ random_block_bf_bound <- function(p, n){
 
 test_that("the prior law of a pure-rescaling random-effect SD is the fitted law rescaled and the composite SD is refused", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   s <- stats::sd(df$x)
@@ -2769,7 +2732,6 @@ test_that("the prior law of a pure-rescaling random-effect SD is the fitted law 
 
 test_that("exact-zero means retain pure SD rescaling and nonzero subtraction-centered means refuse it", {
 
-  skip_if_not_installed("runjags")
 
   # mean(x) is exactly zero: no term is induced in the intercept SD (c = 1)
   df <- data.frame(
@@ -2825,7 +2787,6 @@ test_that("exact-zero means retain pure SD rescaling and nonzero subtraction-cen
 
 test_that("a tiny nonzero predictor mean retains composite SD draws and prior-law refusal", {
 
-  skip_if_not_installed("runjags")
 
   sd_names <- c("mu__xREx__id_intercept", "mu__xREx__id_x")
   base <- rep(c(-3, -2, -1, 1, 2, 3), 6L)
@@ -2980,7 +2941,6 @@ random_block_c5_reference <- function(setup){
 
 test_that("categorical recoding preserves tiny numeric affine entries across predictor units", {
 
-  skip_if_not_installed("runjags")
   for(units in c(1e-3, 1, 1e3)){
     data <- random_block_nearly_centered_data(4e-13)
     data$v <- data$v * units
@@ -3018,7 +2978,6 @@ test_that("categorical recoding preserves tiny numeric affine entries across pre
 
 test_that("categorical hierarchy and indicator partitions keep unrelated SD laws pure", {
 
-  skip_if_not_installed("runjags")
   data <- expand.grid(f = letters[1:4], g = LETTERS[1:3], d1 = c(FALSE, TRUE),
     d2 = c(FALSE, TRUE), x = c(2, 5), KEEP.OUT.ATTRS = FALSE)
   data$f <- factor(data$f); data$g <- factor(data$g)
@@ -3051,7 +3010,6 @@ test_that("categorical hierarchy and indicator partitions keep unrelated SD laws
 
 test_that("source logical functions retain the elementary Boolean map on a nonproduct grid", {
 
-  skip_if_not_installed("runjags")
   data <- expand.grid(f = letters[1:3], d1 = c(FALSE, TRUE), d2 = c(FALSE, TRUE),
     d3 = c(FALSE, TRUE), x = c(2, 5), KEEP.OUT.ATTRS = FALSE)
   data$f <- factor(data$f); data$id <- factor(rep(1:4, length.out = nrow(data)))
@@ -3080,7 +3038,6 @@ test_that("source logical functions retain the elementary Boolean map on a nonpr
 
 test_that("random rank refusal precedes dropping and matrix support keeps its boundary", {
 
-  skip_if_not_installed("runjags")
   data <- expand.grid(f = letters[1:3], f2 = c("u", "v"), x = c(2, 5), KEEP.OUT.ATTRS = FALSE)
   data$f <- factor(data$f); data$f2 <- factor(data$f2)
   data$id <- factor(rep(1:4, length.out = nrow(data)))
@@ -3114,7 +3071,6 @@ test_that("random rank refusal precedes dropping and matrix support keeps its bo
 
 test_that("an entry of the original-scale map that the draws keep makes the SD a composite, however small beside its row", {
 
-  skip_if_not_installed("runjags")
 
   # The SD of `v` reads the SD of `u:v` through the entry -mean(u) / (sd(u) sd(v))
   # of its row, which is 4e-13 times its large diagonal entry 1 / sd(v) and still
@@ -3220,7 +3176,6 @@ test_that("an entry of the original-scale map that the draws keep makes the SD a
 
 test_that("the SDs of a block with a factor-by-slope term are rescalings or composites by their design row", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   s <- stats::sd(df$x)
@@ -3262,7 +3217,6 @@ test_that("the SDs of a block with a factor-by-slope term are rescalings or comp
 
 test_that("a context without the fitted block design refuses the SDs of a scaled block and keeps the others", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   setup <- random_block_prior_draw_fit(~ 1 + x + diag(1 + x | id), df)
@@ -3311,7 +3265,6 @@ test_that("a context without the fitted block design refuses the SDs of a scaled
 
 test_that("the law of a rescaled SD keeps spike-and-slab and mixture priors, truncation and its support", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   s <- stats::sd(df$x)
@@ -3374,7 +3327,6 @@ test_that("the law of a rescaled SD keeps spike-and-slab and mixture priors, tru
 
 test_that("a structured block and a block without a scaled column keep the fitted law of their SDs", {
 
-  skip_if_not_installed("runjags")
 
   set.seed(5)
   df <- data.frame(
@@ -3418,7 +3370,6 @@ test_that("a structured block and a block without a scaled column keep the fitte
 
 test_that("the prior draws of the level comparisons unscale the random-effect SDs with the block design", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   setup <- random_block_prior_draw_fit(~ 1 + x + diag(1 + f + f:x | id), df)
@@ -3448,7 +3399,6 @@ test_that("the prior draws of the level comparisons unscale the random-effect SD
 
 test_that("the formula design is an input of the memo of the transformed prior densities", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   setup <- random_block_prior_draw_fit(~ 1 + x + diag(1 + x | id), df)
@@ -3479,7 +3429,6 @@ test_that("the formula design is an input of the memo of the transformed prior d
 
 test_that("the density plot of a random-effect SD on the original scale takes no bounds from the fitted prior", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   setup <- random_block_prior_draw_fit(
@@ -3526,7 +3475,6 @@ test_that("the density plot of a random-effect SD on the original scale takes no
 
 test_that("the posterior plot of a prior with multiply_by keeps the block design of the prior context", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   df$z <- stats::rnorm(nrow(df))
@@ -3586,7 +3534,6 @@ test_that("the posterior plot of a prior with multiply_by keeps the block design
 
 test_that("the parameter map builds the unscale matrix of a scaled block once", {
 
-  skip_if_not_installed("runjags")
 
   # the support of each composite SD reads one row of the block's unscale
   # matrix, which the map build computes once per block and not once per SD
@@ -3621,7 +3568,6 @@ test_that("the parameter map builds the unscale matrix of a scaled block once", 
 
 test_that("a scaled random block with a linearly dependent design keeps the fit and refuses original-scale SDs", {
 
-  skip_if_not_installed("runjags")
 
   # `x:f:f2` without its margins makes the block design linearly dependent: the
   # original-scale coefficients of the block are not identified. The map build
@@ -3747,7 +3693,6 @@ random_block_fallback_fixture <- function(rhs, contrasts = c(f = "meandif", g = 
 
 test_that("mixed-coding missing-term fallbacks refuse public original-scale output", {
 
-  skip_if_not_installed("runjags")
   for(contrast in c("meandif", "orthonormal")){
     setup <- random_block_fallback_fixture("1 + f + f:x + g:z", c(f = contrast, g = "meandif"))
     fit <- setup$fit
@@ -3828,7 +3773,6 @@ test_that("mixed-coding missing-term fallbacks refuse public original-scale outp
 
 test_that("fallback certification preserves safe drops and exact design maps", {
 
-  skip_if_not_installed("runjags")
   controls <- list(
     list("0 + x", c(f = "meandif")),
     list("1 + f:x", c(f = "meandif")),
@@ -3864,7 +3808,6 @@ test_that("fallback certification preserves safe drops and exact design maps", {
 
 test_that("fallback refusal respects exact zeros, tiny means, rank and range", {
 
-  skip_if_not_installed("runjags")
   original <- random_block_fallback_fixture("1 + f + f:x + g:z")
   zero <- original$data
   zero$x <- rep(c(-1, 1), nrow(zero) / 2L)
@@ -3903,7 +3846,6 @@ test_that("fallback refusal respects exact zeros, tiny means, rank and range", {
 
 test_that("tables report unavailable induced intercepts as NA with a note", {
 
-  skip_if_not_installed("runjags")
 
   df <- random_block_scale_data()
   block <- prior_random(id = random_block(
@@ -4013,7 +3955,6 @@ random_availability_means <- function(setup, mode = "standard"){
 
 test_that("a lower-order numeric slope that centering shifts level-specifically is NA in original-scale tables", {
 
-  skip_if_not_installed("runjags")
 
   # B: the centered x of `f:x:z` induces level-specific z slopes, which no column of the block carries
   data <- random_availability_data()
@@ -4039,7 +3980,6 @@ test_that("a lower-order numeric slope that centering shifts level-specifically 
 
 test_that("every shifted column group is NA when x and z are scaled", {
 
-  skip_if_not_installed("runjags")
 
   # C: the intercept, x and z all receive level-specific shifts from `f:x:z`
   data <- random_availability_data()
@@ -4059,7 +3999,6 @@ test_that("every shifted column group is NA when x and z are scaled", {
 
 test_that("a represented lower-order numeric slope keeps its exact original-scale value", {
 
-  skip_if_not_installed("runjags")
 
   # D: without the factor the lower-order slope is represented (the exact map applies)
   data <- random_availability_data()
@@ -4075,7 +4014,6 @@ test_that("a represented lower-order numeric slope keeps its exact original-scal
 
 test_that("a shifted slope also removes its correlations, not those among represented columns", {
 
-  skip_if_not_installed("runjags")
 
   data <- random_availability_data()
   setup <- random_availability_fit(~ 1 + x + z + us(1 + z + f:x:z | id), data, "x", correlated = TRUE)
@@ -4089,7 +4027,6 @@ test_that("a shifted slope also removes its correlations, not those among repres
 
 test_that("a correlated block certifies a shared logical-column SD of a common rescaling", {
 
-  skip_if_not_installed("runjags")
 
   data <- random_availability_data()
   s_x <- stats::sd(data$x)
@@ -4134,7 +4071,6 @@ test_that("a correlated block certifies a shared logical-column SD of a common r
 
 test_that("named fallback maps preserve pure random-slope prior rescalings", {
 
-  skip_if_not_installed("runjags")
 
   data <- random_block_scale_data()
   setup <- random_block_scale_fit(
@@ -4172,7 +4108,6 @@ test_that("named fallback maps preserve pure random-slope prior rescalings", {
 
 test_that("unavailable transformed intercept correlations do not hide valid slope pairs", {
 
-  skip_if_not_installed("runjags")
   data <- random_block_scale_data()
   R <- matrix(.25, 4L, 4L)
   diag(R) <- 1
@@ -4204,7 +4139,6 @@ test_that("unavailable transformed intercept correlations do not hide valid slop
 
 test_that("dropping numeric interaction slopes retains an identified intercept", {
 
-  skip_if_not_installed("runjags")
   data <- data.frame(x = c(2, 4, 7, 9), z = c(1, 3, 2, 7),
                      id = factor(c("a", "a", "b", "b")))
   for(scaled in list(list(x = TRUE), list(x = TRUE, z = TRUE))){

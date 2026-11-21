@@ -367,7 +367,7 @@ test_that("formula replay rejects unversioned source-data metadata", {
 test_that("formula prediction rejects ambiguous posterior column names", {
   result <- .formula_prediction_result()
   fit <- .formula_prediction_fit(result)
-  posterior <- as.matrix(fit)
+  posterior <- as.matrix(fit$mcmc)
   coefficient_name <- "mu__xREx__id_xRE_COEFx[1,1]"
   duplicate <- posterior[, coefficient_name, drop = FALSE] + 100
   colnames(duplicate) <- coefficient_name
@@ -1745,7 +1745,7 @@ test_that("JAGS_predict_formula composes fixed means with marginal covariance", 
     fit = fit,
     parameter = "mu",
     data = new_data,
-    posterior_samples = as.matrix(fit),
+    posterior_samples = as.matrix(fit$mcmc),
     prior_list = result$prior_list,
     new_levels = "sample"
   )

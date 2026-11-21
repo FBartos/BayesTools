@@ -149,7 +149,7 @@ test_that("the fit method equals the three-step extraction of a coefficient", {
 test_that("unconstrained comparisons report formula region masses on either side", {
 
   fit <- .hypothesis_model_test_fit()
-  draws <- as.matrix(fit[[1L]])
+  draws <- as.matrix(fit$mcmc[[1L]])
   targets <- c("x", "f[B]", "f[B] - f[C]")
   regions <- paste("-0.2 <=", targets, "< 0.4")
   statements <- c(paste(regions, "vs unconstrained"), paste("unconstrained vs", regions))
@@ -2925,7 +2925,7 @@ test_that("different level expressions with equal fitted weights are separate gr
   )
 }
 
-# A runjags-class fit of a standardized LKJ(2) block of two columns, with the
+# An owned fit of a standardized LKJ(2) block of two columns, with the
 # correlation of the two columns drawn from its exact Beta marginal.
 .hypothesis_model_test_scaled_lkj_fit <- function(formula, z, n = 2000L, seed = 5L){
 
@@ -2964,9 +2964,9 @@ test_that("different level expressions with equal fitted weights are separate gr
     list(mu = compiled$formula_design), list(mu = compiled$formula_scale)
   )
   fit <- structure(
-    list(mcmc = chains, sample = n, summary.pars = list(mutate = NULL),
+    list(mcmc = chains, sample = n,
          monitor = colnames(draws)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   for(name in c("prior_list", "formula_design", "formula_scale", "parameter_map")){
     attr(fit, name) <- attr(carrier, name)
@@ -2994,7 +2994,7 @@ test_that("different level expressions with equal fitted weights are separate gr
 
 # The fit as a model whose density methods are those of the backends of
 # BayesTools: the refusals of backends that other packages register in the
-# session (the fixture tests load RoBMA) are not listed in its eligibility
+# session are not listed in its eligibility
 # table.
 .hypothesis_model_test_own_methods <- function(fit){
 
@@ -3378,7 +3378,7 @@ test_that("the messages name the argument that the provider selects the componen
 })
 
 
-# A runjags-class fit of a standardized block of the nested variance
+# An owned fit of a standardized block of the nested variance
 # allocations of the study and drug terms; it monitors the Cholesky factor of
 # the correlation of the study block and not the primitive LKJ variables.
 .hypothesis_model_test_scaled_allocation_fit <- function(n = 1000L, seed = 42L){
@@ -3418,9 +3418,9 @@ test_that("the messages name the argument that the provider selects the componen
     list(mu = compiled$formula_design), list(mu = compiled$formula_scale)
   )
   fit <- structure(
-    list(mcmc = chains, sample = n, summary.pars = list(mutate = NULL),
+    list(mcmc = chains, sample = n,
          monitor = colnames(draws)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   for(name in c("prior_list", "formula_design", "formula_scale", "parameter_map")){
     attr(fit, name) <- attr(carrier, name)

@@ -57,7 +57,7 @@ test_that("variance-allocation gate priors sample independent indicators", {
     ncol = length(posterior_columns),
     dimnames = list(NULL, posterior_columns)
   )))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(fit)
   attr(fit, "prior_list")     <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
 
@@ -310,7 +310,7 @@ test_that("a consumed unary root gate retains canonical allocation size", {
       mcmc = coda::mcmc.list(coda::mcmc(samples)),
       sample = nrow(samples)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
@@ -359,7 +359,7 @@ test_that("a sole hidden allocation omits its public component argument", {
       mcmc = coda::mcmc.list(coda::mcmc(samples)),
       sample = nrow(samples)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list")     <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
@@ -500,7 +500,7 @@ test_that("allocation slab auxiliaries remain private coordinates", {
       mcmc = coda::mcmc.list(coda::mcmc(samples)),
       sample = nrow(samples)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)

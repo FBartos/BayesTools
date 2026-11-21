@@ -1,6 +1,5 @@
 skip_if_not_test_profile("certification")
 skip_if_not_installed("rjags")
-skip_if_not_installed("runjags")
 
 # hypothesis_BF() on a conjugate model. With a known residual SD of 1 and
 # N(0, 1) priors on the intercept, the slope, and the two mean-difference

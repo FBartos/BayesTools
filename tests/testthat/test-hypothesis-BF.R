@@ -98,7 +98,7 @@ test_that("positive deterministic subnormal region masses retain authoritative l
   columns <- .JAGS_prior_factor_names("mu_fac", formula$prior_list$mu_fac)
   posterior <- matrix(unlist(lapply(seq_along(columns), function(i) seq(-i, i, length.out = 201L))), 201L, dimnames = list(NULL, columns))
   if(!independent) posterior <- cbind(mu_intercept = seq(-1, 1, length.out = 201L), posterior)
-  fit <- structure(coda::mcmc(posterior), class = c("mcmc", "BayesTools_fit"))
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- formula$prior_list
   fit <- attach_test_parameter_map(fit)
   marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac", use_formula = FALSE, prior_samples = TRUE)
@@ -221,7 +221,7 @@ test_that("explicit-level and whole-parameter hypotheses are refused in one call
   set.seed(seed)
   posterior <- cbind(mu_intercept = rnorm(201L, sd = .3),
     matrix(rnorm(201L * length(columns), sd = .3), 201L, dimnames = list(NULL, columns)))
-  fit <- structure(coda::mcmc(posterior), class = c("mcmc", "BayesTools_fit"))
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- formula$prior_list
   fit <- attach_test_parameter_map(fit)
   marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac", use_formula = FALSE, prior_samples = TRUE)
@@ -736,7 +736,7 @@ test_that("transformed factor levels preserve joint affine prior provenance", {
   )
   fit <- coda::mcmc(cbind(mu_intercept = seq(-1, 1, length.out = 201),
                           mu_fac = seq(-2, 2, length.out = 201)))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(fit)
   attr(fit, "prior_list") <- formula$prior_list
   fit <- attach_test_parameter_map(fit)
   mixed <- as_mixed_posteriors(fit, "mu_fac")
@@ -3540,12 +3540,12 @@ test_that("linear level expressions use the joint prior density for normal ordin
   fit <- coda::mcmc(cbind(mu_intercept = stats::rnorm(2000, .1, .3),
                           "mu_fac[1]" = stats::rnorm(2000, .4, .3),
                           "mu_fac[2]" = stats::rnorm(2000, -.2, .3)))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(fit)
   attr(fit, "prior_list") <- formula$prior_list
   fit <- attach_test_parameter_map(fit)
   posterior <- marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac",
                                   use_formula = FALSE, prior_samples = TRUE)
-  draws <- fit[, "mu_fac[1]"] - fit[, "mu_fac[2]"]
+  draws <- fit$mcmc[[1L]][, "mu_fac[1]"] - fit$mcmc[[1L]][, "mu_fac[2]"]
   for(method in c("KDE", "normal")){
     contrast <- hypothesis_BF(posterior, hypothesis = "mu_fac[B] - mu_fac[C] = 0",
                               density_method = method, include_densities = TRUE, include_method = TRUE)
@@ -3671,7 +3671,7 @@ test_that("a genuine compiled combination prints its persisted quantity label", 
       fac = prior_factor("normal", list(0, 1), contrast = "treatment")))
   fit <- coda::mcmc(cbind(mu_intercept = seq(-1, 1, length.out = 201),
     "mu_fac[1]" = seq(-1, 2, length.out = 201), "mu_fac[2]" = seq(-2, 1, length.out = 201)^3))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(fit)
   attr(fit, "prior_list") <- formula$prior_list
   fit <- attach_test_parameter_map(fit)
   posterior <- marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac",

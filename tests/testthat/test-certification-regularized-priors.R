@@ -1,6 +1,5 @@
 skip_if_not_test_profile("certification")
 skip_if_not_installed("rjags")
-skip_if_not_installed("runjags")
 skip_if_not_installed("rstan")
 skip_if_not_installed("posterior")
 skip_if_not_installed("bridgesampling")

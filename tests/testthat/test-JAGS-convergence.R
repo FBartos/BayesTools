@@ -12,10 +12,9 @@ skip_if_not_test_profile("unit")
     chains <- c(chains, list(coda::mcmc(chain_2)))
   }
   fit <- list(
-    mcmc = do.call(coda::mcmc.list, chains),
-    summary.pars = list(mutate = NULL)
+    mcmc = do.call(coda::mcmc.list, chains)
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- prior_list
   attr(fit, "add_parameters") <- add_parameters
   attr(fit, "model_syntax") <- model_syntax
@@ -1273,12 +1272,12 @@ test_that("unavailable monitors carry the parameter-not-found class and add_para
 
   # a missing parameter name is an argument error, not an internal failure
   expect_error(
-    JAGS_check_convergence(structure(list(), class = "runjags"), add_parameters = NA),
+    JAGS_check_convergence(structure(list(), class = "BayesTools_fit"), add_parameters = NA),
     "add_parameters",
     fixed = TRUE
   )
   expect_error(
-    JAGS_check_convergence(structure(list(), class = "runjags"), add_parameters = c("mu", NA)),
+    JAGS_check_convergence(structure(list(), class = "BayesTools_fit"), add_parameters = c("mu", NA)),
     "add_parameters",
     fixed = TRUE
   )
@@ -1605,10 +1604,9 @@ test_that("random-effect SD spike-and-slab roles follow the declared inclusion",
       draws
     }
     fit <- list(
-      mcmc = coda::mcmc.list(coda::mcmc(chain()), coda::mcmc(chain())),
-      summary.pars = list(mutate = NULL)
+      mcmc = coda::mcmc.list(coda::mcmc(chain()), coda::mcmc(chain()))
     )
-    class(fit) <- c("runjags", "BayesTools_fit")
+    class(fit) <- "BayesTools_fit"
     attr(fit, "prior_list") <- formula$prior_list
     attr(fit, "formula_design") <- list(mu = formula$formula_design)
     attr(fit, "add_parameters") <- formula$add_parameters

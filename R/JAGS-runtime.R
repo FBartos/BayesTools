@@ -91,6 +91,7 @@
 
   .JAGS_initialize_workers(cl, options)
   .JAGS_require_packages(packages, cl, operation = operation)
+  .JAGS_load_modules(jags_modules, warn = warn)
   .JAGS_load_modules(jags_modules, cl, warn = warn)
   runtime$runtime_setup <- runtime_setup
   .JAGS_run_runtime_setup(runtime_setup, chains, cl)
@@ -577,7 +578,9 @@ JAGS_package_builds <- function(packages){
     immutable <- function(value){
 
       if(!typeof(value) %in% c("NULL", "logical", "integer", "double", "complex", "character", "raw", "list")) return(FALSE)
-      if(is.list(value) && !all(vapply(value, immutable, logical(1L)))) return(FALSE)
+      # List classes such as numeric_version can return a new object of the
+      # same class from [[. Walk their underlying elements and attributes.
+      if(is.list(value) && !all(vapply(unclass(value), immutable, logical(1L)))) return(FALSE)
       value_attributes <- attributes(value)
       is.null(value_attributes) || all(vapply(value_attributes, immutable, logical(1L)))
     }

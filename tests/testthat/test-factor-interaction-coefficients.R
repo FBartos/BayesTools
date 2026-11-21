@@ -29,8 +29,8 @@ skip_if_not_test_profile("unit")
   )
   values <- .generate_prior_sample_matrix(compiled$prior_list, 32L, seed = 343)
   fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(values)),
-    sample = 32L, summary.pars = list(mutate = NULL), monitor = colnames(values)),
-    class = c("runjags", "BayesTools_fit", "list"))
+    sample = 32L, monitor = colnames(values)),
+    class = "BayesTools_fit")
   attr(fit, "prior_list") <- compiled$prior_list
   attr(fit, "formula_design") <- list(mu = compiled$formula_design)
   attr(fit, "formula_scale") <- list(mu = compiled$formula_scale)
@@ -163,8 +163,7 @@ test_that("as_mixed_posteriors handles treatment factor-continuous interaction c
   posterior <- matrix(seq_len(20), nrow = 10, ncol = 2)
   colnames(posterior) <- paste0("mu_alloc__xXx__year[", 1:2, "]")
   posterior <- complete_test_posterior(posterior, formula_result$prior_list)
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
@@ -245,8 +244,7 @@ test_that("marginal estimates unscale fixed-factor interaction summaries", {
   interaction_prior <- formula_result$prior_list[[parameter]]
   posterior <- matrix(seq_len(12), nrow = 6, ncol = 2)
   colnames(posterior) <- paste0(parameter, "[", 1:2, "]")
-  fit <- coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list)))
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -317,8 +315,7 @@ test_that("marginal_posterior handles treatment factor-continuous interaction co
 
   posterior <- matrix(seq_len(20), nrow = 10, ncol = 2)
   colnames(posterior) <- paste0("mu_alloc__xXx__year[", 1:2, "]")
-  fit <- coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list)))
   attr(fit, "prior_list") <- formula_result$prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -423,10 +420,9 @@ full_rank_interaction_fit <- function(levels, contrast, formula = ~ g + g:x,
     list(
       mcmc         = coda::mcmc.list(coda::mcmc(posterior)),
       sample       = nrow(posterior),
-      summary.pars = list(mutate = NULL),
       monitor      = colnames(posterior)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list")     <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)

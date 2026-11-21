@@ -83,10 +83,9 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   on_failure <- match.arg(on_failure)
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   fits <- lapply(model_list, function(m) m[["fit"]])
-  .mix_posteriors_check_fits(fits)
-  for(m in model_list){
-    if(inherits(m[["fit"]], "BayesTools_fit")){
-      .bt_require_fit_contract(m[["fit"]], "model_list:fit")
+  for(fit in fits){
+    if(!inherits(fit, c("stanfit", "null_model"))){
+      .bt_require_fit_contract(fit, "model_list:fit")
     }
   }
   if(!all(unlist(sapply(model_list, function(m) sapply(attr(m[["fit"]], "prior_list"), function(p) is.prior(p))))))

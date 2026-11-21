@@ -598,7 +598,7 @@ test_that("factor catalog quantities reconstruct fitted term-level cells", {
   }
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = 20L),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- list(mu = result$formula_design)
@@ -1443,7 +1443,7 @@ test_that("estimates-table row labels resolve to their catalog quantities", {
     )
     fit <- structure(
       list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = 2L),
-      class = c("runjags", "BayesTools_fit", "list")
+      class = "BayesTools_fit"
     )
     attr(fit, "prior_list") <- result$prior_list
     attr(fit, "formula_design") <- list(mu = result$formula_design)
@@ -2265,7 +2265,7 @@ test_that("the correlation of a block keeps its fitted draws when its external S
     }
     fit <- structure(
       list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-      class = c("runjags", "BayesTools_fit", "list")
+      class = "BayesTools_fit"
     )
     attr(fit, "prior_list") <- prior_list
     attr(fit, "formula_design") <- list(mu = result$formula_design)
@@ -3263,7 +3263,7 @@ test_that("prior sampling includes stored LKJ primitive coordinates", {
     ncol = length(columns),
     dimnames = list(NULL, columns)
   )))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(fit)
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
 
@@ -5663,7 +5663,7 @@ test_that("gated totals without a source coordinate are unavailable", {
     }
     fit <- structure(
       list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-      class = c("runjags", "BayesTools_fit", "list")
+      class = "BayesTools_fit"
     )
     attr(fit, "prior_list") <- formula_result$prior_list
     attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -5765,7 +5765,7 @@ test_that("block SDs scaled by an unmonitored allocation source are unavailable"
     }
     fit <- structure(
       list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-      class = c("runjags", "BayesTools_fit", "list")
+      class = "BayesTools_fit"
     )
     attr(fit, "prior_list") <- formula_result$prior_list
     attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -6545,13 +6545,7 @@ test_that("actual extreme LKJ primitives fail with numerical provenance", {
     n_samples = 16L, seed = 1L,
     formula_design = list(mu = block$formula_result$formula_design)
   ), class = "BayesTools_lkj_rng_unavailable")
-  # Compiler-derived synthetic public fixture; this is not a sampler fit.
-  shell <- structure(list(mcmc = coda::mcmc.list(fit), summary.pars = list(mutate = NULL)),
-    class = c("BayesTools_fit", "runjags"))
-  for(name in setdiff(names(attributes(fit)), c("class", "dim", "dimnames", "mcpar", "names"))){
-    attr(shell, name) <- attr(fit, name)
-  }
-  primitive_view <- JAGS_with_draws(shell, coda::mcmc.list(coda::mcmc(
+  primitive_view <- JAGS_with_draws(fit, coda::mcmc.list(coda::mcmc(
     matrix(.5, 2L, length(correlation$primitive_names),
       dimnames = list(NULL, correlation$primitive_names))
   )))
@@ -6608,14 +6602,14 @@ test_that("supplied single MCMC timing survives ordinary and derived extraction"
     quantity <- if(i == 1L) "theta" else "(mu) var(intercept)"
     expected <- if(i == 1L) c(-1, 0, 1) else c(1, 4, 9)
     selected <- parameter_catalog_resolve(parameter_catalog(fit), quantity)
-    input <- coda::mcmc(as.matrix(fit), start = 1001, thin = 5)
+    input <- coda::mcmc(as.matrix(fit$mcmc), start = 1001, thin = 5)
     output <- parameter_draws(fit, selected, model_samples = input)
     expect_identical(attr(output[[1L]], "mcpar"), attr(input, "mcpar"))
     expect_identical(as.numeric(output[[1L]]), expected)
-    plain <- parameter_draws(fit, selected, model_samples = as.matrix(fit))
+    plain <- parameter_draws(fit, selected, model_samples = as.matrix(fit$mcmc))
     expect_identical(attr(plain[[1L]], "mcpar"), c(1, 3, 1))
     expect_identical(as.numeric(plain[[1L]]), expected)
-    matrix_input <- as.matrix(fit)
+    matrix_input <- as.matrix(fit$mcmc)
     attr(matrix_input, "mcpar") <- c(1001, 1011, 5)
     matrix_output <- parameter_draws(fit, selected, model_samples = matrix_input)
     expect_identical(attr(matrix_output[[1L]], "mcpar"), c(1, 3, 1))
@@ -6734,7 +6728,7 @@ test_that("a quantity of a prior with expression parameters keeps its draws and 
 
   fit <- .expression_point_scaled_fit()
   catalog <- parameter_catalog(fit)
-  posterior <- as.matrix(fit)
+  posterior <- as.matrix(fit$mcmc)
   select <- function(name) parameter_catalog_resolve(catalog, name)
 
   # the catalog density is NULL (no R-side law), and the mixed posterior is the draws without it

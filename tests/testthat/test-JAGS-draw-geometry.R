@@ -46,8 +46,7 @@ test_that("coordinate materialization adds fixed values and removes internals", 
       thin = 3
     )
   )
-  fit <- chains
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(chains)
   attr(fit, "prior_list") <- list(
     theta = prior("normal", list(0, 1)),
     fixed = prior("point", list(-4)),
@@ -87,8 +86,7 @@ test_that("an internal coordinate request names the coordinate", {
     matrix(c(1, 0, 2, 0, 3, 0), ncol = 2, byrow = TRUE,
            dimnames = list(NULL, c("theta", .bt_backend_anchor_name)))
   ))
-  fit <- chains
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(chains)
   attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
   attr(fit, "backend_anchor") <- .bt_backend_anchor_name
   attr(fit, "parameter_map") <- .bt_build_parameter_map(
@@ -117,7 +115,7 @@ test_that("replacement draws refresh fitted draw geometry", {
   ))
   fit <- structure(
     list(mcmc = original),
-    class = c("runjags", "BayesTools_fit")
+    class = "BayesTools_fit"
   )
   attr(fit, "parameter_map") <- .bt_build_parameter_map(columns = "theta")
   attr(fit, "draw_geometry") <- .bt_draw_geometry_from_chains(original)
@@ -141,8 +139,7 @@ test_that("zero-public materialization retains chain and iteration dimensions", 
     start = 2,
     thin = 2
   ))
-  fit <- chains
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(chains)
   attr(fit, "backend_anchor") <- .bt_backend_anchor_name
   attr(fit, "parameter_map") <- .bt_build_parameter_map(
     columns = .bt_backend_anchor_name,

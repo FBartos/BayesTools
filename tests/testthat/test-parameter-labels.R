@@ -78,10 +78,9 @@ skip_if_not_test_profile("unit")
     list(
       mcmc         = coda::mcmc.list(coda::mcmc(draws)),
       sample       = n,
-      summary.pars = list(mutate = NULL),
       monitor      = columns
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- stats::setNames(
@@ -780,10 +779,9 @@ test_that("formula prefixes come from the formula parameter, not from name prefi
     list(
       mcmc         = coda::mcmc.list(coda::mcmc(draws)),
       sample       = 20L,
-      summary.pars = list(mutate = NULL),
       monitor      = names(prior_list)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_design") <- list(
@@ -1023,10 +1021,9 @@ test_that("model tables and the catalog take formula prefixes from the formula p
     list(
       mcmc         = coda::mcmc.list(coda::mcmc(draws)),
       sample       = 20L,
-      summary.pars = list(mutate = NULL),
       monitor      = names(prior_list)
     ),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_design") <- list(
@@ -1295,10 +1292,9 @@ test_that("hypotheses reference levels in the catalog's escaped level form", {
 
   fit <- list(
     mcmc         = do.call(coda::mcmc.list, lapply(chains, coda::mcmc)),
-    sample       = nrow(chains[[1L]]),
-    summary.pars = list(mutate = NULL)
+    sample       = nrow(chains[[1L]])
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
   fit <- .bt_attach_draw_geometry(fit)
@@ -1828,7 +1824,6 @@ test_that("label parts are validated once per content and modifications are rech
 
 test_that("the SD columns of random interactions are labelled by level cell or exchangeable unit", {
 
-  skip_if_not_installed("runjags")
 
   set.seed(5)
   data <- data.frame(
