@@ -281,23 +281,6 @@ test_that("each weight-function prior has its own component trace even with no v
   expect_equal(ggplot2::ggplot_build(plots[[3]])$data[[1]]$y, c(0, 0))
 })
 
-test_that("publication-bias mixtures trace the compiled bias indicator under any name", {
-
-  priors <- prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1))),
-                          is_null = c(TRUE, FALSE))
-  draws <- cbind(mu = 1:4, PET = 0, bias_indicator = c(2, 2, 1, 2),
-                 adjustment_indicator = 1)
-  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)),
-                        summary.pars = list(mutate = NULL)),
-                   class = c("BayesTools_fit", "runjags"))
-  attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), adjustment = priors)
-  fit <- attach_test_parameter_map(fit)
-
-  plot <- JAGS_diagnostics_trace(fit, "adjustment", plot_type = "ggplot",
-                                 statistic = "inclusion", batch_size = 2)
-  expect_equal(ggplot2::ggplot_build(plot)$data[[1]]$y, c(1, .5))
-})
-
 test_that("indicator traces refuse bias leaves and invalid display arguments", {
 
   priors <- prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1))),

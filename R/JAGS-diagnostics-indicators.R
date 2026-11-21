@@ -9,8 +9,6 @@
     label_parts <- .bt_ordered_total_label_parts(parameter, prior)[[indicator]]
     prior <- prior$total
   }
-  # The compiler samples every publication-bias mixture as 'bias_indicator'.
-  if(inherits(prior, "prior.bias_mixture")) indicator <- "bias_indicator"
   gate <- .bt_is_random_allocation_inclusion_prior(prior)
   if(gate){
     indicator <- attr(prior, "random_allocation_indicator", exact = TRUE)
