@@ -197,17 +197,11 @@ connections before reporting cleanup failure; do not run the runtime finish
 callback when worker shutdown failed. Explicit worker-output paths are
 call-specific and must not be replayed from a serialized fit.
 After a graceful last-valid-fit return, do not recapture `runtime_state` onto
-the retained fit from the failed attempt. A compiled model is continued only
-within one call: returned fits carry no runjags `method.options$rjags`, and
-`JAGS_extend()` recompiles from the stored chain states, so extending a fit
-and a reloaded copy give identical draws.
-Every backend extension passes `adapt` and `burnin = 0` explicitly, never
-runjags' `extend.jags()` defaults: the `adapt` of the fit, kept in its
-`adaptation` attribute, unless `JAGS_extend(adapt = )` overrides it for that
-call only. The attribute records each extension's `adapt` and whether the
-backend rebuilt the sampler (only then does runjags adapt); a fit without it
-extends with runjags' default and a `BayesTools_adaptation_unrecorded`
-warning.
+the retained fit from the failed attempt. Serial automatic extensions may retain a compiled rjags model within one call.
+Returned fits store the compiled model text and data, chain states and RNGs.
+An explicit `JAGS_extend()` rebuilds the sampler, uses the recorded adaptation
+length (or the call-specific override), and starts sampling with zero additional
+burn-in. Record the adaptation settings and rebuild status for each extension.
 
 The optional `runtime_report` callback (stored as `attr(fit, "runtime_report")`,
 replayed by `JAGS_extend()` like `runtime_cache`) runs with
@@ -235,7 +229,7 @@ Sampler declarations (`sampler_gates` and `sampler_blocks` of `JAGS_fit()`,
 `BayesTools_gate_<k> ~ dbt_gate(<node>, <active>)` and
 `BayesTools_block_<k> ~ dbt_block(<node>, <id>)` with data 0 to the final model
 text. `JAGS_add_priors()` and `attr(fit, "model_syntax")` stay marker-free; the
-runjags object keeps the markers and their data, so extensions recompile them.
+BayesTools fit keeps the markers and their data, so extensions recompile them.
 A marker's density is 0 at 0 whatever its parents, so the posterior does not
 change. The factories `BayesTools::GatedSlice` and `BayesTools::FactorSlice`
 (`src/samplers/`) claim only a node whose marker is observed at 0 and names the
@@ -266,13 +260,12 @@ refused with `BayesTools_sampler_declaration_error`. A fit with a marker require
 BayesTools module and package (workers included), and
 `attr(fit, "sampler_declarations")` records the declared and declined items,
 which `JAGS_extend()` keeps. Both samplers report incomplete adaptation until
-their first update in adaptive mode (runjags' serial method runs the adaptation
-phase only when some sampler asks for it) and draw only from the chain's JAGS
+their first update in adaptive mode and draw only from the chain's JAGS
 generator. The factor slice sampler sums the full conditional itself and, like
 the stock slice sampler, stops with a node error when the density is NaN or +Inf
 at a proposal or the current state (a NaN is no evidence of zero density, so a
 rejection could silently truncate the target). With the defaults
-the model text and data handed to runjags are those of a fit without
+the model text and data handed to rjags are those of a fit without
 declarations.
 
 The factor slice algorithm itself is the installed header-only kernel

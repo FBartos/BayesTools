@@ -24,14 +24,14 @@ unsigned int flat_index(unsigned int row, unsigned int column, unsigned int K)
   return (row - 1) * K + (column - 1);
 }
 
-bool valid_u(double const *u, unsigned int length)
+bool valid_u(double const *u, std::size_t length)
 {
   return valid_u_strided(u, length, 1);
 }
 
-bool valid_u_strided(double const *u, unsigned int length, unsigned int stride)
+bool valid_u_strided(double const *u, std::size_t length, unsigned int stride)
 {
-  for(unsigned int i = 0; i < length; ++i){
+  for(std::size_t i = 0; i < length; ++i){
     double value = u[i * stride];
     if(!std::isfinite(value) || value <= 0.0 || value >= 1.0){
       return false;
@@ -41,9 +41,9 @@ bool valid_u_strided(double const *u, unsigned int length, unsigned int stride)
   return true;
 }
 
-bool valid_alpha(double const *alpha, unsigned int length)
+bool valid_alpha(double const *alpha, std::size_t length)
 {
-  for(unsigned int i = 0; i < length; ++i){
+  for(std::size_t i = 0; i < length; ++i){
     if(!std::isfinite(alpha[i]) || alpha[i] <= 0.0){
       return false;
     }
@@ -213,14 +213,14 @@ void fill_corr_from_u(double *value, double const *u, unsigned int K)
 }
 
 double log_density_u_strided_valid_alpha(double const *u, double const *alpha,
-                                         unsigned int length, unsigned int stride)
+                                         std::size_t length, unsigned int stride)
 {
   if(!valid_u_strided(u, length, stride)){
     return -std::numeric_limits<double>::infinity();
   }
 
   double log_density = 0.0;
-  for(unsigned int i = 0; i < length; ++i){
+  for(std::size_t i = 0; i < length; ++i){
     log_density += dbeta(u[i * stride], alpha[i], alpha[i], true);
   }
 
@@ -228,7 +228,7 @@ double log_density_u_strided_valid_alpha(double const *u, double const *alpha,
 }
 
 double log_density_u_strided(double const *u, double const *alpha,
-                             unsigned int length, unsigned int stride)
+                             std::size_t length, unsigned int stride)
 {
   if(!valid_alpha(alpha, length)){
     return -std::numeric_limits<double>::infinity();
@@ -237,7 +237,7 @@ double log_density_u_strided(double const *u, double const *alpha,
   return log_density_u_strided_valid_alpha(u, alpha, length, stride);
 }
 
-double log_density_u(double const *u, double const *alpha, unsigned int length)
+double log_density_u(double const *u, double const *alpha, std::size_t length)
 {
   return log_density_u_strided(u, alpha, length, 1);
 }

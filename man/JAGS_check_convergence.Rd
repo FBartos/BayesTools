@@ -2,7 +2,7 @@
 % Please edit documentation in R/JAGS-convergence.R
 \name{JAGS_check_convergence}
 \alias{JAGS_check_convergence}
-\title{Assess convergence of a runjags model}
+\title{Assess convergence of a BayesTools JAGS fit}
 \usage{
 JAGS_check_convergence(
   fit,
@@ -109,8 +109,8 @@ larger than the set target (1.05)."}), followed by the sentence
 parameter whose enabled diagnostics are not assessable.
 }
 \description{
-Checks whether the supplied \link[runjags]{runjags-package} model
-satisfied convergence criteria.
+Checks whether a fit from \code{\link[=JAGS_fit]{JAGS_fit()}} satisfies its convergence
+criteria.
 Derived-draw views are refused with
 \code{BayesTools_draws_view_inference_unavailable} (also
 \code{BayesTools_draws_view_unavailable}); assess \code{fit$original_fit}.

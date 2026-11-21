@@ -82,10 +82,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   check_int(n_samples, "n_samples", lower = 1, allow_NA = FALSE)
   on_failure <- match.arg(on_failure)
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
-  if(!all(sapply(model_list, function(m) inherits(m[["fit"]], what = "runjags")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "stanfit")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "null_model"))))
-    stop("model_list:fit must contain 'runjags' or 'rstan' models")
+  fits <- lapply(model_list, function(m) m[["fit"]])
+  .mix_posteriors_check_fits(fits)
   for(m in model_list){
-    if(inherits(m[["fit"]], "runjags")){
+    if(inherits(m[["fit"]], "BayesTools_fit")){
       .bt_require_fit_contract(m[["fit"]], "model_list:fit")
     }
   }
@@ -95,7 +95,6 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
 
   # extract the object
-  fits           <- lapply(model_list, function(m) m[["fit"]])
   priors         <- lapply(model_list, function(m) attr(m[["fit"]], "prior_list"))
 
   # The failure policy is resolved for the model list, not per parameter: one
@@ -575,6 +574,13 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   is.prior.point(prior) && !is.expression(prior$parameters[["location"]])
 }
 
+.mix_posteriors_check_fits <- function(fits){
+
+  if(!all(vapply(fits, inherits, logical(1), what = c("BayesTools_fit", "stanfit", "null_model")))){
+    stop("'fits' must contain BayesTools JAGS fits, Stan fits, or null models.", call. = FALSE)
+  }
+}
+
 .mix_posteriors.simple         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000, posterior_pair = NULL){
 
   # check input
@@ -585,8 +591,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   if(is.null(posterior_pair)) posterior_pair <- .model_probability_pair(post_probs, log(post_probs), "posterior", "raw")
   check_real(seed, "seed", allow_NULL = TRUE)
   check_int(n_samples, "n_samples")
-  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
-    stop("'fits' must be a list of 'runjags' or 'rstan' models")
+  .mix_posteriors_check_fits(fits)
   if(!all(sapply(priors, is.prior.simple) | sapply(priors, is.prior.point)))
     stop("'priors' must be a list of simple priors")
 
@@ -633,7 +638,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     if(inherits(fits[[i]], "null_model")){
       # deal with a possibility of completely null model
       model_samples <- matrix()
-    }else if(inherits(fits[[i]], "runjags")){
+    }else if(inherits(fits[[i]], "BayesTools_fit")){
       model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
       if(!is.matrix(model_samples)){
         # deal with automatic coercion into a vector in case of a single predictor
@@ -697,8 +702,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   if(is.null(posterior_pair)) posterior_pair <- .model_probability_pair(post_probs, log(post_probs), "posterior", "raw")
   check_real(seed, "seed", allow_NULL = TRUE)
   check_int(n_samples, "n_samples")
-  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
-    stop("'fits' must be a list of 'runjags' or 'rstan' models")
+  .mix_posteriors_check_fits(fits)
   vector_prior <- vapply(priors, function(p){
     is.prior.vector(p) || (is.prior.regularized_term(p) && is.prior.factor(p))
   }, logical(1))
@@ -728,7 +732,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     if(inherits(fits[[i]], "null_model")){
       # deal with a possibility of completely null model
       model_samples <- matrix()
-    }else if(inherits(fits[[i]], "runjags")){
+    }else if(inherits(fits[[i]], "BayesTools_fit")){
       model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
       if(!is.matrix(model_samples)){
         # deal with automatic coercion into a vector in case of a single predictor
@@ -797,8 +801,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   if(is.null(posterior_pair)) posterior_pair <- .model_probability_pair(post_probs, log(post_probs), "posterior", "raw")
   check_real(seed, "seed", allow_NULL = TRUE)
   check_int(n_samples, "n_samples")
-  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
-    stop("'fits' must be a list of 'runjags' or 'rstan' models")
+  .mix_posteriors_check_fits(fits)
   if(!all(sapply(priors, is.prior.factor) | sapply(priors, is.prior.point)))
     stop("'priors' must be a list of factor priors")
   priors <- .complete_factor_metadata_prior_list(priors)
@@ -871,7 +874,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
       if(inherits(fits[[i]], "null_model")){
         model_samples <- matrix()
-      }else if(inherits(fits[[i]], "runjags")){
+      }else if(inherits(fits[[i]], "BayesTools_fit")){
         model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
         if(!is.matrix(model_samples)){
           model_samples <- matrix(model_samples, ncol = 1)
@@ -1236,8 +1239,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   if(is.null(posterior_pair)) posterior_pair <- .model_probability_pair(post_probs, log(post_probs), "posterior", "raw")
   check_real(seed, "seed", allow_NULL = TRUE)
   check_int(n_samples, "n_samples")
-  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
-    stop("'fits' must be a list of 'runjags' or 'rstan' models")
+  .mix_posteriors_check_fits(fits)
   if(!all(sapply(priors, is.prior.weightfunction) | sapply(priors, .is_prior_weightfunction_null)))
     stop("'priors' must be a list of weightfunction priors or point(1)/none null priors")
 
@@ -1266,7 +1268,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     if(inherits(fits[[i]], "null_model")){
       # deal with a possibility of completely null model
       model_samples <- matrix()
-    }else if(inherits(fits[[i]], "runjags")){
+    }else if(inherits(fits[[i]], "BayesTools_fit")){
       model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
       if(!is.matrix(model_samples)){
         # deal with automatic coercion into a vector in case of a single predictor

@@ -192,13 +192,6 @@ double piece_mass(double lower, double upper, double location, double tau,
     std::min(r1, r2), std::max(r1, r2), r1 <= r2 ? e1 : e2, r1 <= r2 ? e2 : e1) - log_two;
 }
 
-bool candidate_available(double value, double lower, double upper, double location,
-                         double tau, double order, double df, bool inverse)
-{
-  return std::isfinite(value) && value >= lower && value <= upper &&
-    std::isfinite(density(value, location, tau, order, df, inverse));
-}
-
 bool exact_symmetric_bounds(double lower, double upper, double location)
 {
   if(!(std::isfinite(lower) && std::isfinite(upper))) return lower == -infinity && upper == infinity;
@@ -229,23 +222,6 @@ bool valid_common_parameters(double location, double tau, double order)
 bool valid_invmoment_parameters(double location, double tau, double order, double df)
 {
   return valid_common_parameters(location, tau, order) && std::isfinite(df) && df > 0.0;
-}
-
-double moment_mode(double tau, double order)
-{
-  double scaled_tau = 2.0 * order * tau;
-  if(std::isfinite(scaled_tau) && scaled_tau >= DBL_MIN) return std::sqrt(scaled_tau);
-  return std::exp((log_two + std::log(order) + std::log(tau)) / 2.0);
-}
-
-double invmoment_mode(double tau, double order, double df)
-{
-  double ratio = 2.0 * order / (df + 1.0);
-  if(std::isfinite(ratio) && ratio >= DBL_MIN && std::isfinite(2.0 * order)){
-    return std::sqrt(tau) * std::pow(ratio, 1.0 / (2.0 * order));
-  }
-  return std::exp(std::log(tau) / 2.0 +
-    (log_two + std::log(order) - std::log(df + 1.0)) / (2.0 * order));
 }
 
 double moment_log_density(double x, double location, double tau, double order)
@@ -354,27 +330,6 @@ double truncated_quantile(double p, double lower, double upper, double location,
     rleft <= rright ? eleft : eright, rleft <= rright ? eright : eleft);
   double out = reconstruct(root, location, tau, order, inverse, negative);
   return std::isfinite(out) && out > lower && out < upper ? out : quiet_nan();
-}
-
-double typical_value(double location, double mode_abs, double lower, double upper,
-                     double tau, double order, double df, bool inverse)
-{
-  double value = location + mode_abs;
-  if(candidate_available(value, lower, upper, location, tau, order, df, inverse)) return value;
-  value = location - mode_abs;
-  if(candidate_available(value, lower, upper, location, tau, order, df, inverse)) return value;
-  if(std::isfinite(lower) && std::isfinite(upper) && lower < upper){
-    double width = upper - lower;
-    value = location <= (lower + upper) / 2.0 ? lower + 0.75 * width : lower + 0.25 * width;
-    if(value == location) value = lower + 0.25 * width;
-    if(candidate_available(value, lower, upper, location, tau, order, df, inverse)) return value;
-  }
-  double step = std::isfinite(mode_abs) && mode_abs > 0.0 ? mode_abs :
-    std::max(1.0, std::fabs(location) * 0.1);
-  value = std::isfinite(lower) ? lower + step : std::isfinite(upper) ? upper - step : location + step;
-  if(candidate_available(value, lower, upper, location, tau, order, df, inverse)) return value;
-  value = truncated_quantile(0.5, lower, upper, location, tau, order, df, inverse);
-  return candidate_available(value, lower, upper, location, tau, order, df, inverse) ? value : quiet_nan();
 }
 
 }

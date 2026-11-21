@@ -54,7 +54,6 @@ Suggests:
     brms,
     lme4 (>= 2.0-1),
     BayesFactor,
-    RoBMA,
     rmarkdown
 RdMacros: Rdpack
 VignetteBuilder: knitr

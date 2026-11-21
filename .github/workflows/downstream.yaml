@@ -12,6 +12,10 @@ on:
         description: "'development' checks the development branches of `dependents`; 'cran' checks the CRAN releases of all CRAN reverse dependencies not pinned below the checked version."
         type: string
         required: true
+      jags5:
+        description: Use the JAGS 5 backend for the upstream package.
+        type: boolean
+        default: false
       dependents:
         description: JSON list of FBartos repositories checked when source is 'development'.
         type: string
@@ -108,8 +112,13 @@ jobs:
             mv cran/"$PACKAGE" dependent
           fi
 
-      - name: Set up JAGS
+      - name: Set up JAGS 4
+        if: ${{ !inputs.jags5 }}
         uses: FBartos/BayesTools/.github/actions/setup-jags@development
+
+      - name: Set up JAGS 5
+        if: inputs.jags5
+        uses: FBartos/BayesTools/.github/actions/setup-jags5@development
 
       # An upstream package that requires BayesTools development (RoBMA) needs
       # it installed too; for BayesTools itself the spec is empty.

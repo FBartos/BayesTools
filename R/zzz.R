@@ -1,5 +1,8 @@
 .BayesTools_private <- new.env(parent = emptyenv())
 
+# Saved in the namespace during installation, before the binary is distributed.
+.BayesTools_jags_build <- rjags::pkg.compile.flags("ALL")
+
 .onLoad <- function(libname, pkgname){
 
   .BayesTools_private$module_location <- .BayesTools_module_location(libname, pkgname)
@@ -8,16 +11,15 @@
   .BayesTools_private$native_dll_path <- NULL
   .BayesTools_private$native_dll_loaded_manually <- FALSE
 
-  # rjags partially matches seq(along = ) when it loads and loads modules; R CMD
-  # check reports that as a NOTE of every package whose code check loads this
-  # namespace.
-  old_options <- options(warnPartialMatchArgs = FALSE)
-  on.exit(options(old_options), add = TRUE)
-  if(requireNamespace("rjags", quietly = TRUE)){
-    BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)
+  # pkgload may source the R code without a compiled DLL during documentation.
+  source_only <- is.null(.BayesTools_private$module_location) &&
+    dir.exists(file.path(getNamespaceInfo(pkgname, "path"), "src"))
+  if(!source_only){
+    .BayesTools_load_module(quiet = TRUE)
+    if(!.BayesTools_load_native_routines(pkgname = pkgname, libname = libname, warn = TRUE)){
+      stop("The BayesTools native routines could not be loaded.", call. = FALSE)
+    }
   }
-
-  .BayesTools_load_native_routines(pkgname = pkgname, libname = libname, warn = FALSE)
   .freeze_fit_backend_fingerprint()
 }
 
@@ -75,61 +77,37 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
 
   check_bool(quiet, "quiet", allow_NA = FALSE)
   check_bool(warn, "warn", allow_NA = FALSE)
-
-  if(!requireNamespace("rjags", quietly = TRUE)){
-    if(warn){
-      warning(
-        "The 'rjags' package is required to load the BayesTools JAGS module.",
-        call. = FALSE
-      )
+  loaded <- tryCatch(
+    .BayesTools_load_module(quiet),
+    error = function(e){
+      if(warn) warning(conditionMessage(e), call. = FALSE)
+      FALSE
     }
-    return(invisible(FALSE))
-  }
-
-  loaded <- tryCatch("BayesTools" %in% rjags::list.modules(), error = function(e) FALSE)
-  if(loaded){
-    return(invisible(TRUE))
-  }
-
-  path <- .BayesTools_private$module_location
-  if(is.null(path) || !dir.exists(path)){
-    path <- .BayesTools_module_location(
-      libname = .BayesTools_private$lib_name,
-      pkgname = "BayesTools"
-    )
-    .BayesTools_private$module_location <- path
-  }
-
-  if(is.null(path) || !dir.exists(path)){
-    if(warn){
-      warning(
-        "BayesTools JAGS module was not found in the package library. ",
-        "Reinstall BayesTools after installing JAGS 4.x (>= 4.3.0; JAGS 5 is not supported).",
-        call. = FALSE
-      )
-    }
-    return(invisible(FALSE))
-  }
-
-  load_error <- NULL
-  tryCatch(
-    rjags::load.module("BayesTools", path = path, quiet = quiet),
-    error = function(e) load_error <<- conditionMessage(e)
   )
+  invisible(loaded)
+}
 
-  loaded <- tryCatch("BayesTools" %in% rjags::list.modules(), error = function(e) FALSE)
-  if(!loaded && warn){
-    message <- paste0(
-      "BayesTools JAGS module failed to load from '", path, "'. ",
-      "Reinstall BayesTools after installing JAGS 4.x (>= 4.3.0; JAGS 5 is not supported)."
-    )
-    if(!is.null(load_error)){
-      message <- paste0(message, " rjags error: ", load_error)
-    }
-    warning(message, call. = FALSE)
+.BayesTools_load_module <- function(quiet){
+
+  if("BayesTools" %in% rjags::list.modules()) return(TRUE)
+
+  libname <- .BayesTools_private$lib_name
+  path <- .BayesTools_module_location(libname, "BayesTools")
+  if(is.null(path)){
+    stop("The BayesTools JAGS module is missing. Reinstall BayesTools using JAGS 5 or later.",
+      call. = FALSE)
   }
-
-  return(invisible(loaded))
+  .BayesTools_private$module_location <- path
+  installed_dll <- file.path(libname, "BayesTools", "libs", .Platform$r_arch,
+    paste0("BayesTools", .Platform$dynlib.ext))
+  if(file.exists(installed_dll)){
+    rjags::load.pkg.module("BayesTools", libname, .BayesTools_jags_build, quiet = quiet)
+  }else{
+    # pkgload builds in src/ instead of an installed package's libs/ directory.
+    rjags::load.pkg.module("BayesTools", libname, .BayesTools_jags_build, check.only = TRUE)
+    rjags::load.module("BayesTools", path = path, quiet = quiet)
+  }
+  TRUE
 }
 
 .BayesTools_module_location <- function(libname, pkgname){

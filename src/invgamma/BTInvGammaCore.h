@@ -13,7 +13,6 @@ double quantile(double p, double shape, double scale, bool lower_tail, bool log_
 double rng(double u, double shape, double scale);
 double log_interval_mass(double shape, double scale, double lower, double upper);
 double truncated_quantile(double p, double shape, double scale, double lower, double upper);
-double typical_value(double shape, double scale, double lower, double upper);
 
 }
 }

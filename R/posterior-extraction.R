@@ -16,16 +16,10 @@ NULL
 #' @return matrix or mcmc.list of posterior samples
 .extract_posterior_samples <- function(fit, as_list = FALSE) {
 
-  if (inherits(fit, "runjags")) {
-    .check_runjags()
-  }
-
   if (as_list) {
-    # Use generic function to allow S3 method dispatch (runjags has its own as.mcmc.list method)
     model_samples <- coda::as.mcmc.list(fit)
   } else {
-    # Use generic function to allow S3 method dispatch (runjags has its own as.mcmc method)
-    model_samples <- suppressWarnings(coda::as.mcmc(fit))
+    model_samples <- coda::as.mcmc(fit)
     if(inherits(fit, "BayesTools_draws_view")){
       # Internal matrix readers must not redispatch coda's zero-column
       # as.matrix method; timing remains on the public coda coercions.
