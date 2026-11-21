@@ -9,6 +9,8 @@
     label_parts <- .bt_ordered_total_label_parts(parameter, prior)[[indicator]]
     prior <- prior$total
   }
+  # The compiler samples every publication-bias mixture as 'bias_indicator'.
+  if(inherits(prior, "prior.bias_mixture")) indicator <- "bias_indicator"
   gate <- .bt_is_random_allocation_inclusion_prior(prior)
   if(gate){
     indicator <- attr(prior, "random_allocation_indicator", exact = TRUE)
@@ -95,8 +97,10 @@
 
   labels <- names(prior)
   if(is.null(labels)) labels <- rep("", length(prior))
+  labels[is.na(labels)] <- ""
   groups <- attr(prior, "components", exact = TRUE)
-  custom <- !groups %in% c("null", "alternative") & !duplicated(groups) & !duplicated(groups, fromLast = TRUE)
+  custom <- !is.na(groups) & !groups %in% c("null", "alternative") &
+    !duplicated(groups) & !duplicated(groups, fromLast = TRUE)
   use_group <- !nzchar(labels) & custom
   labels[use_group] <- groups[use_group]
   missing <- !nzchar(labels)

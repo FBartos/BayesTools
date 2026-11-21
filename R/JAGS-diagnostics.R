@@ -16,20 +16,23 @@
 #' Defaults to \code{30}.
 #' @param statistic trace quantity. \code{"value"} shows parameter draws.
 #' \code{"inclusion"} shows the fraction of each batch in the declared
-#' alternative group. \code{"component"} shows the fraction in each individual
+#' alternative group and needs both null and alternative components.
+#' \code{"component"} shows the fraction in each individual
 #' mixture component, on separate plots, including unvisited components. A
 #' binary null/alternative decision shows the alternative alone.
 #' \code{"switching"} shows the fraction of adjacent retained draws in the
 #' same batch that changed component, including switches within a group.
-#' The last three statistics use a monitored indicator and need a trace plot.
+#' The last three statistics use a monitored indicator and need a trace plot
+#' without \code{transformations}.
 #' @param batch_size optional number of retained draws per batch for an indicator
 #' trace. An explicit width keeps the final partial batch. By default the
 #' shortest chain is divided into approximately the square root of its length
 #' in balanced batches; longer chains use the same approximate width.
-#' Switching batches need two draws for a defined value.
+#' Switching needs at least two draws per batch and chain.
 #' @details Indicator traces place each batch at its mean original iteration
-#' and keep chains separate. A switching batch with one draw has a missing
-#' rate. An unavailable indicator diagnostic raises a
+#' and keep chains separate. A final switching batch with one draw has no rate
+#' and is not drawn. The components of a publication-bias mixture are traced
+#' with \code{parameter = "bias"}. An unavailable indicator diagnostic raises a
 #' \code{BayesTools_plot_condition}.
 #' @details The trace shows the retained MCMC iteration of every draw on its
 #' x axis (thinned chains keep their original positions).
@@ -52,7 +55,7 @@
 #' when nothing else remains the call returns \code{NULL} with a message, as for
 #' a spike prior; the trace is produced as for any other parameter. A parameter
 #' with a [prior_none()] prior is not sampled: the call returns \code{NULL} with
-#' a message for every type.
+#' a message for every type of \code{statistic = "value"}.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
@@ -100,6 +103,11 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   if(!is.null(batch_size) && !indicator_trace){
     .bt_diagnostics_unavailable("'batch_size' applies only to an indicator trace.")
   }
+  if(indicator_trace && !is.null(transformations)){
+    .bt_diagnostics_unavailable("'transformations' apply only to 'statistic = \"value\"'.")
+  }
+  # an indicator has no factor coordinates; the flag is still validated
+  if(indicator_trace) check_bool(transform_factors, "transform_factors")
   if(!is.null(batch_size)){
     check_int(batch_size, "batch_size", lower = if(statistic == "switching") 2 else 1, allow_NA = FALSE)
   }
@@ -116,6 +124,10 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   if(!all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
   check_char(parameter, "parameter", allow_values = c(names(prior_list), if(any(names(prior_list) == "bias")) c("PET", "PEESE", "omega", "alpha", "pi_null")))
+  if(indicator_trace && is.null(prior_list[[parameter]])){
+    .bt_diagnostics_unavailable("Indicator statistics for '", parameter, "' use the publication-bias mixture; ",
+                                "use 'parameter = \"bias\"'.")
+  }
   if(!is.null(transformations))
     check_char(names(transformations), "names(transformations)", allow_values = parameter)
   if(parameter == "omega" && !is.null(prior_list[["bias"]]) && !.selection_prior_has_selection(prior_list[["bias"]]))
@@ -217,12 +229,17 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   if(length(dots[["lty"]]) == 1)  dots$lty  <- rep(dots$lty, attr(plot_data, "chains"))
   if(length(dots[["lwd"]]) == 1)  dots$lwd  <- rep(dots$lwd, attr(plot_data, "chains"))
 
+  if(indicator_trace && !length(dots$main) %in% c(1L, length(plot_data))){
+    .bt_diagnostics_unavailable("'main' must have length 1 or one title for each of the ",
+                                length(plot_data), " indicator trace plots.")
+  }
+
   plots <- list()
 
   for(i in seq_along(plot_data)){
 
     temp_dots <- dots
-    if(indicator_trace && length(dots$main) > 1L && is.character(dots$main)) temp_dots$main <- dots$main[i]
+    if(indicator_trace && length(dots$main) > 1L) temp_dots$main <- dots$main[[i]]
 
     temp_dots[["xlab"]] <- if(length(temp_dots[["xlab"]]) > 1) temp_dots[["xlab"]][i] else temp_dots[["xlab"]]
     temp_dots[["ylab"]] <- if(length(temp_dots[["ylab"]]) > 1) temp_dots[["ylab"]][i] else temp_dots[["ylab"]]
@@ -245,15 +262,20 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
       temp_args[["lwd"]]       <- dots[["lwd"]][j]
       temp_args[["lty"]]       <- dots[["lty"]][j]
 
-      if(indicator_trace && sum(is.finite(temp_args$plot_data$y)) == 1L){
+      if(indicator_trace){
+        # a final one-draw switching batch has no rate and is not drawn
+        finite <- is.finite(temp_args$plot_data$y)
+        temp_args$plot_data$x <- temp_args$plot_data$x[finite]
+        temp_args$plot_data$y <- temp_args$plot_data$y[finite]
+      }
+      if(indicator_trace && length(temp_args$plot_data$y) == 1L){
         point <- temp_args$plot_data
-        keep <- is.finite(point$y)
         if(plot_type == "ggplot"){
           plots[[i]] <- plots[[i]] + ggplot2::geom_point(
-            data = data.frame(x = point$x[keep], y = point$y[keep]),
+            data = data.frame(x = point$x, y = point$y),
             mapping = ggplot2::aes(x = .data$x, y = .data$y), colour = temp_args$col)
         }else{
-          graphics::points(point$x[keep], point$y[keep], col = temp_args$col, pch = 16)
+          graphics::points(point$x, point$y, col = temp_args$col, pch = 16)
         }
       }else if(plot_type == "ggplot"){
         plots[[i]] <- plots[[i]] + do.call(switch(

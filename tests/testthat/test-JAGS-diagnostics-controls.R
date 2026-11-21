@@ -229,7 +229,9 @@ test_that("binary traces use the active state and preserve the final partial bat
 
   switching <- JAGS_diagnostics_trace(fit, "theta", plot_type = "ggplot",
                                       statistic = "switching", batch_size = 4)
-  expect_equal(ggplot2::ggplot_build(switching)$data[[1]]$y, c(1/3, 1/3, NA_real_))
+  # the final one-draw batch has no rate and is not drawn
+  expect_equal(ggplot2::ggplot_build(switching)$data[[1]]$y, c(1/3, 1/3))
+  expect_no_warning(ggplot2::ggplotGrob(switching))
   single <- JAGS_diagnostics_trace(fit, "theta", plot_type = "ggplot",
                                    statistic = "switching", batch_size = 9)
   expect_s3_class(single$layers[[1]]$geom, "GeomPoint")
@@ -249,6 +251,9 @@ test_that("indicator traces require sampled states and meaningful group metadata
                class = "BayesTools_plot_condition")
   plots <- JAGS_diagnostics_trace(fit, "theta", plot_type = "ggplot", statistic = "component")
   expect_length(plots, 2L)
+  expect_error(JAGS_diagnostics_trace(fit, "theta", statistic = "component",
+                                      transformations = list(theta = list(fun = exp))),
+               class = "BayesTools_plot_condition")
   expect_error(JAGS_diagnostics_trace(fit, "theta", statistic = "switching", batch_size = 1))
   bad_fit <- .indicator_trace_test_fit(mixture, list(c(2, 2, 3, 1)))
   expect_error(JAGS_diagnostics_trace(bad_fit, "theta", statistic = "component"),
@@ -274,4 +279,91 @@ test_that("each weight-function prior has its own component trace even with no v
   expect_length(unique(names(plots)), 3L)
   expect_equal(ggplot2::ggplot_build(plots[[2]])$data[[1]]$y, c(2/3, 0))
   expect_equal(ggplot2::ggplot_build(plots[[3]])$data[[1]]$y, c(0, 0))
+})
+
+test_that("publication-bias mixtures trace the compiled bias indicator under any name", {
+
+  priors <- prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1))),
+                          is_null = c(TRUE, FALSE))
+  draws <- cbind(mu = 1:4, PET = 0, bias_indicator = c(2, 2, 1, 2),
+                 adjustment_indicator = 1)
+  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)),
+                        summary.pars = list(mutate = NULL)),
+                   class = c("BayesTools_fit", "runjags"))
+  attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), adjustment = priors)
+  fit <- attach_test_parameter_map(fit)
+
+  plot <- JAGS_diagnostics_trace(fit, "adjustment", plot_type = "ggplot",
+                                 statistic = "inclusion", batch_size = 2)
+  expect_equal(ggplot2::ggplot_build(plot)$data[[1]]$y, c(1, .5))
+})
+
+test_that("indicator traces refuse bias leaves and invalid display arguments", {
+
+  priors <- prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1))),
+                          is_null = c(TRUE, FALSE))
+  draws <- cbind(mu = 1:4, PET = 0, bias_indicator = c(2, 2, 1, 2))
+  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)),
+                        summary.pars = list(mutate = NULL)),
+                   class = c("BayesTools_fit", "runjags"))
+  attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = priors)
+  fit <- attach_test_parameter_map(fit)
+  for (parameter in c("PET", "PEESE", "omega", "alpha", "pi_null")) {
+    expect_error(JAGS_diagnostics_trace(fit, parameter, statistic = "inclusion"),
+                 "parameter = \"bias\"", class = "BayesTools_plot_condition", info = parameter)
+  }
+  expect_error(JAGS_diagnostics_trace(fit, "bias", statistic = "inclusion", transform_factors = NA))
+
+  mixture <- prior_mixture(list(prior("normal", list(0, 1)), prior("normal", list(0, 2)),
+                                prior("normal", list(0, 3))), components = c(NA, "A", "B"))
+  fit <- .indicator_trace_test_fit(mixture, list(c(1, 2, 3, 1, 2, 3)))
+  plots <- JAGS_diagnostics_trace(fit, "theta", plot_type = "ggplot", statistic = "component")
+  expect_length(plots, 3L)
+  expect_false(anyNA(names(plots)))
+  expect_identical(names(plots)[2:3], c("A", "B"))
+
+  titled <- JAGS_diagnostics_trace(fit, "theta", plot_type = "ggplot", statistic = "component",
+                                   main = c("first", "second", "third"))
+  expect_identical(unname(vapply(titled, function(plot) plot$labels$title, character(1))),
+                   c("first", "second", "third"))
+  expect_error(JAGS_diagnostics_trace(fit, "theta", statistic = "component", main = c("a", "b")),
+               class = "BayesTools_plot_condition")
+})
+
+test_that("fitted formula, ordered-total and mixture indicators match their monitors", {
+
+  skip_if_not_installed("rjags")
+  set.seed(1)
+  data <- data.frame(x = stats::rnorm(40),
+                     f = factor(rep(c("lo", "mid", "hi"), length.out = 40), levels = c("lo", "mid", "hi")))
+  fit <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1/pow(sigma, 2)) } }",
+    data = list(y = 0.1 * data$x + stats::rnorm(40), N = 40),
+    prior_list = list(sigma = prior_mixture(list(
+      prior("normal", list(0, 1), list(0, Inf)), prior("lognormal", list(0, 1))))),
+    formula_list = list(mu = ~ x + f), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior_spike_and_slab(prior("normal", list(0, 1))),
+      f = prior_ordered(prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5)))))),
+    chains = 2, adapt = 100, burnin = 100, sample = 100, seed = 1)
+  chains <- coda::as.mcmc.list(fit)
+  expected <- function(indicator, statistic) lapply(chains, function(chain) {
+    states <- as.numeric(chain[, indicator])
+    as.numeric(tapply(states, (seq_along(states) - 1L) %/% 25L, statistic))
+  })
+  plotted <- function(plot) lapply(ggplot2::ggplot_build(plot)$data, `[[`, "y")
+  trace <- function(parameter, statistic) JAGS_diagnostics_trace(
+    fit, parameter, plot_type = "ggplot", statistic = statistic, batch_size = 25)
+
+  expect_equal(plotted(trace("mu_x", "inclusion")), expected("mu_x_indicator", function(z) mean(z == 1)))
+  expect_equal(plotted(trace("mu_f", "inclusion")),
+               expected("mu_f_ordered_total_indicator", function(z) mean(z == 1)))
+  components <- trace("sigma", "component")
+  expect_length(components, 2L)
+  for (k in 1:2) {
+    expect_equal(plotted(components[[k]]), expected("sigma_indicator", function(z) mean(z == k)))
+  }
+  expect_equal(plotted(trace("sigma", "switching")),
+               expected("sigma_indicator", function(z) mean(diff(z) != 0)))
 })
