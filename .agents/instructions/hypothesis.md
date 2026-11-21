@@ -173,6 +173,14 @@ the continuous components of a spike-and-slab or `null`/`alternative` mixture
 prior of an SD, a variance, or a structured correlation); quantities that
 combine several coordinates with point masses stop with its error.
 
+The selection of an R-squared budget total, share, coefficient or factor level
+keeps the selected quantity's prior law. Its provider entry uses the source
+`BayesTools::r2_budget` and retains the catalog's `quantity` kind. A law
+unavailable for a kernel
+projection or gated configuration produces a target-local
+`BayesTools_R2_density_unavailable` refusal in both the plan and the
+eligibility table. Other quantities of the fit retain their own eligibility.
+
 ## Scale and conditioning
 
 `transform_scaled = FALSE` (fitted scale) is the default for coefficients and

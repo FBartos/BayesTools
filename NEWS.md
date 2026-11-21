@@ -1,5 +1,6 @@
 # development version
 ### Breaking changes
+- Saved fits with earlier parameter maps require refitting for the new allocation metadata
 - BayesTools requires JAGS 5.0.0 or later and rjags 5-5 or later
 - `JAGS_fit()` returns a `BayesTools_fit` with coda methods and uses `JAGS_extend()` for continuation
 - `hypothesis_BF()` and `hypothesis_BF_model()` replace `columns` with `include_densities`, `include_probabilities`, and `include_method`; the `prior` and `posterior` columns are replaced by point densities and region probabilities, and table labels keep the notation of the hypothesis, with a constant on the right of a single relation
@@ -16,7 +17,9 @@
 - `JAGS_extend()` gains `adapt` to set the adaptation of one extension; fits record their adaptation settings in the `adaptation` attribute
 - `JAGS_fit()` can declare publication-bias mixture branches to a gated sampler (`sampler_gates`) and blocks of priors to a factor slice sampler (`sampler_blocks`) of the BayesTools JAGS module
 - `JAGS_fit()` and `JAGS_extend()` gain `runtime_report`, a callback that collects small values from every process that ran chains, parallel workers included, into the `runtime_report_values` attribute
-- `prior_R2()` adds R-squared variance-budget priors for formula terms
+- `prior_R2()` adds experimental R-squared variance-budget priors for formula terms
+- `parameter_relationships()` and `register_parameter_relationships()` expose allocation sources and consumers
+- `parameter_plot_samples()` prepares a selected catalog quantity for posterior plotting
 
 ### Fixes
 - on Apple silicon, numeric constants in generated JAGS models and the values of compiled hypotheses are exact

@@ -400,11 +400,19 @@ coordinates, are catalog quantities). An R-squared budget with inclusion
 gates or a spike-and-slab total shows inclusion rows as spike-and-slab
 priors do (\code{<term> (inclusion)} for every gated term and
 \code{<budget>{total} (inclusion)} for a total that can be zero), the
-shares on the draws where their terms are open, and with
+shares on the draws where their terms are open (reported with their
+defined draw counts), and with
 \code{conditional = TRUE} the coefficients of a gated term (and the total)
-on the draws where the term (the budget) is open;
-\code{runjags_inference_table()} reports their prior and posterior
-inclusion probabilities and inclusion Bayes factors.
+on the draws where the term (the budget) is open. Both catalog extraction
+and tables normalize the declared Gamma weights over the open units. The
+registered realized-open flags include the budget spike. An ungated member
+of a spiked budget reads the budget indicator. A view lacking a required
+source signals \code{BayesTools_draws_view_coordinate_unavailable} from
+estimates extraction or \code{BayesTools_R2_coordinates_unavailable} from
+event reconstruction. A fit without the required monitors signals
+\code{BayesTools_refit_monitoring} when extracting its quantities.
+\code{JAGS_inference_table()} reports the prior and posterior inclusion
+probabilities and inclusion Bayes factors.
 Internal latent and realized group-coefficient coordinates
 are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
 mode, because those coordinates remain on the fitted standardized scale.}
@@ -465,7 +473,7 @@ row and the columns \code{row} (the row label), \code{quantity_id} (the
 \code{\link[=parameter_catalog]{parameter_catalog()}} quantity id of the quantity the row's label names,
 its canonical name or an exact alias such as a transformed factor level
 \code{<parameter>[dif: level]}; \code{""} for rows that are not catalog
-quantities, such as inclusion rows, mixture components, backend
+quantities, such as unregistered inclusion events, mixture components, backend
 coordinates, fitted random-effect summaries whose catalog quantity is on
 the original scale, ordered-factor allocation shares, and rows whose values
 \code{transformations} changed, whose
@@ -496,7 +504,13 @@ the corresponding inclusion/exclusion comparison was not tested.
 
 The inference table has a row for every spike-and-slab and mixture prior,
 for the spike-and-slab total of an ordered-factor prior (reported under the
-term label), and for every random-effect inclusion gate.
+term label), for random-effect inclusion gates and for the budget and term
+inclusion events of R-squared budgets. The per-row \code{event_quantity_ids}
+attribute identifies the catalog quantity of the tested 0/1 event, with
+an empty string when no such quantity is registered. \code{parameters}
+identifies the tested owner and \code{parameter_roles} distinguishes
+\code{r2_budget_inclusion} and \code{r2_term_inclusion}. Subsetting the
+table retains the corresponding event IDs, owners and roles.
 
 An original-scale random-effect correlation is defined in a posterior draw
 whenever both of its SDs are positive, including draws with a singular

@@ -518,8 +518,9 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
 
   # scalar parameters with a prior of their own (not the indicators and
   # inclusions of mixture priors, and not the components of vector priors)
+  R2_rows <- .bt_R2_quantity_rows(quantities, prior_list)
   scalar <- which(
-    public & quantities[["role"]] == "parameter" &
+    public & !R2_rows & quantities[["role"]] == "parameter" &
       quantities[["status"]] %in% c("sampled", "structural") &
       quantities[["canonical_name"]] %in% names(prior_list)
   )
@@ -539,7 +540,6 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
   # totals and shares of ordered terms and of R-squared budgets: sampled or
   # derived quantities with a bracket-free root, tested on their own mixed
   # posteriors by the route of the random-effect quantities
-  R2_rows <- .bt_R2_quantity_rows(quantities, prior_list)
   ordered <- which(
     public & quantities[["status"]] != "unavailable" &
       (.bt_ordered_quantity_rows(quantities, prior_list) | R2_rows)
@@ -556,7 +556,7 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
       parameter         = root,
       component         = quantity[["namespace"]],
       term              = quantity[["canonical_name"]],
-      source            = "ordered",
+      source            = if(R2_rows[[row]]) "BayesTools::r2_budget" else "ordered",
       formula_parameter = quantity[["formula_parameter"]],
       alias_rows        = rbind(
         data.frame(alias = root, simplified = FALSE, stringsAsFactors = FALSE),
@@ -837,8 +837,16 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
 }
 
 
+# Formula quantities extracted as individual catalog marginals. The source
+# of an R2 budget is qualified so no ordinary formula name can select it.
+.hypothesis_model_formula_marginal <- function(source){
+
+  source %in% c("ordered", "BayesTools::r2_budget")
+}
+
+
 # ---------------------------------------------------------------------------- #
-# The default provider: random-effect quantities
+# The default provider: catalog marginals
 # ---------------------------------------------------------------------------- #
 
 .hypothesis_model_default_random <- function(fit, metadata){
@@ -846,7 +854,7 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
   entry_of <- function(parameter){
     entries <- metadata()[["entries"]]
     entry   <- entries[(entries[["component"]] == "random" |
-                          entries[["source"]] == "ordered") &
+                          .hypothesis_model_formula_marginal(entries[["source"]])) &
                          entries[["parameter"]] == parameter, , drop = FALSE]
     if(nrow(entry) != 1L){
       stop("Random-effect quantity '", parameter, "' is not available.",
@@ -896,14 +904,14 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
           fitted_scale = !transform_scaled
         ),
         spec  = list(
-          label    = if(identical(entry[["source"]], "ordered")){
+          label    = if(isTRUE(.hypothesis_model_formula_marginal(entry[["source"]]))){
             quantity[["display_label"]]
           }else{
             quantity[["canonical_name"]]
           },
           status   = quantity[["status"]],
           quantity = if(identical(entry[["source"]], "ordered")){
-            if(quantity[["extraction_key"]][[1L]][["type"]] %in% c("ordered_allocation", "R2_share")){
+            if(identical(quantity[["extraction_key"]][[1L]][["type"]], "ordered_allocation")){
               "share"
             }else{
               "total"
@@ -918,23 +926,22 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
       if(is.null(selected)){
         selected <- list(entry = list(selection = selection_of(entry_of(parameter))))
       }
-      values <- parameter_mixed_posterior(
-        fit              = fit,
-        selection        = selected[["entry"]][["selection"]],
-        conditional      = conditional,
-        transform_scaled = transform_scaled
-      )
-      # a coefficient of an R-squared budget term on the original scale of
-      # its predictor: a constant multiple of the fitted catalog quantity
-      if(isTRUE(transform_scaled)){
-        values <- .bt_R2_original_scale_mixed_posterior(fit, selected[["entry"]][["selection"]], values, conditional)
+      selection <- selected[["entry"]][["selection"]]
+      if(identical(selection[["quantities"]][["owner_type"]], "r2_budget")){
+        out <- parameter_plot_samples(fit, selection, conditional = conditional,
+                                      transform_scaled = transform_scaled)
+      }else{
+        values <- parameter_mixed_posterior(fit, selection, conditional = conditional,
+                                            transform_scaled = transform_scaled)
+        out <- list(values)
+        attr(out, "prior_list") <- list(prior_none())
+        class(out) <- c("as_mixed_posteriors", "mixed_posteriors", "list")
       }
-      attr(values, "parameter") <- parameter
-      out <- list(values)
+      # A share's parser-safe root can differ from its catalog name.
+      attr(out[[1L]], "parameter") <- parameter
       names(out) <- parameter
-      attr(out, "prior_list") <- stats::setNames(list(prior_none()), parameter)
+      names(attr(out, "prior_list")) <- parameter
       attr(out, "random_parameter_label") <- parameter
-      class(out) <- c("as_mixed_posteriors", "mixed_posteriors", "list")
 
       out
     },

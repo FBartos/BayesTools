@@ -5,6 +5,45 @@
 # the formula and contribute their own densities. The coefficients are the
 # registered 'R2_coefficient' node evaluated on the draw.
 
+# A fitted formula and the fit-level priors retain a copy of each budget
+# member. Continuation uses the compiled JAGS graph, while reconstruction
+# reads the fit-level copy. Both must describe the same scale, allocation
+# units, coefficient basis and gates.
+.bt_R2_validate_fitted_owners <- function(fit){
+
+  designs <- .bt_JAGS_bridge_formula_design_list(attr(fit, "formula_design", exact = TRUE))
+  if(!length(designs)) return(invisible(TRUE))
+
+  is_owner <- function(prior){
+    is.prior.R2(prior) || is.prior.R2_budget(prior) || !is.null(attr(prior, "R2_budget", exact = TRUE))
+  }
+  priors <- attr(fit, "prior_list", exact = TRUE)
+  fitted <- priors[vapply(priors, is_owner, logical(1))]
+  for(design in designs){
+    if(!is.list(design)) next
+    compiled <- design$prior_list
+    members <- names(compiled)[vapply(compiled, is_owner, logical(1))]
+    in_formula <- vapply(fitted, function(prior){
+      identical(attr(prior, "parameter", exact = TRUE), design$parameter)
+    }, logical(1))
+    for(name in union(members, names(fitted)[in_formula])){
+      declared <- compiled[[name]]
+      current <- priors[[name]]
+      if(identical(declared, current)) next
+      # A term's prior model weight may be changed for model averaging.
+      # It does not change the conditional law compiled into the JAGS model.
+      if(!is.null(declared) && !is.null(current)){
+        declared$prior_weights <- NULL
+        current$prior_weights <- NULL
+        if(identical(declared, current)) next
+      }
+      .bt_stop_refit_required("The fitted R-squared budget declarations disagree for '", name,
+                              "'. Refit the model with the intended budget and formula design.")
+    }
+  }
+  invisible(TRUE)
+}
+
 .bt_R2_direction_values <- function(samples, prior, parameter_name, signal = TRUE){
 
   names_z <- .bt_R2_direction_coordinates(prior, parameter_name)

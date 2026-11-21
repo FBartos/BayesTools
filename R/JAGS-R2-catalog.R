@@ -56,6 +56,49 @@
   records
 }
 
+# Fully indexed nodes monitored by a bound budget, keyed by their fitted names.
+# A declared source absent from the samples can still be registered as unavailable.
+.bt_R2_declared_nodes <- function(prior_list){
+
+  rows <- list()
+  add <- function(coordinates, role, term, parameter){
+    if(length(coordinates)){
+      rows[[length(rows) + 1L]] <<- data.frame(
+        coordinate = unname(coordinates), role = role, term = term,
+        formula_parameter = parameter, stringsAsFactors = FALSE
+      )
+    }
+  }
+  for(record in .bt_R2_budget_records(prior_list)){
+    nodes <- if(is.null(record$core)){
+      list(total = record$total_name,
+           allocation = if(!is.null(record$allocation_name)){
+             paste0(record$allocation_name, "[", seq_len(record$n_units), "]")
+           },
+           eta = record$gamma_coordinates)
+    }else{
+      declared <- .bt_R2_core_nodes(record$core)
+      monitors <- .bt_R2_core_monitor(record$core)
+      lapply(declared, function(values){
+        values[.bt_parameter_coordinates_base(values) %in% monitors]
+      })
+    }
+    for(role in names(nodes)){
+      add(nodes[[role]], role, record$name, record$parameter)
+    }
+    for(term in record$terms){
+      prior <- prior_list[[term$parameter]]
+      add(.bt_R2_coefficient_names(prior, term$parameter), "coefficient", term$label, record$parameter)
+      add(.bt_R2_direction_coordinates(prior, term$parameter), "direction", term$label, record$parameter)
+    }
+  }
+  if(!length(rows)){
+    return(data.frame(coordinate = character(), role = character(), term = character(),
+                      formula_parameter = character(), stringsAsFactors = FALSE))
+  }
+  do.call(rbind, rows)
+}
+
 # The allocation nodes of the budgets of a bound prior list (backend
 # coordinates).
 .bt_R2_allocation_names <- function(prior_list){
@@ -131,45 +174,69 @@
   )
 }
 
-# The share draws of the terms of 'record': the normalized gamma coordinates
-# summed over each term's units (NULL when the coordinates are not in
-# 'model_samples').
-.bt_R2_share_values <- function(record, model_samples){
+# Normalize the shared Gamma draws over the open allocation units. Tables and
+# deferred extraction use the same measure, including NA for a closed term.
+.bt_R2_share_values <- function(record, samples, terms = names(record$terms),
+                                open = .bt_R2_record_open(record, samples)){
 
-  if(is.null(record$gamma_coordinates) ||
-     !all(record$gamma_coordinates %in% colnames(model_samples))){
-    return(NULL)
+  .bt_R2_require_columns(samples, record$gamma_coordinates)
+  eta <- samples[, record$gamma_coordinates, drop = FALSE]
+  if(any(!is.finite(eta)) || any(eta < 0)){
+    .bt_R2_unavailable(paste0("The Gamma weights of R-squared budget '",
+      record$name, "' must be finite and nonnegative on every supplied draw."))
   }
-  eta <- model_samples[, record$gamma_coordinates, drop = FALSE]
-  phi <- eta / rowSums(eta)
-  values <- vapply(record$terms, function(term){
-    rowSums(phi[, term$units, drop = FALSE])
-  }, numeric(nrow(phi)))
-  matrix(values, nrow = nrow(phi), dimnames = list(NULL, vapply(record$terms, function(term){
+  if(!is.null(record$core)){
+    term_keys <- vapply(record$terms, `[[`, character(1), "key")
+    eta <- eta * open[, match(record$core$unit_term, term_keys), drop = FALSE]
+  }
+  total <- rowSums(eta)
+  retained <- rowSums(open) > 0
+  if(any(!is.finite(total[retained]) | total[retained] <= 0)){
+    .bt_R2_unavailable(paste0("The open allocation units of R-squared budget '",
+      record$name, "' require a positive finite sum of Gamma weights."))
+  }
+  shares <- matrix(NA_real_, nrow(samples), length(terms))
+  for(i in seq_along(terms)){
+    term <- record$terms[[terms[[i]]]]
+    included <- open[, term$parameter] == 1
+    numerator <- rowSums(eta[included, term$units, drop = FALSE])
+    shares[included, i] <- numerator / total[included]
+  }
+  colnames(shares) <- vapply(record$terms[terms], function(term){
     .bt_R2_share_name(record, term)
-  }, character(1))))
+  }, character(1))
+  shares
 }
 
 # The catalog quantities of the shares of the budgets in 'prior_list'.
 .bt_R2_share_quantities <- function(coordinates, prior_list){
 
   rows <- list()
-  for(record in .bt_R2_budget_records(prior_list)){
+  records <- .bt_R2_budget_records(prior_list)
+  for(record in records){
     if(length(record$terms) < 2L){
       next
     }
-    gamma <- match(record$gamma_coordinates, coordinates$coordinate_name)
-    if(anyNA(gamma)){
-      next
+    dependencies <- c(record$gamma_coordinates, .bt_R2_record_gating(record))
+    sources <- match(dependencies, coordinates$coordinate_name)
+    status <- if(anyNA(sources) || any(coordinates$monitor_status[sources] == "unavailable")){
+      "unavailable"
+    }else{
+      "derived"
     }
-    status <- if(any(coordinates$monitor_status[gamma] == "unavailable")) "unavailable" else "derived"
-    gating <- .bt_R2_record_gating(record)
     for(term in record$terms){
       rows[[length(rows) + 1L]] <- .bt_parameter_catalog_quantity(
         canonical_name    = .bt_R2_share_name(record, term),
         namespace         = record$parameter,
         role              = "parameter",
         formula_parameter = record$parameter,
+        owner_type        = "r2_budget",
+        owner_name        = record$name,
+        quantity          = "share",
+        term              = term$label,
+        component         = term$label,
+        arguments         = term$label,
+        parent_quantity_id = .bt_parameter_catalog_quantity_id(record$total_name, record$parameter, "parameter"),
         label_parts       = .bt_R2_share_label_parts(record, term),
         fitted_scale      = "unitless",
         display_scale     = "unitless",
@@ -177,7 +244,7 @@
         source_type       = "composite",
         extraction_key    = list(
           type         = "R2_share",
-          dependencies = c(record$gamma_coordinates, gating),
+          dependencies = dependencies,
           total        = record$total_name,
           term         = term$parameter,
           units        = as.integer(term$units)
@@ -187,7 +254,7 @@
   }
   # the inclusion of every gated term: its gate (times the budget indicator
   # of a spike-and-slab total)
-  for(record in .bt_R2_budget_records(prior_list)){
+  for(record in records){
     core <- record$core
     if(is.null(core) || core$gates$K == 0L){
       next
@@ -200,23 +267,28 @@
       }
       dependencies <- nodes$open[[gate]]
       position <- match(dependencies, coordinates$coordinate_name)
-      if(anyNA(position)){
-        next
-      }
+      open_name <- paste0(record$total_name, "_open[", term$label, "]")
       rows[[length(rows) + 1L]] <- .bt_parameter_catalog_quantity(
-        canonical_name    = paste0(record$total_name, "_gate[", term$label, "]"),
+        canonical_name    = open_name,
         namespace         = record$parameter,
         role              = "parameter",
         formula_parameter = record$parameter,
+        owner_type        = "r2_budget",
+        owner_name        = record$name,
+        quantity          = "term_inclusion",
+        term              = term$label,
+        component         = term$label,
+        arguments         = term$label,
+        parent_quantity_id = .bt_parameter_catalog_quantity_id(record$total_name, record$parameter, "parameter"),
         label_parts       = .bt_label_parts(
           components        = paste0(term$label, " (inclusion)"),
           formula_parameter = record$parameter,
-          selector          = paste0(record$total_name, "_gate[", term$label, "]")
+          selector          = open_name
         ),
         fitted_scale      = "unitless",
         display_scale     = "unitless",
-        status            = if(any(coordinates$monitor_status[position] == "unavailable")) "unavailable" else "derived",
-        source_type       = "composite",
+        status            = if(anyNA(position) || any(coordinates$monitor_status[position] == "unavailable")) "unavailable" else "derived",
+        source_type       = "identity",
         extraction_key    = list(
           type         = "R2_open",
           dependencies = dependencies,
@@ -231,6 +303,34 @@
   }
 
   .bt_parameter_catalog_bind_quantities(rows)
+}
+
+# Add budget membership to the existing coordinate and factor-cell rows. The
+# coefficient's public identity and factor coding belong to the formula.
+.bt_R2_register_catalog_owners <- function(quantities, prior_list){
+
+  for(record in .bt_R2_budget_records(prior_list)){
+    formula_rows <- quantities$formula_parameter == record$parameter
+    labels <- vapply(record$terms, `[[`, character(1), "label")
+    coefficient_rows <- which(formula_rows & quantities$role == "fixed_coefficient" &
+                              quantities$term %in% labels)
+    nodes <- if(!is.null(record$core)) .bt_R2_core_nodes(record$core)
+    public_nodes <- c(total = record$total_name, budget_inclusion = nodes$indicator,
+                      inclusion_rate = nodes$rate)
+    rows <- match(unname(public_nodes), quantities$canonical_name)
+    if(anyNA(rows) || !all(formula_rows[rows])){
+      .bt_stop_refit_required("The fitted parameter map is missing declared R-squared budget quantities. Refit the model.")
+    }
+    quantities$quantity[rows] <- names(public_nodes)
+    quantities$quantity[coefficient_rows] <- "coefficient"
+    members <- c(rows, coefficient_rows)
+    quantities$owner_type[members] <- "r2_budget"
+    quantities$owner_name[members] <- record$name
+    total_row <- rows[[1L]]
+    quantities$parent_quantity_id[setdiff(members, total_row)] <- quantities$quantity_id[total_row]
+    quantities$arguments[coefficient_rows] <- as.list(quantities$term[coefficient_rows])
+  }
+  quantities
 }
 
 # The budget record of a share key, recomputed from the prior list.
@@ -285,49 +385,31 @@
 .bt_parameter_draw_R2_share <- function(fit, key, model_samples){
 
   found <- .bt_R2_share_record(attr(fit, "prior_list", exact = TRUE), key)
-  if(!all(key$dependencies %in% colnames(model_samples))){
-    .bt_R2_unavailable(paste0(
-      "The allocation coordinates of the R-squared budget share of '", key$term,
-      "' are unavailable in the draws. Include its declared source coordinates."
-    ))
-  }
-  record <- found$record
-  eta <- model_samples[, record$gamma_coordinates, drop = FALSE]
-  open <- .bt_R2_record_open(record, model_samples)
-  if(!is.null(record$core)){
-    unit_open <- open[, vapply(record$core$unit_term, function(key){
-      names(record$terms)[vapply(record$terms, function(term) identical(term$key, key), logical(1))]
-    }, character(1)), drop = FALSE]
-    eta <- eta * unit_open
-  }
-  total <- rowSums(eta)
-  share <- rowSums(eta[, key$units, drop = FALSE]) / ifelse(total > 0, total, 1)
-  # a share is undefined where its term is closed
-  share[open[, key$term] == 0] <- NA_real_
-
-  share
+  as.numeric(.bt_R2_share_values(found$record, model_samples, terms = key$term))
 }
 
 # The draws of the inclusion of a gated term.
 .bt_parameter_draw_R2_open <- function(fit, key, model_samples){
 
-  if(!all(key$dependencies %in% colnames(model_samples))){
-    .bt_R2_unavailable(paste0("The gate of the R-squared budget term '", key$term,
-      "' is unavailable in the draws. Include its declared source coordinates."))
+  open <- rep(1, nrow(model_samples))
+  for(column in key$dependencies){
+    open <- open * .bt_R2_event_draws(model_samples, column)
   }
-
-  apply(model_samples[, key$dependencies, drop = FALSE], 1, prod)
+  open
 }
 
-# The gate and indicator coordinates of a gated record (empty otherwise).
-.bt_R2_record_gating <- function(record){
+# A realized open flag includes the budget spike. An ungated member of a
+# spiked budget reads the budget indicator; an always-open member has no input.
+.bt_R2_record_open_columns <- function(record){
 
   core <- record$core
-  if(is.null(core)){
-    return(character())
-  }
-  nodes <- .bt_R2_core_nodes(core)
-  c(nodes$gates, if(!is.null(core$gates$spike)) nodes$indicator)
+  nodes <- if(!is.null(core)) .bt_R2_core_nodes(core)
+  lapply(record$terms, function(term) .bt_R2_core_open_column(core, term$key, nodes))
+}
+
+.bt_R2_record_gating <- function(record){
+
+  unique(as.character(unlist(.bt_R2_record_open_columns(record), use.names = FALSE)))
 }
 
 # The prior density of a share: the Beta marginal of its units under the
@@ -347,36 +429,22 @@
   out
 }
 
-# The rows of a catalog quantities table that are totals or shares of
-# R-squared budgets.
+# Registered quantities whose hypotheses use the budget law: total, rate,
+# share, gated scalar coefficient, or factor functional with fitted sources.
 .bt_R2_quantity_rows <- function(quantities, prior_list){
 
-  records <- .bt_R2_budget_records(prior_list)
-  # the totals and the shared inclusion rates of gated budgets
-  totals <- c(names(records), unlist(lapply(records, function(record){
-    if(!is.null(record$core)) .bt_R2_core_nodes(record$core)$rate
-  }), use.names = FALSE))
-  # the scalar coefficients of gated terms (their atom at zero needs the
-  # catalog law) and the levels of R2 factor terms (the law of each level)
-  gated <- unlist(lapply(names(prior_list), function(parameter){
-    prior <- prior_list[[parameter]]
-    if(is.prior.R2(prior) && .bt_R2_term_is_gated(prior) && prior$d == 1L && !is.prior.factor(prior)) parameter
-  }), use.names = FALSE)
-  factors <- names(prior_list)[vapply(prior_list, function(prior){
-    is.prior.R2(prior) && is.prior.factor(prior)
-  }, logical(1))]
-  levels <- unlist(lapply(factors, function(parameter){
-    .bt_R2_coefficient_names(prior_list[[parameter]], parameter)
-  }), use.names = FALSE)
-  vapply(seq_len(nrow(quantities)), function(i){
+  owned <- quantities$provider == "BayesTools" & quantities$owner_type == "r2_budget"
+  selected <- owned & quantities$quantity %in% c("total", "share", "inclusion_rate")
+  for(i in which(owned & quantities$quantity == "coefficient")){
     key <- quantities$extraction_key[[i]]
-    identical(quantities$provider[[i]], "BayesTools") &&
-      (identical(key$type, "R2_share") ||
-         (identical(key$type, "coordinate") && length(key$dependencies) == 1L &&
-            key$dependencies %in% c(totals, gated)) ||
-         (identical(key$type, "factor_level") && length(key$dependencies) > 0L &&
-            all(key$dependencies %in% levels)))
-  }, logical(1))
+    if(identical(key$type, "factor_level")){
+      selected[i] <- length(key$dependencies) > 0L
+    }else{
+      prior <- prior_list[[quantities$canonical_name[i]]]
+      selected[i] <- is.prior.R2(prior) && .bt_R2_term_is_gated(prior)
+    }
+  }
+  selected
 }
 
 # The root with which hypotheses name a budget quantity inside the engine:
@@ -397,29 +465,41 @@
   root
 }
 
-# The open flag of every retained term of 'record' per draw (1 for a term of
-# a budget without gates and spike): its gate times the budget indicator of a
-# spike-and-slab total. NULL when a gate or indicator column is missing.
-.bt_R2_record_open <- function(record, samples){
+.bt_R2_require_columns <- function(samples, columns){
 
-  n <- nrow(samples)
-  core <- record$core
-  out <- matrix(1, n, length(record$terms), dimnames = list(NULL, names(record$terms)))
-  if(is.null(core)){
-    return(out)
+  missing <- setdiff(columns, colnames(samples))
+  if(length(missing)){
+    .bt_R2_unavailable(paste0(
+      "The supplied draws lack R-squared budget source coordinates ",
+      paste0("'", missing, "'", collapse = ", "), ". Include the declared coordinates."
+    ), class = "BayesTools_R2_coordinates_unavailable")
   }
-  nodes <- .bt_R2_core_nodes(core)
-  needed <- c(nodes$gates, if(!is.null(core$gates$spike)) nodes$indicator)
-  if(!all(needed %in% colnames(samples))){
-    return(NULL)
-  }
-  indicator <- if(!is.null(core$gates$spike)) samples[, nodes$indicator] else rep(1, n)
-  for(term in names(record$terms)){
-    gate <- core$term_gate[[record$terms[[term]]$key]]
-    out[, term] <- indicator * (if(gate > 0L) samples[, nodes$gates[[gate]]] else 1)
-  }
+}
 
-  out
+.bt_R2_event_draws <- function(samples, column){
+
+  .bt_R2_require_columns(samples, column)
+  values <- as.numeric(samples[, column])
+  if(any(!values %in% c(0, 1))){
+    .bt_R2_unavailable(paste0("The R-squared budget indicator '", column,
+      "' must be zero or one on every supplied draw."))
+  }
+  values
+}
+
+# A retained term's effective state is read from its registered open node.
+# Request only the terms whose states enter the calculation.
+.bt_R2_record_open <- function(record, samples, terms = names(record$terms),
+                               sources = .bt_R2_record_open_columns(record)){
+
+  open <- matrix(1, nrow(samples), length(terms), dimnames = list(NULL, terms))
+  for(term in terms){
+    source <- sources[[term]]
+    if(!is.null(source)){
+      open[, term] <- .bt_R2_event_draws(samples, source)
+    }
+  }
+  open
 }
 
 # Whether the budget of 'record' can carry no signal (its null is a model):
@@ -428,6 +508,24 @@
 
   core <- record$core
   !is.null(core) && (!is.null(core$gates$spike) || (core$gates$K > 0L && core$gates$all_gated))
+}
+
+# The fitted catalog identifies the exact event displayed for a budget or one
+# of its terms, independently of its rendering and backend coordinate name.
+.bt_R2_event_quantity <- function(quantities, record, term = NULL){
+
+  owner <- quantities$provider == "BayesTools" & quantities$owner_type == "r2_budget" &
+    quantities$formula_parameter == record$parameter & quantities$owner_name == record$name
+  event <- if(is.null(term)){
+    quantities$quantity == "budget_inclusion"
+  }else{
+    quantities$quantity == "term_inclusion" & quantities$term == term$label
+  }
+  rows <- which(owner & event)
+  if(length(rows) != 1L){
+    .bt_stop_refit_required("The R-squared budget lacks a unique inclusion quantity in the fitted catalog. Refit the model.")
+  }
+  quantities[rows, , drop = FALSE]
 }
 
 # Estimates tables of R-squared budgets. The budget total is followed by the
@@ -442,8 +540,9 @@
 # 'conditional', the coefficients of a gated term (and a total) are summarized
 # on the draws where the term (the budget) is open. Returns the samples, the
 # label parts of the created columns, the inclusion columns and the warnings.
-.bt_JAGS_estimates_R2_budgets <- function(model_samples, raw_model_samples, prior_list,
-                                          conditional = FALSE, remove_inclusion = FALSE){
+.bt_JAGS_estimates_R2_budgets <- function(fit, model_samples, raw_model_samples, prior_list,
+                                          conditional = FALSE, remove_inclusion = FALSE,
+                                          raw = FALSE){
 
   created <- list()
   inclusion_columns <- character()
@@ -461,73 +560,102 @@
     allocation_columns <- if(!is.null(record$allocation_name)){
       paste0(record$allocation_name, "[", seq_len(record$n_units), "]")
     }
-    backend <- c(allocation_columns, nodes$gates, nodes$indicator, nodes$inclusion)
-    model_samples <- model_samples[, !colnames(model_samples) %in% backend, drop = FALSE]
-    open <- .bt_R2_record_open(record, raw_model_samples)
-    if(is.null(open)){
-      next
+    if(!raw){
+      backend <- c(allocation_columns, nodes$gates, nodes$open, nodes$indicator, nodes$inclusion)
+      model_samples <- model_samples[, !colnames(model_samples) %in% backend, drop = FALSE]
+    }
+    total_present <- record$total_name %in% colnames(model_samples)
+    show_shares <- !raw && total_present && length(record$terms) >= 2L
+    term_columns <- lapply(names(record$terms), function(term){
+      intersect(.bt_R2_coefficient_names(prior_list[[term]], term), colnames(model_samples))
+    })
+    names(term_columns) <- names(record$terms)
+    needed_terms <- if(show_shares){
+      names(record$terms)
+    }else if(conditional || !remove_inclusion){
+      names(term_columns)[lengths(term_columns) > 0L]
+    }else{
+      character()
+    }
+    open_columns <- .bt_R2_record_open_columns(record)
+    need_total_event <- total_present && .bt_R2_record_has_null(record) &&
+      (conditional || !remove_inclusion)
+    sources <- unique(c(
+      if(show_shares) record$gamma_coordinates,
+      if(need_total_event) nodes$indicator,
+      unlist(open_columns[needed_terms], use.names = FALSE)
+    ))
+    # Materialization honors the current draw view and gives its typed
+    # missing-source diagnostic. It also supplies any structural coordinates.
+    missing <- setdiff(sources, colnames(raw_model_samples))
+    if(length(missing)){
+      coordinates <- parameter_coordinates(fit)
+      unavailable <- setdiff(missing, coordinates$coordinate_name[
+        coordinates$monitor_status %in% c("sampled", "structural")
+      ])
+      if(length(unavailable)){
+        .bt_stop_refit_required("The R-squared budget requires unmonitored coordinates ",
+          paste0("'", unavailable, "'", collapse = ", "), ". Refit with these coordinates monitored.",
+          class = "BayesTools_refit_monitoring")
+      }
+      raw_model_samples <- cbind(raw_model_samples, as.matrix(.bt_parameter_draw_dependencies(fit, missing)))
+    }
+    open <- .bt_R2_record_open(record, raw_model_samples, needed_terms, open_columns)
+    if(need_total_event){
+      budget_open <- .bt_R2_event_draws(raw_model_samples, nodes$indicator)
     }
 
-    # conditional summaries: a gated term on the draws where it is open, a
+    # Conditional summaries: a gated term on the draws where it is open, a
     # total that can be zero on the draws where the budget is on
     if(conditional && !is.null(core)){
       for(term in names(record$terms)){
         if(core$term_gate[[record$terms[[term]]$key]] == 0L && is.null(core$gates$spike)){
           next
         }
-        columns <- intersect(.bt_R2_coefficient_names(prior_list[[term]], term), colnames(model_samples))
+        columns <- term_columns[[term]]
         if(length(columns)){
           model_samples[open[, term] == 0, columns] <- NA_real_
           warnings <- c(warnings, .runjags_conditional_warning(columns, sum(open[, term] == 1)))
         }
       }
-      if(.bt_R2_record_has_null(record) && record$total_name %in% colnames(model_samples)){
-        on <- rowSums(open) > 0
-        model_samples[!on, record$total_name] <- NA_real_
-        warnings <- c(warnings, .runjags_conditional_warning(record$total_name, sum(on)))
+      if(need_total_event){
+        model_samples[budget_open == 0, record$total_name] <- NA_real_
+        warnings <- c(warnings, .runjags_conditional_warning(record$total_name, sum(budget_open)))
       }
     }
 
     # the shares after the total
-    if(length(record$terms) >= 2L && record$total_name %in% colnames(model_samples) &&
-       all(allocation_columns %in% colnames(raw_model_samples))){
-      phi <- raw_model_samples[, allocation_columns, drop = FALSE]
-      shares <- vapply(names(record$terms), function(term){
-        value <- rowSums(phi[, record$terms[[term]]$units, drop = FALSE])
-        value[open[, term] == 0] <- NA_real_
-        value
-      }, numeric(nrow(phi)))
-      shares <- matrix(shares, nrow = nrow(phi))
-      colnames(shares) <- vapply(record$terms, function(term) .bt_R2_share_name(record, term), character(1))
+    if(show_shares){
+      shares <- .bt_R2_share_values(record, raw_model_samples, open = open)
       model_samples <- insert(model_samples, shares, match(record$total_name, colnames(model_samples)) + 1L)
       for(term in record$terms){
         created[[.bt_R2_share_name(record, term)]] <- .bt_R2_share_label_parts(record, term)
       }
     }
 
-    # inclusion rows
-    if(!remove_inclusion && !is.null(core)){
-      if(.bt_R2_record_has_null(record) && record$total_name %in% colnames(model_samples)){
-        column <- paste0(record$total_name, " (inclusion)")
-        model_samples <- insert(model_samples, matrix(as.numeric(rowSums(open) > 0), ncol = 1L,
+    # The canonical event IDs and labels are shared with direct selections.
+    if(!raw && !remove_inclusion && !is.null(core)){
+      quantities <- parameter_catalog(fit)$quantities
+      if(need_total_event){
+        event <- .bt_R2_event_quantity(quantities, record)
+        column <- event$canonical_name
+        model_samples <- insert(model_samples, matrix(budget_open, ncol = 1L,
           dimnames = list(NULL, column)), match(record$total_name, colnames(model_samples)))
-        created[[column]] <- .bt_label_parts_update(.bt_R2_total_label_parts_list(prior_list)[[record$total_name]],
-          inclusion = "")[[1L]]
+        created[[column]] <- event$label_parts[[1L]]
         inclusion_columns <- c(inclusion_columns, column)
       }
       for(term in names(record$terms)){
         if(core$term_gate[[record$terms[[term]]$key]] == 0L){
           next
         }
-        columns <- .bt_R2_coefficient_names(prior_list[[term]], term)
-        present <- which(colnames(model_samples) %in% columns)
+        present <- which(colnames(model_samples) %in% term_columns[[term]])
         if(length(present) == 0L){
           next
         }
-        column <- paste0(term, " (inclusion)")
+        event <- .bt_R2_event_quantity(quantities, record, record$terms[[term]])
+        column <- event$canonical_name
         model_samples <- insert(model_samples, matrix(open[, term], ncol = 1L, dimnames = list(NULL, column)), min(present))
-        created[[column]] <- .bt_label_parts_update(.bt_label_parts_inclusion_term(term, prior_list[[term]]),
-          inclusion = "")[[1L]]
+        created[[column]] <- event$label_parts[[1L]]
         inclusion_columns <- c(inclusion_columns, column)
       }
     }
@@ -542,7 +670,7 @@
 # inclusion probability, the posterior inclusion probability and the
 # inclusion Bayes factor. Each row is list(parameter, label parts, prior,
 # indicators per chain).
-.bt_R2_inference_rows <- function(prior_list, model_samples_list){
+.bt_R2_inference_rows <- function(prior_list, model_samples_list, quantities){
 
   rows <- list()
   for(record in .bt_R2_budget_records(prior_list)){
@@ -552,15 +680,16 @@
     }
     marginals <- .bt_R2_gate_marginals(core$gates, core$terms)
     open_list <- lapply(model_samples_list, function(samples) .bt_R2_record_open(record, as.matrix(samples)))
-    if(any(vapply(open_list, is.null, logical(1)))){
-      next
-    }
     if(.bt_R2_record_has_null(record)){
+      event <- .bt_R2_event_quantity(quantities, record)
+      indicator <- event$extraction_key[[1L]]$dependencies
       rows[[length(rows) + 1L]] <- list(
         parameter  = record$total_name,
+        event_id   = event$quantity_id,
+        role       = "r2_budget_inclusion",
         parts      = .bt_R2_total_label_parts_list(prior_list)[[record$total_name]],
         prior_prob = marginals$budget,
-        indicators = lapply(open_list, function(open) as.numeric(rowSums(open) > 0))
+        indicators = lapply(model_samples_list, .bt_R2_event_draws, column = indicator)
       )
     }
     for(term in names(record$terms)){
@@ -568,8 +697,11 @@
       if(core$term_gate[[key]] == 0L){
         next
       }
+      event <- .bt_R2_event_quantity(quantities, record, record$terms[[term]])
       rows[[length(rows) + 1L]] <- list(
         parameter  = term,
+        event_id   = event$quantity_id,
+        role       = "r2_term_inclusion",
         parts      = .bt_label_parts_inclusion_term(term, prior_list[[term]]),
         prior_prob = marginals$open[[key]],
         indicators = lapply(open_list, function(open) open[, term])

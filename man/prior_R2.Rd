@@ -66,6 +66,10 @@ prior list under a name that is not a formula term, which names the budget
 (e.g., \code{R2 = prior_R2(...)}); see Details.
 }
 \details{
+R-squared budgets are an experimental BayesTools formula feature. The
+residual SD scales each term's contribution to the linear predictor. Its
+fitted coefficients are expressed in residual-SD units.
+
 A formula prior list declares a budget with an entry such as
 \code{R2 = prior_R2(...)}. The name of the entry names the budget: the
 total R-squared is the formula parameter \code{<parameter>_<name>}

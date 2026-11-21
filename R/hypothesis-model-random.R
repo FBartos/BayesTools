@@ -473,8 +473,9 @@
     plan[["refusal"]] <- .hypothesis_model_plan_fixed_refusal(label)
     return(plan)
   }
-  if (identical(plan[["selected"]][["entry"]][["source"]], "ordered")) {
-    plan[["refusal"]] <- .hypothesis_model_plan_ordered_refusal(plan, provider, selected)
+  source <- plan[["selected"]][["entry"]][["source"]]
+  if (isTRUE(.hypothesis_model_formula_marginal(source))) {
+    plan[["refusal"]] <- .hypothesis_model_plan_formula_marginal_refusal(plan, provider, selected)
     if (!is.null(plan[["refusal"]])) {
       return(plan)
     }
@@ -484,20 +485,27 @@
     paste("random_samples", parameter, plan[["transform_scaled"]],
           plan[["conditional"]], sep = "\r"),
     function() {
-      provider[["random"]][["mixed_posterior"]](
-        parameter        = parameter,
-        transform_scaled = plan[["transform_scaled"]],
-        conditional               = plan[["conditional"]],
-        selected                  = selected
+      tryCatch(
+        provider[["random"]][["mixed_posterior"]](
+          parameter        = parameter,
+          transform_scaled = plan[["transform_scaled"]],
+          conditional      = plan[["conditional"]],
+          selected         = selected
+        ),
+        BayesTools_R2_density_unavailable = identity,
+        BayesTools_no_defined_posterior_draws = identity
       )
     }
   )
+  if (inherits(samples, "condition")) {
+    # Cache this target's unavailable prior law or empty posterior as we
+    # cache a supported marginal. Point and region plans share that result.
+    plan[["refusal"]] <- .hypothesis_model_refusal_from_condition(samples)
+    return(plan)
+  }
   prior_density <- posterior_metadata(samples[[parameter]], "prior_density")
-  ordered <- identical(plan[["selected"]][["entry"]][["source"]], "ordered")
-  R2      <- ordered && .bt_R2_quantity_rows(
-    selected[["entry"]][["selection"]][["quantities"]],
-    attr(provider[["fit"]], "prior_list", exact = TRUE)
-  )[[1L]]
+  ordered <- identical(source, "ordered")
+  R2      <- identical(source, "BayesTools::r2_budget")
   noun    <- if (R2) "R-squared budget quantity" else if (ordered) "ordered quantity" else "random-effect quantity"
   nouns   <- if (R2) "R-squared budget quantities" else if (ordered) "ordered quantities" else "random-effect quantities"
   plan[["draws"]]         <- list(samples = samples, posterior = samples[[parameter]])
@@ -661,7 +669,7 @@
 # predictors a total is tested only when the scale transformation leaves the
 # coefficients of its term unchanged (a share is a unitless fraction of the
 # total and is the same on both scales). NULL when the quantity is tested.
-.hypothesis_model_plan_ordered_refusal <- function(plan, provider, selected) {
+.hypothesis_model_plan_formula_marginal_refusal <- function(plan, provider, selected) {
 
   fit        <- provider[["fit"]]
   quantity   <- selected[["entry"]][["selection"]][["quantities"]]
@@ -815,7 +823,11 @@
     return(refused_cause(
       paste0(
         "Conditional ",
-        if (identical(plan[["selected"]][["entry"]][["source"]], "ordered")) "ordered" else "random-effect",
+        if (identical(plan[["selected"]][["entry"]][["source"]], "BayesTools::r2_budget")) {
+          "R-squared budget"
+        } else if (identical(plan[["selected"]][["entry"]][["source"]], "ordered")) {
+          "ordered"
+        } else "random-effect",
         " hypotheses support 'density_method = \"KDE\"' only."
       ),
       "conditional_random"

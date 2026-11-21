@@ -1152,9 +1152,14 @@ is.prior.R2_budget <- function(x){
 # for a term that is always open.
 .bt_R2_term_open_column <- function(prior){
 
-  nodes <- .bt_R2_core_nodes(prior$core)
-  gate <- prior$core$term_gate[[prior$term]]
-  if(gate > 0L) nodes$open[[gate]] else if(!is.null(prior$core$gates$spike)) nodes$indicator
+  .bt_R2_core_open_column(prior$core, prior$term)
+}
+
+.bt_R2_core_open_column <- function(core, term, nodes = .bt_R2_core_nodes(core)){
+
+  if(is.null(core)) return(NULL)
+  gate <- core$term_gate[[term]]
+  if(gate > 0L) nodes$open[[gate]] else if(!is.null(core$gates$spike)) nodes$indicator
 }
 
 # Whether the term 'term' (a core term name) can be the only open term: every
@@ -1367,12 +1372,9 @@ is.prior.R2_budget <- function(x){
 
 # The per-draw states of an R2 share plan: an atom at one where its term is
 # the only open term; undefined where it is closed.
-.bt_R2_share_states <- function(plan, n, model_samples){
+.bt_R2_share_states <- function(plan, model_samples){
 
   open <- .bt_R2_record_open(plan$record, model_samples)
-  if(is.null(open)){
-    return(list(atom = rep(NA_real_, n), defined = rep(TRUE, n), event = NULL, known = FALSE))
-  }
   alone <- open[, plan$term] == 1 & rowSums(open) == 1
   list(atom = ifelse(alone, 1, NA_real_), defined = open[, plan$term] == 1, event = NULL, known = TRUE)
 }

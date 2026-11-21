@@ -34,11 +34,11 @@
   display    <- .hypothesis_model_plan_group_ast(plans, "statement")
   hypothesis <- .hypothesis_model_plan_group_ast(plans, "hypothesis")
   if (conditional_omitted) {
-    ordered <- identical(plan[["selected"]][["entry"]][["source"]], "ordered")
+    source <- plan[["selected"]][["entry"]][["source"]]
     .hypothesis_model_warn_full_ensemble(
       provider, plan[["parameter"]],
-      label   = if(ordered) plan[["label"]] else plan[["parameter"]],
-      subject = if(ordered && identical(plan[["random"]][["spec"]][["quantity"]], "share")) {
+      label   = if(isTRUE(.hypothesis_model_formula_marginal(source))) plan[["label"]] else plan[["parameter"]],
+      subject = if(identical(source, "ordered") && identical(plan[["random"]][["spec"]][["quantity"]], "share")) {
         "the total of its term"
       }
     )
@@ -54,7 +54,7 @@
     density_control = density_control,
     columns         = columns
   )
-  out <- .hypothesis_model_ordered_labels(plan[["selected"]], plan[["label"]], switch(
+  out <- .hypothesis_model_catalog_labels(plan[["selected"]], plan[["label"]], switch(
     plan[["route"]],
     scalar      = do.call(.hypothesis_model_plan_execute_scalar, arguments),
     levels      = do.call(.hypothesis_model_plan_execute_levels, arguments),
@@ -99,13 +99,13 @@
 }
 
 
-# The planning or the evaluation 'expr' of a statement on an ordered quantity,
+# The planning or evaluation of a statement on a formula catalog marginal,
 # with the root of the quantity and its canonical name named by its displayed
 # 'label' in the messages of its errors.
-.hypothesis_model_ordered_labels <- function(selected, label, expr) {
+.hypothesis_model_catalog_labels <- function(selected, label, expr) {
 
   entry <- selected[["entry"]]
-  if (!identical(entry[["source"]], "ordered")) {
+  if (!isTRUE(.hypothesis_model_formula_marginal(entry[["source"]]))) {
     return(expr)
   }
   names <- unique(c(entry[["parameter"]], entry[["term"]]))

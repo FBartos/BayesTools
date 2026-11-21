@@ -1,5 +1,41 @@
 skip_if_not_test_profile("unit")
 
+test_that("fit reuse validates R2 owners against the compiled formula", {
+
+  dat <- data.frame(x = 1:16, z = rep(c(0, 1), 8))
+  model_data <- list(y = seq(-1, 1, length.out = nrow(dat)), N = nrow(dat))
+  fit <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1) } }", data = model_data,
+    formula_list = list(mu = ~ x + z), formula_data_list = list(mu = dat),
+    formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1)),
+      signal = prior_R2(model = R2_model(sigma = 1)))),
+    chains = 1, adapt = 100, burnin = 100, sample = 100, seed = 7815, silent = TRUE
+  )
+  expect_invisible(.bt_R2_validate_fitted_owners(fit))
+  weighted <- fit
+  attr(weighted, "prior_list")$mu_x$prior_weights <- 3
+  expect_invisible(.bt_R2_validate_fitted_owners(weighted))
+
+  changed <- fit
+  attr(changed, "prior_list")$mu_x$map <- 3 * attr(fit, "prior_list")$mu_x$map
+  expect_error(JAGS_extend(changed), "mu_x", class = "BayesTools_refit_required")
+  expect_error(JAGS_evaluate_deterministic(changed, nodes = "mu_x"), "mu_x",
+               class = "BayesTools_refit_required")
+  expect_error(JAGS_bridgesampling(changed,
+    log_posterior = function(parameters, data) sum(dnorm(data$y, parameters$mu, 1, log = TRUE)),
+    data = model_data, prior_list = list(), repetitions = 1, seed = 7815),
+    "mu_x", class = "BayesTools_refit_required")
+
+  missing <- fit
+  attr(missing, "prior_list")$mu_signal_allocation <- NULL
+  expect_error(.bt_R2_validate_fitted_owners(missing), "mu_signal_allocation",
+               class = "BayesTools_refit_required")
+  extra <- fit
+  attr(extra, "prior_list")$mu_orphan <- attr(fit, "prior_list")$mu_x
+  expect_error(.bt_R2_validate_fitted_owners(extra), "mu_orphan", class = "BayesTools_refit_required")
+})
+
+
 .R2_bridge_priors <- function(law){
   set.seed(5)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 6)), x = stats::rnorm(18))

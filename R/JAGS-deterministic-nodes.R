@@ -375,6 +375,7 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
 # The generated deterministic nodes of a fit, keyed by node name.
 .bt_deterministic_nodes_fit <- function(fit){
 
+  .bt_R2_validate_fitted_owners(fit)
   prior_list <- attr(fit, "prior_list", exact = TRUE)
   ordered <- prior_list[vapply(prior_list, is.prior.ordered, logical(1))]
   for(parameter in names(ordered)) .bt_require_ordered_metadata(ordered[[parameter]], parameter)

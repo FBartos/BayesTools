@@ -153,13 +153,19 @@ the term's allocation units); the allocation coordinates of a budget are
 backend coordinates. For a budget with inclusion gates or a spike-and-slab
 total, the total has an atom at zero (the budget null) and the inclusion
 event of the budget indicator, displayed \verb{<name>\{total\} (inclusion)};
-every gated term has an inclusion quantity \verb{<parameter>_<name>_gate[<term>]}
+every gated term has a realized inclusion quantity \verb{<parameter>_<name>_open[<term>]}
 displayed as \verb{<term> (inclusion)}, with the Bernoulli prior of its marginal
-inclusion probability; and a share is undefined (\code{"allocation_active"}) on
+inclusion probability. The earlier selector \verb{<parameter>_<name>_gate[<term>]}
+remains an alias of that realized event. A share is undefined (\code{"term_included"}) on
 the draws where its term is closed, with the prior of the share given that
 the term is open. The scalar coefficients of a gated term have an atom at
 zero (the term closed) and are tested on these quantities; the levels and
-coded coefficients of a gated factor have no catalog prior density. The level names of transformed summaries,
+coded coefficients of an exact-law factor have a catalog prior law, including
+under gating. For the normal and Laplace kernels, a level that combines
+several coded coefficients has no supported marginal prior law. R-squared quantities record
+\code{owner_type = "r2_budget"}, the declared budget in \code{owner_name}, and their
+\code{quantity} (total, share, term or budget inclusion, inclusion rate, or
+coefficient). The budget total is the parent of its members. The level names of transformed summaries,
 \verb{<parameter>[dif: level]}, and the row labels those summaries display,
 \verb{(formula) term[dif: level]} and \code{term[dif: level]}, are aliases of the
 level quantity. JAGS

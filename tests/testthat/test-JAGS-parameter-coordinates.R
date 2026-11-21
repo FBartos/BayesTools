@@ -495,10 +495,11 @@ test_that("parameter-map accessors reject missing and malformed fitted objects",
   expect_null(attr(fit, "parameter_registry", exact = TRUE))
   expect_null(attr(fit, "parameter_catalog", exact = TRUE))
   expect_identical(names(map), c(
-    "schema_version", "coordinates", "quantities", "aliases"
+    "schema_version", "coordinates", "quantities", "aliases", "relationships"
   ))
   expect_identical(map$coordinates, coordinates)
   expect_identical(map$quantities, catalog$quantities)
+  expect_identical(map$relationships, catalog$relationships)
   expect_identical(map$aliases, catalog$aliases)
   expect_identical(JAGS_fit_contract(fit)$parameter_map_version,
                    map$schema_version)

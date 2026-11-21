@@ -926,10 +926,18 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   random_names <- setdiff(generated_names, fixed_jags_names)
   random_name_map <- .bt_formula_name_map_empty()
   if(length(random_names) > 0L){
+    R2_nodes <- .bt_R2_declared_nodes(prior_list)
+    R2_bases <- .bt_parameter_coordinates_base(R2_nodes$coordinate)
     random_terms <- rep("", length(random_names))
     random_roles <- random_names
     random_kinds <- rep("generated", length(random_names))
     for(i in seq_along(random_names)){
+      r2_source <- match(random_names[i], R2_bases)
+      if(!is.na(r2_source)){
+        random_roles[i] <- paste0("r2_", R2_nodes$role[r2_source])
+        random_terms[i] <- R2_nodes$term[r2_source]
+        next
+      }
       matches <- vapply(compiled_random_effects, function(random_term){
         is.character(random_term$parameter_stem) &&
           length(random_term$parameter_stem) == 1L &&

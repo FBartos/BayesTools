@@ -1188,6 +1188,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   formula_design     <- attr(fit, "formula_design", exact = TRUE)
 
   coordinates <- .bt_require_fit_contract(fit)
+  .bt_R2_validate_fitted_owners(fit)
   if(!is.null(formula_design)){
     if(!is.list(formula_design) || is.null(names(formula_design)) ||
        any(!nzchar(names(formula_design))) || anyDuplicated(names(formula_design))){

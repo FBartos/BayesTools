@@ -63,6 +63,10 @@
 #' contrasts).
 #'
 #' @details
+#' R-squared budgets are an experimental BayesTools formula feature. The
+#' residual SD scales each term's contribution to the linear predictor. Its
+#' fitted coefficients are expressed in residual-SD units.
+#'
 #' A formula prior list declares a budget with an entry such as
 #' \code{R2 = prior_R2(...)}. The name of the entry names the budget: the
 #' total R-squared is the formula parameter \code{<parameter>_<name>}
@@ -899,6 +903,14 @@ is.R2_budget <- function(x){
 # The entries of a formula prior list that are R-squared budgets.
 .bt_R2_budget_entries <- function(prior_list){
 
+  bound <- function(prior){
+    is.prior.R2(prior) || !is.null(attr(prior, "R2_budget", exact = TRUE)) ||
+      (is.prior.mixture(prior) && any(vapply(prior, bound, logical(1))))
+  }
+  if(any(vapply(prior_list, bound, logical(1)))){
+    .bt_R2_stop(paste0("A previously bound R-squared prior cannot be supplied to a new formula. ",
+      "Supply the original named 'prior_R2()' budget and let the formula bind its terms."))
+  }
   vapply(prior_list, is.R2_budget, logical(1))
 }
 

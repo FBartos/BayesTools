@@ -311,7 +311,8 @@
     }
     if(is.prior.R2_budget(prior)){
       nodes <- .bt_R2_core_nodes(prior)
-      return(c(sub("\\[.*$", "", nodes$eta[[1L]]), nodes$H, nodes$variable))
+      return(c(sub("\\[.*$", "", nodes$eta[[1L]]), nodes$H, nodes$variable,
+               nodes$inclusion, nodes$rate_u))
     }
     if(is.prior.ordered(prior)){
       return(vapply(
@@ -468,6 +469,9 @@
 .bt_parameter_coordinates_prior_role <- function(prior){
 
   if(is.null(prior)){
+    return("parameter")
+  }
+  if(!is.null(attr(prior, "R2_budget", exact = TRUE))){
     return("parameter")
   }
   metadata <- .bt_random_effect_metadata(prior)
@@ -973,7 +977,8 @@
       }
     }
   }
-  coordinate_names <- unique(c(columns, setdiff(structural, columns)))
+  R2_nodes <- .bt_R2_declared_nodes(prior_list)
+  coordinate_names <- unique(c(columns, structural, R2_nodes$coordinate))
   if(length(coordinate_names) == 0L){
     return(.bt_parameter_coordinates_empty())
   }
@@ -1042,6 +1047,10 @@
       random_term,
       name_map_row
     )
+    if(!nzchar(formula_parameter)){
+      r2_source <- match(coordinate_name, R2_nodes$coordinate)
+      if(!is.na(r2_source)) formula_parameter <- R2_nodes$formula_parameter[r2_source]
+    }
     coordinate <- .bt_parameter_coordinates_coordinate(
       coordinate_name,
       random_term,
@@ -1067,8 +1076,10 @@
       "structural"
     }else if(coordinate_name %in% columns){
       "sampled"
-    }else{
+    }else if(coordinate_name %in% structural){
       "structural"
+    }else{
+      "unavailable"
     }
     fixed_value <- NA_real_
     if(identical(monitor_status, "structural") && !is.null(prior)){
@@ -1379,6 +1390,25 @@
   declare <- .bt_convergence_role_declaration
   if(is.null(prior)){
     return(declare(character(), character()))
+  }
+
+  if(is.prior.R2_budget(prior)){
+    nodes <- .bt_R2_core_nodes(prior)
+    # A single gate conditioned on a nonempty slab is open even when the
+    # budget is off. The realized term inclusion is its open flag.
+    gate_role <- if(prior$gates$K == 1L && isTRUE(prior$gates$truncated)) "structural" else "indicator"
+    return(rbind(
+      declare(nodes$total, "sampled"),
+      declare(nodes$gates, gate_role, exact = TRUE),
+      declare(nodes$indicator, "indicator", exact = TRUE),
+      declare(c(nodes$open, nodes$allocation), "derived", exact = TRUE),
+      declare(c(nodes$rate, nodes$rate_u, nodes$inclusion, nodes$variable,
+                nodes$eta, nodes$H), "auxiliary", exact = TRUE)
+    ))
+  }
+  if(identical(attr(prior, "R2_budget", exact = TRUE)$role, "allocation")){
+    # An ungated budget normalizes Gamma coordinates to its Dirichlet weights.
+    return(declare(parameter, "derived"))
   }
 
   if(is.prior.weightfunction(prior)){

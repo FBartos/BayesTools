@@ -1,19 +1,19 @@
 # Authoritative fitted parameter map.
 
-.bt_parameter_map_version <- 22L
+.bt_parameter_map_version <- 23L
 
 #' Fitted parameter map and coordinate view
 #'
 #' @description
 #' `parameter_map()` returns the single versioned parameter map stored by
-#' [JAGS_fit()]. It contains three linked tables: concrete fitted
-#' `coordinates`, public semantic `quantities`, and exact `aliases`.
+#' [JAGS_fit()]. It contains concrete fitted `coordinates`, public semantic `quantities`,
+#' exact `aliases` and directed [parameter_relationships()].
 #'
 #' `parameter_coordinates()` returns the coordinate table from that map. Each
 #' row describes one sampled, structural, or unavailable fitted coordinate.
 #' Coordinate names are backend identities, not additional public aliases.
 #'
-#' `parameter_map_schema()` documents all three tables, while
+#' `parameter_map_schema()` documents all four tables, while
 #' `parameter_coordinates_schema()` documents the coordinate view alone.
 #'
 #' @param object a fitted object.
@@ -120,17 +120,20 @@ parameter_map_schema <- function(){
     schema_version = .bt_parameter_map_version,
     coordinates = parameter_coordinates_schema(),
     quantities = catalog$quantities,
-    aliases = catalog$aliases
+    aliases = catalog$aliases,
+    relationships = catalog$relationships
   )
 }
 
-.bt_parameter_map_new <- function(coordinates, quantities, aliases){
+.bt_parameter_map_new <- function(coordinates, quantities, aliases,
+                                  relationships = .bt_empty_relationships()){
 
   out <- list(
     schema_version = .bt_parameter_map_version,
     coordinates = coordinates,
     quantities = quantities,
-    aliases = aliases
+    aliases = aliases,
+    relationships = relationships
   )
   class(out) <- c("BayesTools_parameter_map", "list")
   .bt_validate_parameter_map(out)
@@ -227,7 +230,8 @@ parameter_map_schema <- function(){
     isTRUE(cache$validated) &&
     identical(cache$coordinates, map$coordinates) &&
     identical(cache$quantities, map$quantities) &&
-    identical(cache$aliases, map$aliases)
+    identical(cache$aliases, map$aliases) &&
+    identical(cache$relationships, map$relationships)
 }
 
 .bt_parameter_map_cache_store <- function(map, cache){
@@ -239,6 +243,7 @@ parameter_map_schema <- function(){
   cache$coordinates <- map$coordinates
   cache$quantities <- map$quantities
   cache$aliases <- map$aliases
+  cache$relationships <- map$relationships
   # Consumer entries were derived from the map that was here before, so they
   # cannot survive it. BayesTools owns this environment and clears it whole.
   cache$providers <- new.env(parent = emptyenv())
@@ -310,7 +315,8 @@ parameter_map_cache <- function(map, provider, key, compute){
   out <- list(
     schema_version = map$schema_version,
     quantities = map$quantities,
-    aliases = map$aliases
+    aliases = map$aliases,
+    relationships = map$relationships
   )
   class(out) <- c("BayesTools_parameter_catalog", "list")
   out
@@ -322,7 +328,7 @@ parameter_map_cache <- function(map, provider, key, compute){
     is.list(map) &&
     identical(
       names(map),
-      c("schema_version", "coordinates", "quantities", "aliases")
+      c("schema_version", "coordinates", "quantities", "aliases", "relationships")
     ) &&
     identical(map$schema_version, .bt_parameter_map_version)
 }
@@ -338,6 +344,7 @@ parameter_map_cache <- function(map, provider, key, compute){
 
   .bt_validate_parameter_coordinates(map$coordinates)
   .bt_validate_parameter_catalog_tables(map$quantities, map$aliases)
+  .bt_validate_relationships(map$relationships, map$quantities)
 
   native <- map$quantities$provider == "BayesTools"
   dependencies <- unique(unlist(
@@ -385,7 +392,8 @@ parameter_map_cache <- function(map, provider, key, compute){
   .bt_parameter_map_new(
     coordinates = coordinates,
     quantities = catalog$quantities,
-    aliases = catalog$aliases
+    aliases = catalog$aliases,
+    relationships = catalog$relationships
   )
 }
 
