@@ -33,7 +33,7 @@
 <line x1='462.03' y1='131.05' x2='462.03' y2='5.48' style='stroke-width: 0.53; stroke: #68747E; stroke-opacity: 0.50; stroke-dasharray: 1.00,3.00; stroke-linecap: butt;' />
 <line x1='688.35' y1='131.05' x2='688.35' y2='5.48' style='stroke-width: 0.53; stroke: #68747E; stroke-opacity: 0.50; stroke-dasharray: 1.00,3.00; stroke-linecap: butt;' />
 <line x1='705.59' y1='131.05' x2='705.59' y2='5.48' style='stroke-width: 0.53; stroke: #68747E; stroke-opacity: 0.50; stroke-dasharray: 1.00,3.00; stroke-linecap: butt;' />
-<line x1='116.58' y1='131.05' x2='714.52' y2='131.05' style='stroke-width: 0.53; stroke: #939DA5; stroke-linecap: butt;' />
+<line x1='116.58' y1='131.05' x2='714.52' y2='131.05' style='stroke-width: 1.39; stroke: #737D86; stroke-linecap: butt;' />
 <rect x='116.58' y='5.48' width='597.94' height='125.57' style='stroke-width: 0.53; stroke: #939DA5;' />
 </g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
@@ -67,6 +67,7 @@
 <line x1='705.59' y1='507.74' x2='705.59' y2='382.18' style='stroke-width: 0.53; stroke: #68747E; stroke-opacity: 0.50; stroke-dasharray: 1.00,3.00; stroke-linecap: butt;' />
 <line x1='116.58' y1='256.61' x2='714.52' y2='256.61' style='stroke-width: 0.53; stroke: #A6AFB6; stroke-opacity: 0.52; stroke-linecap: butt;' />
 <line x1='116.58' y1='382.18' x2='714.52' y2='382.18' style='stroke-width: 0.53; stroke: #A6AFB6; stroke-opacity: 0.52; stroke-linecap: butt;' />
+<line x1='116.58' y1='131.05' x2='714.52' y2='131.05' style='stroke-width: 1.39; stroke: #737D86; stroke-linecap: butt;' />
 <rect x='116.58' y='131.05' width='597.94' height='376.70' style='stroke-width: 0.53; stroke: #939DA5;' />
 </g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
