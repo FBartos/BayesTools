@@ -1302,6 +1302,9 @@ ggplot_add.BayesTools_prior_overlay <- function(object, plot, object_name){
   state <- .plot_scale_y2_state_from_ggplot(plot)
   scale_y2 <- object[["scale_y2"]]
   geoms <- object[["geoms"]]
+  if(is.function(geoms)){
+    geoms <- geoms(if(is.null(state)) 1 else state[["scale_y2"]])
+  }
   if(is.null(scale_y2) && !is.null(state) &&
      is.list(object[["point_builders"]]) &&
      length(object[["point_builders"]]) > 0L){

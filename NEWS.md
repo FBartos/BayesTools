@@ -4,6 +4,7 @@
 - hypothesis statements cannot contain `#` comments
 
 ### Features
+- `plot_posterior()` and `plot_marginal()` select factor levels by name and can draw a separate plot for each level.
 - `hypothesis_BF()` accepts interval hypotheses such as `"-0.1 <= mu <= 0.1"` and explicit comparisons with `unconstrained`
 - `hypothesis_BF()` can display the method, prior and posterior point densities, and region probabilities with separate switches
 - `prior_regularized()` adds ridge, lasso and horseshoe priors with joint shrinkage for centered factors

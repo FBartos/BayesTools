@@ -191,10 +191,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   prior_list
 }
-.plot_prior_list.both             <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE, ...){
-
-  # get default plot settings
-  dots      <- list(...)
+.plot_prior_axes <- function(plot_data, par_name, dots){
 
   xlim      <- range(as.vector(sapply(plot_data, attr, which = "x_range")))
 
@@ -237,6 +234,14 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.null(dots[["xlim"]]))  dots$xlim  <-  xlim
   if(is.null(dots[["ylim"]]))  dots$ylim  <-  ylim
   if(is.null(dots[["ylim2"]])) dots$ylim2 <-  ylim2
+  list(dots = dots, type = type)
+}
+.plot_prior_list.both <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE,
+                                  axis_data = plot_data, ...){
+
+  axes <- .plot_prior_axes(axis_data, par_name, list(...))
+  dots <- axes$dots
+  type <- axes$type
 
   scale_y2_supplied <- !is.null(scale_y2)
   scale_y2_state    <- NULL
@@ -474,52 +479,12 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   out
 }
-.plot_prior_list.factor           <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE, ...){
+.plot_prior_list.factor <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE,
+                                  axis_data = plot_data, ...){
 
-  # get default plot settings
-  dots      <- list(...)
-
-  xlim      <- range(as.vector(sapply(plot_data, attr, which = "x_range")))
-
-  main      <- ""
-  xlab      <- if(!is.null(par_name)) par_name else ""
-
-  has_simple <- any(sapply(plot_data, inherits, what = "density.prior.simple"))
-  has_point  <- any(sapply(plot_data, inherits, what = "density.prior.point"))
-
-  if(has_simple && (has_point || !is.null(dots[["ylim2"]]))){
-    type  <- "both"
-    ylab  <- "Density"
-    ylab2 <- "Probability"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range", exact = TRUE)))
-    ylim2 <- if(has_point){
-      range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")], attr, which = "y_range", exact = TRUE)))
-    }else{
-      dots[["ylim2"]]
-    }
-  }else if(has_simple){
-    type  <- "simple"
-    ylab  <- "Density"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range", exact = TRUE)))
-    ylab2 <- NULL
-    ylim2 <- NULL
-  }else if(has_point){
-    type  <- "point"
-    ylab  <- "Probability"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range", exact = TRUE)))
-    ylab2 <- NULL
-    ylim2 <- NULL
-  }
-
-
-  # add it to the user input if desired
-  if(is.null(dots[["main"]]))  dots$main  <-  main
-  if(is.null(dots[["xlab"]]))  dots$xlab  <-  xlab
-  if(is.null(dots[["ylab"]]))  dots$ylab  <-  ylab
-  if(is.null(dots[["ylab2"]])) dots$ylab2 <-  ylab2
-  if(is.null(dots[["xlim"]]))  dots$xlim  <-  xlim
-  if(is.null(dots[["ylim"]]))  dots$ylim  <-  ylim
-  if(is.null(dots[["ylim2"]])) dots$ylim2 <-  ylim2
+  axes <- .plot_prior_axes(axis_data, par_name, list(...))
+  dots <- axes$dots
+  type <- axes$type
 
   scale_y2_supplied <- !is.null(scale_y2)
   scale_y2_state    <- NULL
@@ -564,6 +529,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       }, logical(1))
     ]
   }
+  visible <- attr(plot_data, "visible_levels", exact = TRUE)
+  if(is.null(visible)) visible <- seq_along(level_names)
   plot_data_points     <- plot_data_normalized[["points"]]
   plot_data_factors    <- plot_data_normalized[["densities"]]
   style_components     <- if(length(plot_data_factors) > 0L) plot_data_factors else plot_data_points
@@ -656,9 +623,9 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     if(draw_legend && length(level_names) > 0){
       graphics::legend(
         if(is.null(dots[["legend_position"]])) "topright" else dots[["legend_position"]],
-        legend = level_names,
-        col    = level_col,
-        lty    = level_lty,
+        legend = level_names[visible],
+        col    = level_col[visible],
+        lty    = level_lty[visible],
         lwd    = if(!is.null(dots[["lwd"]])) dots[["lwd"]] else rep(.plot.prior_settings()[["lwd"]], length(level_names)),
         title  = dots[["legend_title"]],
         bty    = "n")
@@ -701,11 +668,11 @@ plot_prior_list <- function(prior_list, plot_type = "base",
        !isTRUE(dots$hardcode)){
       plot <- c(plot, list(
         ggplot2::scale_color_manual(name = dots$legend_title,
-          values = stats::setNames(level_col, level_names), breaks = level_names,
-          labels = level_names, limits = level_names, drop = FALSE),
+          values = stats::setNames(level_col[visible], level_names[visible]), breaks = level_names[visible],
+          labels = level_names[visible], limits = level_names[visible], drop = FALSE),
         ggplot2::scale_linetype_manual(name = dots$legend_title,
-          values = stats::setNames(level_lty, level_names), breaks = level_names,
-          labels = level_names, limits = level_names, drop = FALSE)))
+          values = stats::setNames(level_lty[visible], level_names[visible]), breaks = level_names[visible],
+          labels = level_names[visible], limits = level_names[visible], drop = FALSE)))
     }
 
     # plot factor levels
@@ -723,11 +690,11 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       )
 
       args             <- dots
-      args$level_names <- level_names
+      args$level_names <- level_names[visible]
       args$plot_data   <- plot_data_factors
-      args$col         <- level_col
-      args$lty         <- if(!is.null(dots[["linetype"]])) level_linetype else level_lty
-      args$linetype    <- if(!is.null(dots[["linetype"]])) level_linetype else NULL
+      args$col         <- level_col[visible]
+      args$lty         <- if(!is.null(dots[["linetype"]])) level_linetype[visible] else level_lty[visible]
+      args$linetype    <- if(!is.null(dots[["linetype"]])) level_linetype[visible] else NULL
       args$.factor_universe_ordered <- isTRUE(attr(plot_data_normalized$universe, "ordered", exact = TRUE))
 
       plot <- c(plot, do.call(.geom_prior.factors, args))

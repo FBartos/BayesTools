@@ -55,6 +55,11 @@ overlays reuse `par("usr")` and warn when a later point mass is off-scale.
 ggplot overlays reuse the mixed plot's stored secondary-axis mapping and issue
 the same clipping warning. Do not invent a fake `usr` for ggplot.
 
+Factor posterior plots select original fitted level labels before legend
+relabelling. Keep the full retained level order for colours and line types.
+Shared prior components and declared atoms appear in each applicable figure.
+Individual ggplots use the original labels as list names.
+
 Individual weight-function omega plots index the k-th omega in the order the
 summary tables (and RoBMA's) print them: ascending p-value intervals,
 reference weight first. Every individual-omega selector (`show_figures`,

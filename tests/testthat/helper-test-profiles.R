@@ -103,6 +103,7 @@ bayestools_test_profile_contexts <- list(
     "marginal-inference-conditioning",
     "model-averaging-edge-cases",
     "model-averaging-plots-edge-cases",
+    "posterior-factor-levels",
     "native-registration",
     "native-range",
     "parameter-labels",

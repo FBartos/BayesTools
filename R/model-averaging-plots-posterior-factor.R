@@ -142,7 +142,7 @@
   return(out)
 }
 .plot_data_samples.factor         <- function(samples, parameter, n_points, transformation, transformation_arguments, transformation_settings,
-                                             density_method = c("KDE", "precomputed")){
+                                             density_method = c("KDE", "precomputed"), level = NULL){
 
   check_list(samples, "samples", check_names = parameter, allow_other = TRUE)
   density_method <- .posterior_density_method(density_method)
@@ -154,37 +154,22 @@
   sample_point_data <- list()
 
   # transform & extract the relevant data
-  prior_list <- attr(samples[[parameter]], "prior_list")
+  prior_list <- .plot_factor_priors(samples[[parameter]])
   posterior_density_sources <- .posterior_density_sources(samples, samples[[parameter]])
   density_condition <- .marginal_posterior_condition_metadata(samples, samples[[parameter]])
   posterior_density_conditional <- density_condition$conditional
   posterior_density_conditional_rule <- density_condition$conditional_rule
   posterior_density_condition_key <- density_condition$condition_key
-  if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
-    prior_list <- list(prior_list)
 
-  if(any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
-    samples  <- transform_factor_samples(samples)
-    if(!is.null(transformation)){
-      message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the meandif/orthonormal contrasts to the differences from the mean.")
-    }
-  }else if(any(sapply(prior_list, is.prior.ordered))){
-    # Ordered increments are not levels: plot the level effects instead, as
-    # for mean-difference contrasts, omitting the structurally zero level.
-    samples <- transform_factor_samples(samples)
-    samples[[parameter]] <- .transformed_factor_drop_structural_levels(
-      samples[[parameter]]
-    )
-  }
-
-  samples    <- samples[[parameter]]
+  samples <- .plot_factor_samples(samples, parameter, prior_list, transformation)
   # the legend label of every level: the level text of its level cell
   level_parts   <- .bt_draws_label_parts(samples, parameter)
   level_legends <- .bt_label(level_parts, style = "plot")
+  selected <- .plot_factor_level_indices(level, level_legends)
 
   # Declared posterior atoms are authoritative (as for simple parameters):
   # each level uses the point masses and continuous mass of its own column.
-  column_atoms     <- .plot_data_factor_column_atoms(samples)
+  column_atoms     <- .plot_data_factor_column_atoms(samples, selected)
   level_point_data <- NULL
 
   # create the output object
@@ -192,13 +177,13 @@
 
   # deal with spikes
   column_points <- lapply(column_atoms, function(atoms){
-    list(x = as.numeric(atoms$locations[, 1L]), y = atoms$mass)
+    if(!is.null(atoms)) list(x = as.numeric(atoms$locations[, 1L]), y = atoms$mass)
   })
   if(all(vapply(column_points, identical, logical(1), y = column_points[[1L]]))){
     x_points <- column_points[[1L]]$x
     y_points <- column_points[[1L]]$y
   }else{
-    level_point_data <- lapply(column_points, function(points){
+    level_point_data <- lapply(column_points[selected], function(points){
       .plot_data_factor_points(points$x, points$y, n_points, transformation, transformation_arguments)
     })
   }
@@ -211,7 +196,7 @@
   samples_density <- samples
 
   if(nrow(samples_density) > 0){
-    for(i in 1:ncol(samples_density)){
+    for(i in selected){
 
       continuous    <- .Savage_Dickey_BF.continuous_posterior(samples[,i], column_atoms[[i]])
       level_samples <- as.numeric(continuous$samples)
@@ -313,9 +298,10 @@
   }
   if(!is.null(level_point_data)){
     level_points <- list()
-    for(level in seq_along(level_point_data)){
-      for(point_i in seq_along(level_point_data[[level]])){
-        point_data <- level_point_data[[level]][[point_i]]
+    for(k in seq_along(selected)){
+      level <- selected[[k]]
+      for(point_i in seq_along(level_point_data[[k]])){
+        point_data <- level_point_data[[k]][[point_i]]
         attr(point_data, "level")      <- level
         attr(point_data, "level_name") <- colnames(samples)[level]
         attr(point_data, "level_legend") <- level_legends[level]
@@ -325,10 +311,161 @@
     out <- c(level_points, out)
   }
 
-  .plot_factor_level_universe(out, colnames(samples), level_legends,
+  out <- .plot_factor_level_universe(out, colnames(samples), level_legends,
     ordered = any(vapply(prior_list, is.prior.ordered, logical(1))))
+  if(!is.null(level)) attr(out, "visible_levels") <- selected
+  out
 }
-.plot_data_factor_column_atoms <- function(samples){
+#' Resolve plotted columns of a factor posterior
+#'
+#' @inheritParams plot_posterior
+#' @param parameter name of the factor-valued element in \code{samples}.
+#' @return A character vector of posterior column names on the fitted plotting
+#' scale, in display order. Centered contrasts use their level deviations.
+#' Ordered contrasts omit the structural reference.
+#' @seealso [plot_posterior()]
+#' @export
+posterior_factor_columns <- function(samples, parameter, level = NULL){
+
+  check_char(parameter, "parameter")
+  check_list(samples, "samples", check_names = parameter, allow_other = TRUE)
+  if(!inherits(samples[[parameter]], "mixed_posteriors.factor")){
+    stop("'parameter' must identify a factor-valued posterior.", call. = FALSE)
+  }
+  prior_list <- .plot_factor_priors(samples[[parameter]])
+  draws <- .plot_factor_samples(samples, parameter, prior_list)
+  labels <- .bt_label(.bt_draws_label_parts(draws, parameter), style = "plot")
+  colnames(draws)[.plot_factor_level_indices(level, labels)]
+}
+
+.plot_factor_priors <- function(draws){
+
+  priors <- attr(draws, "prior_list", exact = TRUE)
+  if(is.prior(priors) && !is.prior.mixture(priors) && !is.prior.spike_and_slab(priors)){
+    return(list(priors))
+  }
+  priors
+}
+
+.plot_factor_samples <- function(samples, parameter, prior_list, transformation = NULL){
+
+  if(any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
+    samples  <- transform_factor_samples(samples)
+    if(!is.null(transformation)){
+      message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the meandif/orthonormal contrasts to the differences from the mean.")
+    }
+  }else if(any(sapply(prior_list, is.prior.ordered))){
+    # Ordered increments are not levels: plot the level effects instead, as
+    # for mean-difference contrasts, omitting the structurally zero level.
+    samples <- transform_factor_samples(samples)
+    samples[[parameter]] <- .transformed_factor_drop_structural_levels(
+      samples[[parameter]]
+    )
+  }
+
+  samples[[parameter]]
+}
+
+.plot_factor_visible_data <- function(data, visible){
+
+  # Unindexed components are shared by every level (e.g., a common spike).
+  if(is.null(data)) return(NULL)
+  keep <- vapply(data, function(component){
+    index <- attr(component, "level", exact = TRUE)
+    is.null(index) || index %in% visible
+  }, logical(1))
+  result <- data[keep]
+  attr(result, "factor_level_universe") <- attr(data, "factor_level_universe", exact = TRUE)
+  attr(result, "visible_levels") <- visible
+  result
+}
+
+.plot_posterior_factor_levels <- function(data, prior_data, level, individual,
+                                          plot_type, par_name, dots, dots_prior,
+                                          legend, legend_title, legend_labels, legend_position){
+
+  labels <- attr(data, "factor_level_universe", exact = TRUE)$label
+  selected <- .plot_factor_level_indices(level, labels)
+  dots$plot_type <- plot_type
+  dots$par_name <- par_name
+  dots$legend <- legend
+  dots$legend_title <- legend_title
+  dots$legend_labels <- legend_labels
+  dots$legend_position <- legend_position
+
+  if(!is.null(prior_data)){
+    dots_prior <- do.call(.transfer_dots, c(list(dots_prior), dots))
+    dots_prior <- .plot_ordered_overlay_styles(dots_prior, data, dots)
+    dots_prior$plot_type <- plot_type
+    dots_prior$par_name <- par_name
+    dots_prior$legend <- FALSE
+    dots_prior$legend_labels <- legend_labels
+    dots_prior$hardcode <- plot_type == "ggplot"
+  }
+
+  draw <- function(visible, overlay_scale = NULL){
+    posterior <- .plot_factor_visible_data(data, visible)
+    dots$plot_data <- posterior
+    prior <- .plot_factor_visible_data(prior_data, visible)
+    axes <- c(prior, posterior)
+    if(isTRUE(dots$add) && plot_type == "ggplot"){
+      if(is.null(overlay_scale)){
+        # The receiving ggplot supplies its probability-axis mapping at addition.
+        return(.bt_ggplot_prior_overlay(function(scale) draw(visible, scale), axes))
+      }
+      dots$hardcode <- TRUE
+      dots$legend <- FALSE
+      dots$scale_y2 <- overlay_scale
+      dots_prior$scale_y2 <- overlay_scale
+    }
+    if(!length(prior)){
+      plot <- do.call(.plot_prior_list.factor, dots)
+      if(!is.null(overlay_scale)) return(plot$geoms)
+      return(plot)
+    }
+    dots_prior$axis_data <- axes
+    dots_prior$plot_data <- prior
+    dots_prior$add <- isTRUE(dots$add)
+    # A fresh figure scales the combined measures. A base overlay takes
+    # its scaling from the active figure through the renderer.
+    if(!isTRUE(dots$add)){
+      scale <- .plot_scale_y2_resolve(axes, dots)
+      dots_prior$scale_y2 <- scale
+      dots$scale_y2 <- scale
+    }
+    render_prior <- if(any(vapply(prior, inherits, logical(1), "density.prior.factor"))){
+      .plot_prior_list.factor
+    }else .plot_prior_list.both
+    plot <- do.call(render_prior, dots_prior)
+    dots$add <- TRUE
+    posterior_plot <- do.call(.plot_prior_list.factor, dots)
+    if(!is.null(overlay_scale)) return(c(plot$geoms, posterior_plot$geoms))
+    if(plot_type == "ggplot") plot + posterior_plot else invisible(NULL)
+  }
+
+  if(!individual) return(draw(selected))
+  plots <- lapply(selected, draw)
+  stats::setNames(plots, labels[selected])
+}
+
+.plot_factor_level_indices <- function(level, labels){
+
+  if(is.null(level)) return(seq_along(labels))
+  if(!is.character(level) || !length(level) || anyNA(level) || anyDuplicated(level)){
+    stop("'level' must contain one or more distinct factor level names.", call. = FALSE)
+  }
+  indices <- match(level, labels)
+  if(anyNA(indices)){
+    stop("Unknown factor level ", paste(shQuote(level[is.na(indices)]), collapse = ", "),
+         ". Available levels are ", paste(shQuote(labels), collapse = ", "), ".", call. = FALSE)
+  }
+  if(any(labels[duplicated(labels)] %in% level)){
+    stop("The requested factor level labels are ambiguous.", call. = FALSE)
+  }
+  indices
+}
+
+.plot_data_factor_column_atoms <- function(samples, selected = seq_len(ncol(samples))){
 
   .bt_ordered_source_require_measure(samples)
   posterior_atoms <- .posterior_atoms_get(samples, allow_partial = TRUE)
@@ -346,7 +483,7 @@
       posterior_atoms,
       if(n_atom_columns == 1L) 1L else i
     )
-    if(is.null(column_atoms)){
+    if(is.null(column_atoms) && i %in% selected){
       stop("Factor posterior plotting is unavailable because atom metadata do not identify the factor columns.", call. = FALSE)
     }
     column_atoms
