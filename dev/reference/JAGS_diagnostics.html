@@ -85,7 +85,9 @@ for a given parameter of a JAGS model.</p>
 <span>  short_name <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  parameter_names <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  <span class="va">...</span></span>
+<span>  <span class="va">...</span>,</span>
+<span>  statistic <span class="op">=</span> <span class="st">"value"</span>,</span>
+<span>  batch_size <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">JAGS_diagnostics_density</span><span class="op">(</span></span>
@@ -112,7 +114,9 @@ for a given parameter of a JAGS model.</p>
 <span>  short_name <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  parameter_names <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  <span class="va">...</span></span>
+<span>  <span class="va">...</span>,</span>
+<span>  statistic <span class="op">=</span> <span class="st">"value"</span>,</span>
+<span>  batch_size <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">JAGS_diagnostics_autocorrelation</span><span class="op">(</span></span>
@@ -212,6 +216,29 @@ be printed. Defaults to <code>TRUE</code>.</p></dd>
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>additional arguments</p></dd>
 
+
+<dt id="arg-statistic">statistic<a class="anchor" aria-label="anchor" href="#arg-statistic"></a></dt>
+<dd><p>trace quantity. <code>"value"</code> shows parameter draws.
+<code>"inclusion"</code> shows the fraction of each batch in the declared
+alternative group and needs every component declared null or alternative,
+with both present.
+<code>"component"</code> shows the fraction in each individual
+mixture component, on separate plots, including unvisited components. A
+binary null/alternative decision shows the alternative alone.
+<code>"switching"</code> shows the fraction of adjacent retained draws in the
+same batch that changed component, including switches within a group.
+The last three statistics need a trace plot without <code>transformations</code>
+and a sampled indicator: a mixture or spike-and-slab prior with at least two
+components (also as an ordered total) or a random-effect allocation gate.</p></dd>
+
+
+<dt id="arg-batch-size">batch_size<a class="anchor" aria-label="anchor" href="#arg-batch-size"></a></dt>
+<dd><p>optional number of retained draws per batch for an indicator
+trace. An explicit width keeps the final partial batch. By default the
+shortest chain is divided into approximately the square root of its length
+in balanced batches; longer chains use the same approximate width.
+Switching needs at least two draws per batch and chain.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
@@ -221,7 +248,12 @@ of class 'ggplot' if <code>plot_type = "ggplot"</code>.</p>
     </div>
     <div id="details">
     <h2>Details</h2>
-    <p>The trace shows the retained MCMC iteration of every draw on its
+    <p>Indicator traces place each batch at its mean original iteration
+and keep chains separate. A final switching batch with one draw has no rate
+and is not drawn. The components of a publication-bias mixture are traced
+with <code>parameter = "bias"</code>. An unavailable indicator diagnostic raises a
+<code>BayesTools_plot_condition</code>.</p>
+<p>The trace shows the retained MCMC iteration of every draw on its
 x axis (thinned chains keep their original positions).
 Autocorrelation uses the retained original iteration positions.
 Requested lags without finite observation pairs, beyond the retained chain,
@@ -241,7 +273,7 @@ autocorrelation diagnostics omit them when their draws are constant, and
 when nothing else remains the call returns <code>NULL</code> with a message, as for
 a spike prior; the trace is produced as for any other parameter. A parameter
 with a <code><a href="prior.html">prior_none()</a></code> prior is not sampled: the call returns <code>NULL</code> with
-a message for every type.</p>
+a message for every type of <code>statistic = "value"</code>.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
