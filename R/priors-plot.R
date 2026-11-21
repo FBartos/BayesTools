@@ -578,9 +578,6 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
 
   if(plot_type == "base"){
     .plot.prior_empty(if(mapped) "both" else "simple", dots)
-    if(mapped){
-      .plot_scale_y2_remember(scale_y2, dots[["ylim2"]])
-    }
     do.call(.lines_prior_mixed_measure, c(list(plot_data), dots_layers))
     return(invisible())
   }
@@ -955,9 +952,11 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
                     cex = cex.lab * graphics::par("cex"), col = col.lab,
                     font = graphics::par("font.lab"))
 
+    .plot_scale_y2_remember(scale_y2, ylim2)
     return(invisible(list(scale_y2 = scale_y2)))
   }
 
+  .plot_scale_y2_remember(if(type == "point") 1, if(type == "point") ylim)
   return(invisible())
 }
 .ggplot.prior_empty  <- function(type, dots = list(), ...){

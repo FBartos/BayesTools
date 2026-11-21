@@ -405,14 +405,14 @@ posterior_factor_columns <- function(samples, parameter, level = NULL){
 
   draw <- function(visible, overlay_scale = NULL){
     posterior <- .plot_factor_visible_data(data, visible)
-    if(length(visible) == 1L){
-      # A shared posterior spike belongs to the displayed level on a single-level figure.
+    if(length(visible) == 1L || length(visible) < length(labels)){
+      # A shared spike is drawn once, in the first visible level's style.
       universe <- attr(data, "factor_level_universe", exact = TRUE)
       for(i in seq_along(posterior)){
         if(inherits(posterior[[i]], "density.prior.point") &&
            is.null(attr(posterior[[i]], "level", exact = TRUE))){
-          attr(posterior[[i]], "level") <- visible
-          attr(posterior[[i]], "level_name") <- universe$name[visible]
+          attr(posterior[[i]], "level") <- visible[[1L]]
+          attr(posterior[[i]], "level_name") <- universe$name[visible[[1L]]]
         }
       }
     }

@@ -191,6 +191,17 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   prior_list
 }
+.plot_prior_scaled_overlay <- function(renderer, plot_data, axis_data, par_name, dots){
+
+  # The receiving plot is known only when ggplot2 adds these layers.
+  args <- c(list(plot_data = plot_data, axis_data = axis_data, par_name = par_name,
+                 plot_type = "ggplot", add = TRUE), dots)
+  .bt_ggplot_prior_overlay(function(scale){
+    args$scale_y2 <- scale
+    do.call(renderer, args)$geoms
+  }, plot_data, scale_y2 = .plot_scale_y2_resolve(axis_data, dots))
+}
+
 .plot_prior_axes <- function(plot_data, par_name, dots){
 
   xlim      <- range(as.vector(sapply(plot_data, attr, which = "x_range")))
@@ -239,6 +250,10 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 .plot_prior_list.both <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE,
                                   axis_data = plot_data, ...){
 
+  if(plot_type == "ggplot" && add && is.null(scale_y2)){
+    return(.plot_prior_scaled_overlay(.plot_prior_list.both, plot_data, axis_data, par_name, list(...)))
+  }
+
   axes <- .plot_prior_axes(axis_data, par_name, list(...))
   dots <- axes$dots
   type <- axes$type
@@ -266,10 +281,6 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
     if(!add){
       .plot.prior_empty(type, dots)
-      .plot_scale_y2_remember(
-        if(type == "both") scale_y2 else if(type == "point") 1,
-        if(type == "both") dots[["ylim2"]] else if(type == "point") dots[["ylim"]]
-      )
     }
 
     for(i in seq_along(plot_data)){
@@ -482,6 +493,10 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 .plot_prior_list.factor <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE,
                                   axis_data = plot_data, ...){
 
+  if(plot_type == "ggplot" && add && is.null(scale_y2)){
+    return(.plot_prior_scaled_overlay(.plot_prior_list.factor, plot_data, axis_data, par_name, list(...)))
+  }
+
   axes <- .plot_prior_axes(axis_data, par_name, list(...))
   dots <- axes$dots
   type <- axes$type
@@ -579,10 +594,6 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
     if(!add){
       .plot.prior_empty(type, dots)
-      .plot_scale_y2_remember(
-        if(type == "both") scale_y2 else if(type == "point") 1,
-        if(type == "both") dots[["ylim2"]] else if(type == "point") dots[["ylim"]]
-      )
     }
 
     # plot points

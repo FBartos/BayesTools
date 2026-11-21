@@ -63,6 +63,8 @@ test_that("a selected centered level retains its curve, prior, atoms and colour"
     expect_equal(selected[[4L]]$y, layers[[4L]]$y[july_rows])
     expect_equal(unique(selected[[4L]]$colour), july_colour)
     expect_equal(unique(selected[[3L]]$colour), july_colour)
+    subset_plot <- ggplot2::ggplot_build(draw(level = c("Jul", "Jun")))$data
+    expect_equal(unique(subset_plot[[3L]]$colour), july_colour)
     expect_identical(july$scales$get_scales("colour")$breaks, "July")
     # An overlay is built against the receiving ggplot's probability scale.
     overlay <- plot_posterior(samples, "mu_Month", level = "Jul", add = TRUE,
@@ -182,17 +184,27 @@ test_that("mixed factor overlays scale prior and posterior spikes to the receivi
   }
   # On a pure-point receiver, the primary y axis is already probability.
   point <- list(prior("point", list(0)))
-  plot_prior_list(point, xlim = c(-3, 3))
-  expect_identical(.plot_scale_y2_state_current()$scale_y2, 1)
-  tips <- numeric()
-  plot_posterior(mixed, "mu_Month", level = "Jul", prior = TRUE, add = TRUE, n_points = 64L)
-  expect_equal(tips, c(.35, .25))
-  first <- plot_prior_list(point, xlim = c(-3, 3), plot_type = "ggplot")
-  combined <- first + plot_posterior(mixed, "mu_Month", level = "Jul", prior = TRUE,
-    add = TRUE, plot_type = "ggplot", n_points = 64L)
-  expect_identical(combined$bt_scale_y2_state$scale_y2, 1)
-  spikes <- Filter(function(layer) "yend" %in% names(layer), ggplot2::ggplot_build(combined)$data)
-  expect_equal(unname(vapply(spikes, function(spike) unique(spike$yend), numeric(1))), c(1, .35, .25))
+  mixed_prior <- list(prior("normal", list(0, 1)), point[[1L]])
+  for(receiver in list(
+    function(type) plot(point[[1L]], xlim = c(-3, 3), plot_type = type),
+    function(type) plot_prior_list(point, xlim = c(-3, 3), plot_type = type)
+  )){
+    receiver("base")
+    expect_identical(.plot_scale_y2_state_current()$scale_y2, 1)
+    tips <- numeric()
+    plot_posterior(mixed, "mu_Month", level = "Jul", prior = TRUE, add = TRUE, n_points = 64L)
+    plot_prior_list(mixed_prior, add = TRUE, n_points = 64L)
+    lines_prior_list(mixed_prior, n_points = 64L)
+    expect_equal(tips, c(.35, .25, .5, .5))
+    combined <- receiver("ggplot") +
+      plot_posterior(mixed, "mu_Month", level = "Jul", prior = TRUE, add = TRUE, plot_type = "ggplot", n_points = 64L) +
+      plot_prior_list(mixed_prior, add = TRUE, plot_type = "ggplot", n_points = 64L) +
+      geom_prior_list(mixed_prior, n_points = 64L)
+    expect_identical(combined$bt_scale_y2_state$scale_y2, 1)
+    spikes <- Filter(function(layer) "yend" %in% names(layer), ggplot2::ggplot_build(combined)$data)
+    expect_equal(unname(vapply(spikes, function(spike) unique(spike$yend), numeric(1))),
+      c(1, .35, .25, .5, .5))
+  }
 })
 
 test_that("mixture, regularized, model-averaged and ordered effects use their fitted level labels", {
@@ -200,27 +212,30 @@ test_that("mixture, regularized, model-averaged and ordered effects use their fi
   spike <- prior_factor("point", list(0), contrast = "meandif")
   mixture <- prior_mixture(list(slab, spike), is_null = c(FALSE, TRUE))
   regularized <- prior_regularized("lasso", .5, contrast = "meandif")
-  for(p in list(mixture, regularized)){
-    samples <- as_mixed_posteriors(.month_level_fit(p), "mu_Month", n_prior_samples = 128L)
-    figures <- plot_posterior(samples, "mu_Month", plot_type = "ggplot", prior = TRUE,
+  check_july <- function(samples, parameter, prior = TRUE){
+    figures <- plot_posterior(samples, parameter, plot_type = "ggplot", prior = prior,
       individual = TRUE, level = "Jul", n_points = 64L)
     expect_named(figures, "Jul")
     expect_s3_class(figures[["Jul"]], "ggplot")
-    full <- plot_posterior(samples, "mu_Month", plot_type = "ggplot", prior = TRUE, n_points = 64L)
+    full <- plot_posterior(samples, parameter, plot_type = "ggplot", prior = prior, n_points = 64L)
     full_curve <- utils::tail(ggplot2::ggplot_build(full)$data, 1L)[[1L]]
     july_curve <- utils::tail(ggplot2::ggplot_build(figures[["Jul"]])$data, 1L)[[1L]]
-    july_colour <- full$scales$get_scales("colour")$palette(3)[["Jul"]]
+    scale <- full$scales$get_scales("colour")
+    july_colour <- scale$palette(length(scale$breaks))[["Jul"]]
     july_rows <- full_curve$colour == july_colour
     expect_equal(july_curve$x, full_curve$x[july_rows])
     expect_equal(july_curve$y, full_curve$y[july_rows])
+  }
+  for(p in list(mixture, regularized)){
+    check_july(as_mixed_posteriors(.month_level_fit(p), "mu_Month", n_prior_samples = 128L), "mu_Month")
   }
   models <- lapply(c(0, 1), function(shift){
     list(fit = .month_level_fit(slab, shift), marglik = bridgesampling_object(0), prior_weights = 1)
   })
   mixed <- mix_posteriors(models, "mu_Month", list(c(FALSE, FALSE)), seed = 90, n_samples = 120L)
-  expect_named(plot_posterior(mixed, "mu_Month", plot_type = "ggplot", individual = TRUE,
-    level = "Jul", n_points = 64L), "Jul")
+  check_july(mixed, "mu_Month", prior = FALSE)
   ordered <- ordered_plot_test_fixture(levels = c("May", "Jun", "Jul"))$samples
+  check_july(ordered, "mu_f")
   expect_named(plot_posterior(ordered, "mu_f", plot_type = "ggplot", individual = TRUE,
     n_points = 64L), c("Jun", "Jul"))
   expect_error(plot_posterior(ordered, "mu_f", level = "May"), "Jun.*Jul")
@@ -246,11 +261,14 @@ test_that("factor-valued random-slope SDs select the fitted treatment levels", {
   draw <- function(...){
     plot_posterior(samples, parameter, plot_type = "ggplot", n_points = 64L, ...)
   }
-  full <- ggplot2::ggplot_build(draw())$data[[1L]]
+  full_plot <- draw()
+  full <- ggplot2::ggplot_build(full_plot)$data[[1L]]
   selected <- ggplot2::ggplot_build(draw(level = "Jul"))$data[[1L]]
   expect_named(draw(individual = TRUE), months[-1L])
   expect_error(draw(level = "May"), "Jun.*Jul")
-  rows <- full$colour == selected$colour[[1L]]
+  july_colour <- full_plot$scales$get_scales("colour")$palette(2)[["Jul"]]
+  expect_equal(unique(selected$colour), july_colour)
+  rows <- full$colour == july_colour
   expect_equal(selected$x, full$x[rows])
   expect_equal(selected$y, full$y[rows])
 })
