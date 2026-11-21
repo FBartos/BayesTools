@@ -16,14 +16,16 @@
 #' Defaults to \code{30}.
 #' @param statistic trace quantity. \code{"value"} shows parameter draws.
 #' \code{"inclusion"} shows the fraction of each batch in the declared
-#' alternative group and needs both null and alternative components.
+#' alternative group and needs every component declared null or alternative,
+#' with both present.
 #' \code{"component"} shows the fraction in each individual
 #' mixture component, on separate plots, including unvisited components. A
 #' binary null/alternative decision shows the alternative alone.
 #' \code{"switching"} shows the fraction of adjacent retained draws in the
 #' same batch that changed component, including switches within a group.
-#' The last three statistics use a monitored indicator and need a trace plot
-#' without \code{transformations}.
+#' The last three statistics need a trace plot without \code{transformations}
+#' and a sampled indicator: a mixture or spike-and-slab prior with at least two
+#' components (also as an ordered total) or a random-effect allocation gate.
 #' @param batch_size optional number of retained draws per batch for an indicator
 #' trace. An explicit width keeps the final partial batch. By default the
 #' shortest chain is divided into approximately the square root of its length

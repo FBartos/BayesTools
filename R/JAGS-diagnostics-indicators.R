@@ -19,11 +19,14 @@
   }else if(is.prior.mixture(prior) && length(prior) > 1L){
     groups <- attr(prior, "components", exact = TRUE)
   }else{
-    .bt_diagnostics_unavailable("No sampled component indicator is declared for '", parameter, "'.")
+    .bt_diagnostics_unavailable("No sampled component indicator is declared for '", parameter, "': ",
+                                "indicator traces need a mixture or spike-and-slab prior with at least ",
+                                "two components, or a random-effect allocation gate.")
   }
   has_groups <- setequal(groups, c("null", "alternative"))
   if(statistic == "inclusion" && !has_groups){
-    .bt_diagnostics_unavailable("Inclusion for '", parameter, "' requires null and alternative groups. ",
+    .bt_diagnostics_unavailable("Inclusion for '", parameter, "' requires every component to be declared ",
+                                "null or alternative, with both present. ",
                                 "Use 'statistic = \"component\"' to inspect individual components.")
   }
   components <- seq_along(groups)

@@ -727,3 +727,50 @@ test_that("JAGS_check_and_list_autofit_settings validates all parameters", {
   expect_silent(JAGS_check_and_list_autofit_settings(unnamed_time))
 
 })
+
+
+test_that("indicator traces of fitted models match their sampled monitors", {
+
+  skip_if_not_installed("rjags")
+  skip_if_no_fits()
+
+  batch_values <- function(fit, indicator, statistic) lapply(coda::as.mcmc.list(fit), function(chain) {
+    states <- as.numeric(chain[, indicator])
+    as.numeric(tapply(states, (seq_along(states) - 1L) %/% 50L, statistic))
+  })
+  plotted_values <- function(plot) lapply(ggplot2::ggplot_build(plot)$data, `[[`, "y")
+  trace <- function(fit, parameter, statistic) JAGS_diagnostics_trace(
+    fit, parameter, plot_type = "ggplot", statistic = statistic, batch_size = 50)
+
+  # formula mixture and spike-and-slab factor terms, and a plain mixture
+  fit <- readRDS(file.path(temp_fits_dir, "fit_joint_complex.RDS"))
+  for (parameter in c("mu_x_cont1", "sigma")) {
+    expect_equal(plotted_values(trace(fit, parameter, "inclusion")),
+                 batch_values(fit, paste0(parameter, "_indicator"), function(z) mean(z == 2)),
+                 info = parameter)
+  }
+  expect_equal(plotted_values(trace(fit, "mu_x_fac3t", "inclusion")),
+               batch_values(fit, "mu_x_fac3t_indicator", function(z) mean(z == 1)))
+  components <- trace(fit, "mu_intercept", "component")
+  expect_length(components, 3L)
+  for (k in 1:3) {
+    expect_equal(plotted_values(components[[k]]),
+                 batch_values(fit, "mu_intercept_indicator", function(z) mean(z == k)), info = k)
+  }
+  expect_equal(plotted_values(trace(fit, "mu_intercept", "switching")),
+               batch_values(fit, "mu_intercept_indicator", function(z) mean(diff(z) != 0)))
+
+  # a publication-bias mixture of PET, PEESE and weight functions
+  fit <- readRDS(file.path(temp_fits_dir, "fit_bias_petpeese_hetero_wf.RDS"))
+  bias <- attr(fit, "prior_list")$bias
+  # every branch is declared an alternative, so inclusion is unavailable
+  expect_error(trace(fit, "bias", "inclusion"), class = "BayesTools_plot_condition")
+  expect_equal(plotted_values(trace(fit, "bias", "switching")),
+               batch_values(fit, "bias_indicator", function(z) mean(diff(z) != 0)))
+  components <- trace(fit, "bias", "component")
+  expect_length(components, length(bias))
+  for (k in seq_along(bias)) {
+    expect_equal(plotted_values(components[[k]]),
+                 batch_values(fit, "bias_indicator", function(z) mean(z == k)), info = k)
+  }
+})
