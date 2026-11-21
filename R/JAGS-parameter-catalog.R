@@ -171,7 +171,9 @@
 #' derived quantities. For gated total-variance allocations, realized
 #' `sd_total` and `var_total` draws include the all-off zero branch.
 #' `var_prop(...)` draws are normalized over active components and are `NA` on
-#' draws where the realized allocation total is zero. Random-effect
+#' draws where its parent gate is closed or no local component is active. The
+#' normalized allocation weights can remain defined when a separate external
+#' scale is zero and all realized component variances are zero. Random-effect
 #' correlations (`cor(...)` of LKJ blocks; original-scale correlations in a
 #' block with scaled columns) are `NA` on draws where the correlation is
 #' undefined, i.e. where one of the SDs of its pair is zero; a correlation
@@ -205,7 +207,8 @@
 #' the linear predictor; structural levels are point masses at their fixed
 #' value), one-to-one transformations, Dirichlet allocation marginals, and
 #' allocation-derived component SDs. Variance proportions are conditional on
-#' positive allocation variance. A shared parent inclusion gate cancels from
+#' an active allocation. They describe the relative gated weights and hence
+#' can remain defined at a zero external scale. A shared parent inclusion gate cancels from
 #' that conditional law, leaving the Dirichlet marginal
 #' `Beta(alpha_i, sum(alpha) - alpha_i)`. Independently gated components keep the mixed measure
 #' over the realized active set: atoms at 0 and 1, and a Beta mixture over
@@ -408,9 +411,7 @@ parameter_catalog.BayesTools_fit <- function(object, transform_scaled = TRUE, ..
 
   map <- .bt_parameter_fitted_map(fit)
   attr(fit, "formula_scale") <- list()
-  attr(fit, "parameter_map") <- map
-
-  fit
+  .bt_fit_with_parameter_map(fit, map)
 }
 
 # The fit on the fitted scale of its predictors, and the quantity of 'selection'

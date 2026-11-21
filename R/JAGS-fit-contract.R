@@ -137,6 +137,10 @@ JAGS_fit_contract <- function(fit){
   }
   contract <- attr(fit, "fit_contract", exact = TRUE)
   .bt_validate_fit_contract_object(contract)
+  map <- attr(fit, "parameter_map", exact = TRUE)
+  if(.bt_parameter_map_v22_pair(map, contract)){
+    contract$parameter_map_version <- .bt_parameter_map_from_v22(fit, map, contract)$schema_version
+  }
   contract
 }
 

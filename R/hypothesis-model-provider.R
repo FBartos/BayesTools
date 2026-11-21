@@ -79,7 +79,9 @@
 #'   (\code{"formula_coefficient_group"} for a whole factor term, whose levels
 #'   are its \code{member_quantity_ids}), \code{quantity}, \code{status},
 #'   \code{fixed_value}, \code{aliases} (a list column), and
-#'   \code{member_quantity_ids} (a list column). The alias rows of the catalog
+#'   \code{member_quantity_ids} (a list column). For a fitted R-squared budget
+#'   marginal the native provider records \code{source = "BayesTools::r2_budget"}
+#'   and the catalog's \code{quantity} kind. The alias rows of the catalog
 #'   of the entries carry the component as their \code{namespace} and
 #'   \code{component}.}
 #'   \item{\code{uncovered(resolution, quantity_ids, symbol, metadata)}}{the
@@ -930,6 +932,13 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
       if(identical(selection[["quantities"]][["owner_type"]], "r2_budget")){
         out <- parameter_plot_samples(fit, selection, conditional = conditional,
                                       transform_scaled = transform_scaled)
+        if(!identical(names(out), parameter)){
+          columns <- .bt_meta_get(out[[1L]], "quantities")
+          columns$column <- parameter
+          out[[1L]] <- .bt_meta_set(out[[1L]], "quantities", columns)
+          densities <- .bt_meta_get(out, "prior_densities")
+          if(!is.null(densities)) out <- .bt_meta_set(out, "prior_densities", stats::setNames(densities, parameter))
+        }
       }else{
         values <- parameter_mixed_posterior(fit, selection, conditional = conditional,
                                             transform_scaled = transform_scaled)

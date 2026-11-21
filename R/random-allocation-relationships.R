@@ -7,24 +7,40 @@
   q <- quantities[quantities$formula_parameter == parameter & !quantities$internal, , drop = FALSE]
   blocks <- design$random_effects
   names(blocks) <- vapply(blocks, `[[`, character(1), "block_name")
+  source_ref <- function(source, allocation = "", normalization = "", block = ""){
+    if(!identical(source$shape, "row")){
+      return(.bt_relationship_source(quantities, source$name))
+    }
+    inputs <- .bt_parameter_source_inputs(source)
+    if(!is.null(inputs) && length(inputs) == 0L){
+      add("row_data", source$name, "row_source", source$name, "callback_data", parameter,
+          allocation = allocation, normalization = normalization, block = block)
+    }
+    for(input in inputs){
+      ref <- .bt_relationship_source(quantities, input)
+      add(ref$type, ref$id, "row_source", source$name, "source_input", parameter,
+          allocation = allocation, normalization = normalization, block = block)
+    }
+    list(type = "row_source", id = source$name)
+  }
+  for(block in blocks){
+    binding <- block$sd_binding
+    if(length(binding$allocations) || !.bt_random_sd_binding_source_is_external(binding$source)) next
+    name <- block$block_name
+    root <- source_ref(binding$source, block = name)
+    add(root$type, root$id, "random_block", .bt_relationship_vertex("random_block", parameter, name),
+        "sd_source", parameter, block = name)
+  }
   for(declaration in design$random_allocations){
     name <- declaration$label
     owner <- vertex(name)
     normalization <- declaration$scale
-    link <- function(from_type, from, to_type, to, relation, component = ""){
-      add(from_type, from, to_type, to, relation, parameter, name, component, normalization)
+    link <- function(from_type, from, to_type, to, relation, component = "", block = ""){
+      add(from_type, from, to_type, to, relation, parameter, name, component, normalization, block)
     }
     if(is.null(declaration$parent)){
       source <- declaration$source
-      if(identical(source$shape, "row")){
-        root <- list(type = "row_source", id = source$name)
-        for(input in .bt_parameter_source_inputs(source)){
-          ref <- .bt_relationship_source(quantities, input)
-          link(ref$type, ref$id, root$type, root$id, "source_input")
-        }
-      }else{
-        root <- .bt_relationship_source(quantities, source$name)
-      }
+      root <- source_ref(source, name, normalization)
       link(root$type, root$id, "allocation", owner,
         if(isTRUE(source$owned)) "owned_sd_source" else "sd_source")
     }else{
@@ -85,7 +101,7 @@
       owns <- vapply(block$sd_binding$allocations, function(x) identical(x$label, name), logical(1))
       if(!any(owns)) next
       block_id <- .bt_relationship_vertex("random_block", parameter, target)
-      link("allocation_component", port, "random_block", block_id, "scales_block", component)
+      link("allocation_component", port, "random_block", block_id, "scales_block", component, target)
       block_rows <- which(q$owner_type == "random_block" & q$quantity %in% c("sd", "var") &
         vapply(q$extraction_key, function(key) identical(key$random_block, target), logical(1)))
       direct <- .bt_parameter_catalog_random_sd_is_direct(block, parameter, formula_scale)
@@ -99,12 +115,12 @@
         for(kind in c("sd", "var")){
           leaves <- block_rows[q$quantity[block_rows] == kind]
           link("allocation_component", port, "quantity", q$quantity_id[leaves],
-            paste0("block_", kind), component)
+            paste0("block_", kind), component, target)
         }
       }else{
         # Back-transformed summaries belong to the covariance block. Its fitted
         # component shares cannot in general be assigned to individual marginals.
-        link("random_block", block_id, "quantity", q$quantity_id[block_rows], "block_covariance")
+        link("random_block", block_id, "quantity", q$quantity_id[block_rows], "block_covariance", block = target)
       }
     }
   }

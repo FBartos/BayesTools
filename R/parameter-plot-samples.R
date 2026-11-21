@@ -9,7 +9,9 @@
 #' @param selection A selection of one BayesTools quantity.
 #' @param conditional Whether to condition on its declared inclusion event.
 #' @param transform_scaled Whether to request the original predictor scale.
-#'   A pure rescaling of an R2 term transforms the draws and prior together.
+#'   A pure rescaling of an R2 term transforms the draws, their weights on
+#'   the fitted coordinates, and their prior together. The coefficient
+#'   remains in residual-SD units per original predictor unit.
 #'   When an original-scale R2 coefficient mixes dependent fitted terms with
 #'   no supported prior law, the method raises `BayesTools_R2_density_unavailable`.
 #'   An ordinary scalar fixed coefficient is transformed using the formula
@@ -26,8 +28,16 @@ parameter_plot_samples <- function(fit, selection, conditional = FALSE, transfor
   q <- selection$quantities
   key <- q$extraction_key[[1L]]
   name <- q$canonical_name
+  factor <- 1
   if(transform_scaled && identical(q$owner_type, "r2_budget")){
-    values <- .bt_R2_original_scale_mixed_posterior(fit, selection, values, conditional)
+    if(identical(q$quantity, "coefficient")){
+      factor <- .bt_R2_original_scale_factor(fit, q$formula_parameter, key$dependencies)
+      if(is.null(factor)){
+        .bt_R2_unavailable(paste0("The original-scale coefficient '", name,
+          "' combines several fitted coefficients of an R-squared budget; its prior law is unavailable."),
+          class = "BayesTools_R2_density_unavailable")
+      }
+    }
   }else if(transform_scaled && identical(q$role, "fixed_coefficient") &&
            length(attr(fit, "formula_scale", exact = TRUE)[[q$formula_parameter]]) &&
            length(key$dependencies)){
@@ -38,14 +48,18 @@ parameter_plot_samples <- function(fit, selection, conditional = FALSE, transfor
       return(as_mixed_posteriors(fit, parameters = owner,
         conditional = if(conditional) owner, transform_scaled = TRUE))
     }
-    factor <- .bt_R2_original_scale_factor(fit, q$formula_parameter, key$dependencies)
-    if(!identical(factor, 1)){
+    if(!identical(.bt_R2_original_scale_factor(fit, q$formula_parameter, key$dependencies), 1)){
       stop(errorCondition(paste0("The original-scale plot of '", name,
         "' is unavailable for this fixed coefficient selection. Use 'transform_scaled = FALSE'."),
         class = "BayesTools_parameter_plot_scale_unavailable", call = NULL))
     }
   }
   out <- stats::setNames(list(values), name)
+  if(factor != 1){
+    out[[1L]] <- .bt_R2_original_scale_mixed_posterior(values, factor)
+    prior_densities <- stats::setNames(list(.bt_meta_get(out[[1L]], "prior_density")), name)
+    out <- .bt_meta_assign(out, list(transform_scaled = TRUE, prior_densities = prior_densities))
+  }
   attr(out, "prior_list") <- stats::setNames(list(prior_none()), name)
   class(out) <- c("as_mixed_posteriors", "mixed_posteriors", "list")
   out

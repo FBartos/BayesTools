@@ -43,6 +43,9 @@ fit <- JAGS_fit(
 if (inherits(fit, "error")) stop(conditionMessage(fit))
 catalog <- parameter_catalog(fit)
 select <- function(alias, namespace = NULL) parameter_catalog_resolve(catalog, alias, namespace = namespace)
+# We monitor random_sd here to check its numerical value independently. When
+# the same external source is unmonitored, use consumer_type = "coordinate"
+# and consumer_id = "random_sd" in these two declarations.
 declarations <- data.frame(
   source_id = c(select("tau_total")$quantity_id, select("Signal{total}", "fixed")$quantity_id),
   consumer_id = select("random_sd")$quantity_id,
@@ -133,6 +136,9 @@ stopifnot(any(e$relation == "source_input" & e$source_type == "quantity" & e$sou
               e$consumer_type == "row_source" & e$consumer_id == "row_sd"),
           any(e$relation == "sd_source" & e$source_type == "row_source" & e$source_id == "row_sd" &
               e$consumer_type == "allocation" & e$allocation == "row_pool"))
+block_rows <- e[e$relation == "scales_block" & e$allocation == "row_pool", ]
+bound <- stats::setNames(block_rows$block, block_rows$component)
+stopifnot(identical(unname(bound[c("a", "b")]), c("study", "lab")))
 original <- d[c(2, 7, 11, 19), , drop = FALSE]
 changed <- transform(original, exposure = 2 * exposure)
 predict_rows <- function(grid, target) JAGS_predict_formula(row_fit, "mu", data = grid, formula_target = target)$value

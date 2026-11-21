@@ -33,6 +33,17 @@ test_that("R2 convergence and block declarations distinguish values, gates and a
   expect_false(any(c(nodes$gates, nodes$indicator, nodes$open, nodes$allocation, nodes$rate) %in% default))
   expect_setequal(setdiff(requested(TRUE), default), c(nodes$gates, nodes$indicator))
 
+  share <- parameter_catalog_resolve(parameter_catalog(fit), "Signal[share: x]")
+  provider <- hypothesis_provider(fit)
+  entries <- provider$metadata()$entries
+  root <- entries$parameter[match(share$quantity_id, entries$quantity_id)]
+  samples <- provider$random$mixed_posterior(root, TRUE, FALSE, NULL)
+  expect_named(samples, root)
+  expect_named(attr(samples, "prior_list"), root)
+  columns <- posterior_metadata(samples[[root]], "quantities")
+  expect_identical(columns$column, root)
+  expect_identical(columns$quantity_id, share$quantity_id)
+
   # The sampled gate and its realized open flag differ on draws in the spike.
   expect_true(any(chains[[1]][, nodes$gates[1]] != chains[[1]][, nodes$open[1]]))
   for (target in c("mu_x", "mu_Signal")) {
@@ -126,4 +137,71 @@ test_that("a never-open term reports its local refusal without hiding the budget
   expect_identical(eligibility$direction_test[ids], c(FALSE, TRUE))
   expect_match(eligibility$reason[ids[1L]], "no posterior draw defines the quantity", fixed = TRUE)
   expect_error(hypothesis_BF_model(fit, "Signal[share: x] > 0.2"), class = "BayesTools_no_defined_posterior_draws")
+})
+
+test_that("plot samples in original predictor units retain the fitted projection and prior", {
+
+  set.seed(7933)
+  data <- data.frame(x = rep(c(-4, -2, 0, 2, 4), 3), f = factor(rep(letters[1:3], each = 5)))
+  fit_formula <- function(formula, priors) {
+    info <- JAGS_formula(formula, "mu", data, priors, formula_scale = TRUE)
+    samples <- .generate_prior_sample_matrix(info$prior_list, 150L)
+    .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(samples)), info$prior_list,
+                                formula_scale = list(mu = info$formula_scale),
+                                formula_design = list(mu = info$formula_design))
+  }
+  original_factor <- 1 / stats::sd(data$x)
+  check_projection <- function(fit, alias) {
+    selection <- parameter_catalog_resolve(parameter_catalog(fit), alias, namespace = "mu")
+    key <- selection$quantities$extraction_key[[1L]]
+    weights <- if(identical(key$type, "coordinate")) 1 else key$weights
+    out <- parameter_plot_samples(fit, selection)
+    name <- selection$quantities$canonical_name
+    q <- posterior_metadata(out[[name]], "quantities")
+    # sigma = 2.5 scales the linear predictor. The selected coefficients
+    # remain in residual SDs per original predictor unit.
+    expect_identical(q$quantity_id, selection$quantity_id)
+    expect_identical(q$dependencies[[1L]], key$dependencies)
+    expect_identical(q$weights[[1L]], as.numeric(original_factor * weights))
+    coordinates <- as.matrix(JAGS_materialize_draws(fit, parameters = key$dependencies))
+    expect_equal(as.numeric(out[[name]]), as.vector(coordinates %*% q$weights[[1L]]), tolerance = 1e-13)
+    expect_identical(.bt_meta_get(out, "transform_scaled"), TRUE)
+    densities <- posterior_metadata(out, "prior_densities")
+    expect_named(densities, name)
+    expect_identical(densities[[name]], posterior_metadata(out[[name]], "prior_density"))
+    out
+  }
+
+  scalar <- fit_formula(~ x, list(intercept = prior("normal", list(0, 1)),
+    Signal = prior_R2(total = prior("beta", list(1, 3)), model = R2_model(sigma = 2.5))))
+  original <- check_projection(scalar, "x")
+  sel <- parameter_catalog_resolve(parameter_catalog(scalar), "x")
+  fitted <- parameter_plot_samples(scalar, sel, transform_scaled = FALSE)
+  expect_identical(posterior_metadata(fitted[[1L]], "quantities")$weights[[1L]], 1)
+  expect_null(.bt_meta_get(fitted, "transform_scaled"))
+  expect_null(posterior_metadata(fitted, "prior_densities"))
+  total <- parameter_catalog_resolve(parameter_catalog(scalar), "Signal{total}")
+  expect_null(.bt_meta_get(parameter_plot_samples(scalar, total), "transform_scaled"))
+  # The rendered prior scales by the same Jacobian as its analytic density.
+  graph <- function(out, limits) {
+    ggplot2::ggplot_build(plot_posterior(out, "mu_x", plot_type = "ggplot",
+      prior = TRUE, n_points = 40L, xlim = limits))$data[[2L]]
+  }
+  limits <- c(-1, 1)
+  before <- graph(fitted, limits)
+  after <- graph(original, original_factor * limits)
+  expect_equal(after$x, original_factor * before$x, tolerance = 1e-10)
+  expect_equal(after$y, before$y / original_factor, tolerance = 1e-4)
+
+  # This level is a projection of both indexed interaction coefficients.
+  interaction <- fit_formula(~ x * f, list(
+    intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)),
+    f = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+    Signal = prior_R2(terms = "x:f", total = prior("beta", list(1, 3)),
+                      model = R2_model(sigma = 2.5, contrast = "orthonormal"))
+  ))
+  cell <- check_projection(interaction, "x:f[a]")
+  q <- posterior_metadata(cell[[1L]], "quantities")
+  expect_equal(length(q$dependencies[[1L]]), 2L)
+  expect_true(all(q$weights[[1L]] != 0))
 })

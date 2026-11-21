@@ -19,7 +19,9 @@ parameter_plot_samples(
 \item{conditional}{Whether to condition on its declared inclusion event.}
 
 \item{transform_scaled}{Whether to request the original predictor scale.
-A pure rescaling of an R2 term transforms the draws and prior together.
+A pure rescaling of an R2 term transforms the draws, their weights on
+the fitted coordinates, and their prior together. The coefficient
+remains in residual-SD units per original predictor unit.
 When an original-scale R2 coefficient mixes dependent fitted terms with
 no supported prior law, the method raises \code{BayesTools_R2_density_unavailable}.
 An ordinary scalar fixed coefficient is transformed using the formula

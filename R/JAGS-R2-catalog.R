@@ -328,7 +328,6 @@
     quantities$owner_name[members] <- record$name
     total_row <- rows[[1L]]
     quantities$parent_quantity_id[setdiff(members, total_row)] <- quantities$quantity_id[total_row]
-    quantities$arguments[coefficient_rows] <- as.list(quantities$term[coefficient_rows])
   }
   quantities
 }
@@ -835,40 +834,22 @@
   factors[[1L]]
 }
 
-# The mixed posterior of a coefficient of an R2 term on the original scale of
-# its predictor (see .bt_R2_original_scale_factor()): the draws multiplied by
-# the factor and the prior density of the rescaled catalog law (the atom of a
-# gate stays at zero). Other quantities are returned unchanged.
-.bt_R2_original_scale_mixed_posterior <- function(fit, selection, values, conditional){
+# Convert an R2 coefficient to original predictor units. The fitted-coordinate
+# projection and its selected (possibly conditioned) prior receive the same
+# multiplier. The residual SD belongs to the formula contribution.
+.bt_R2_original_scale_mixed_posterior <- function(values, factor){
 
-  quantity <- selection$quantities[1L, , drop = FALSE]
-  key <- quantity$extraction_key[[1L]]
-  prior_list <- attr(fit, "prior_list", exact = TRUE)
-  if(!key$type %in% c("coordinate", "factor_level")){
-    return(values)
-  }
-  owner <- .bt_R2_term_owner(prior_list, key$dependencies)
-  if(is.null(owner)){
-    return(values)
-  }
-  factor <- .bt_R2_original_scale_factor(fit, prior_list[[owner]]$parameter, key$dependencies)
-  if(is.null(factor)){
-    .bt_R2_unavailable(paste0("The original-scale coefficient '", quantity$canonical_name,
-      "' combines several fitted coefficients of an R-squared budget; its prior law is unavailable."),
-      class = "BayesTools_R2_density_unavailable")
-  }
-  if(factor == 1){
-    return(values)
-  }
-  scaled <- selection
-  weights <- if(is.null(key$weights)) rep(1, length(key$dependencies)) else key$weights
-  scaled$quantities$extraction_key[[1L]]$weights <- weights * factor
-  density <- .bt_parameter_prior_density_quantity_law(fit, scaled,
-    n_grid = .prior_linear_density_default_grid(), tail_prob = .prior_linear_density_tail_prob(),
-    conditional = conditional)
-  # the draws are multiplied by the factor: the metadata that describe values
-  # (support, atoms, prior density) are rescaled with them, the others kept
   meta <- .bt_meta_container(values)
+  quantities <- meta$quantities
+  quantities$weights[[1L]] <- quantities$weights[[1L]] * factor
+
+  density <- meta$prior_density
+  if(!is.null(density)){
+    origin <- attr(density, "parameter_prior_density", exact = TRUE)
+    map <- .bt_posterior_transformation("lin", list(a = 0, b = factor))
+    density <- .prior_density_output_transform(density, map)
+    attr(density, "parameter_prior_density") <- origin
+  }
   values[] <- as.numeric(values) * factor
   values <- .bt_meta_refresh(values)
   support <- meta$support
@@ -881,7 +862,7 @@
     atoms$locations[] <- atoms$locations * factor
   }
 
-  .bt_meta_assign(values, list(support = support, atoms = atoms, prior_density = density))
+  .bt_meta_assign(values, list(quantities = quantities, support = support, atoms = atoms, prior_density = density))
 }
 
 # The original-scale factor of the coefficient 'parameter' of the R2 term

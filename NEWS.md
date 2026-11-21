@@ -1,6 +1,6 @@
 # development version
 ### Breaking changes
-- Saved fits with earlier parameter maps require refitting for the new allocation metadata
+- The fitted parameter map uses schema 23 and can read complete pre-R2 schema 22 fits
 - BayesTools requires JAGS 5.0.0 or later and rjags 5-5 or later
 - `JAGS_fit()` returns a `BayesTools_fit` with coda methods and uses `JAGS_extend()` for continuation
 - `hypothesis_BF()` and `hypothesis_BF_model()` replace `columns` with `include_densities`, `include_probabilities`, and `include_method`; the `prior` and `posterior` columns are replaced by point densities and region probabilities, and table labels keep the notation of the hypothesis, with a constant on the right of a single relation

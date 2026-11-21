@@ -88,7 +88,9 @@ parameter), \code{component} (a value of \code{components$values}),
 (\code{"formula_coefficient_group"} for a whole factor term, whose levels
 are its \code{member_quantity_ids}), \code{quantity}, \code{status},
 \code{fixed_value}, \code{aliases} (a list column), and
-\code{member_quantity_ids} (a list column). The alias rows of the catalog
+\code{member_quantity_ids} (a list column). For a fitted R-squared budget
+marginal the native provider records \code{source = "BayesTools::r2_budget"}
+and the catalog's \code{quantity} kind. The alias rows of the catalog
 of the entries carry the component as their \code{namespace} and
 \code{component}.}
 \item{\code{uncovered(resolution, quantity_ids, symbol, metadata)}}{the

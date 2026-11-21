@@ -696,6 +696,11 @@ model builder's additional declared inputs with
 `register_parameter_relationships()`; keep those rows when extending catalogs,
 requesting the fitted predictor scale, or serializing a fit.
 
+For a saved pre-R² map 22 with complete fitted declarations, the fit accessors
+preserve its coordinate, quantity and alias tables and derive the new relationship
+table from the stored model metadata. The read view is memoized by its inputs.
+Older maps, experimental R² map 22 recipes and incomplete bindings require refitting.
+
 An R² budget owns its total, term shares, realized inclusion events, rate and
 coefficient members. Closed terms have undefined shares even while another
 term is open. Conditions and share summaries consume the same effective-open
@@ -1018,7 +1023,7 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   tables re-runs validation. The fit contract stores one
   `parameter_map_version`; there are no separate registry/catalog versions or
   fit attributes. Bump `.bt_parameter_map_version` whenever selectors or map
-  semantics change; fits with another version must be refitted.
+  semantics change. The verified pre-R² map 22 read path is the compatibility exception.
   Version 17 corrects the persisted pure-rescaling classification of named
   random-effect fallback maps; older maps must not be relabelled in place.
   Version 18 gives the spike-and-slab and mixture nodes of a structured

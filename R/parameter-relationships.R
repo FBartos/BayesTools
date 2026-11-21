@@ -8,24 +8,32 @@
 #'
 #' @param object A `BayesTools_fit`, a parameter map or a parameter catalog.
 #' @param relationships A data frame with character columns `source_id`,
-#'   `consumer_id` and `relation`, and optionally `component`. Both IDs must
-#'   identify public quantities already registered in this object. Each row
-#'   describes one input of the consumer as declared by the model builder.
+#'   `consumer_id` and `relation`, and optional `source_type`, `consumer_type`
+#'   and `component`. Each endpoint type defaults to `"quantity"`, with its
+#'   public catalog ID. A `"coordinate"` or `"row_source"` endpoint uses the
+#'   exact fitted name and type of an external scale or row-callback input
+#'   already declared by the native relationships.
 #' @param provider Name of the package or model builder supplying the rows.
 #'   The name `BayesTools` is reserved. Register the returned object with the
 #'   consumer. Repeating a declaration from the same provider is idempotent.
 #'
 #' @details Each directed edge runs from a source to a consumer. Join endpoints
-#'   by both their type and opaque ID. Type `quantity` refers to
+#'   by both their type and opaque ID. A fit gives the default original-scale
+#'   graph. Use `parameter_relationships(parameter_catalog(fit, transform_scaled = FALSE))`
+#'   for links to individual fitted SDs when original-scale SDs combine several
+#'   covariance coordinates. Type `quantity` refers to
 #'   `parameter_catalog(object)$quantities$quantity_id`. Type `coordinate`
 #'   denotes a declared backend input, which may be data or unmonitored. Type
 #'   `random_block` identifies the owning fitted block. Type `row_source` denotes a row-shaped
-#'   source by its declared node name. Type `constant` denotes a fixed numerical
+#'   source by its declared node name. A native `row_data` endpoint identifies
+#'   the row-data context of a callback that declares zero posterior inputs,
+#'   using the callback's node name. Its `callback_data` edge connects it to
+#'   the reconstructed row source. Type `constant` denotes a fixed numerical
 #'   scale. Types `allocation` and `allocation_component` are structural vertices
 #'   with identities scoped to the formula and declared owner. They remain
 #'   addressable when a scalar summary is unavailable.
 #'
-#'   For random allocations, `sd_source` connects a root to its allocation,
+#'   For random effects, `sd_source` connects an existing scale to its allocation or directly to a block,
 #'   `parent_component` connects the consumed component to its child allocation,
 #'   and `allocates` connects an allocation to each declared component. A root
 #'   whose prior is owned by the allocation uses `owned_sd_source`. `source_input`
@@ -37,7 +45,9 @@
 #'   kind, such as `var_prop`, `sd_total` or `sd_common`.
 #'   `formula_parameter`, `allocation` and `component` contain binding keys.
 #'   `normalization` records the declared variance normalization or R2 law.
-#'   `provider` records who declares the relationship. All columns are character.
+#'   `block` gives the declared random block for a block binding, including when
+#'   its row-shaped SD has no scalar quantity. `provider` records who declares
+#'   the relationship. All columns are character.
 #'
 #'   For an R2 budget, the realized total and its residual scale are separate
 #'   inputs of the allocation. Each term is a component. Follow its reporting
@@ -49,7 +59,18 @@
 #'   provenance. In particular, a child with its own inclusion gates can
 #'   realize less variance than its incoming component was assigned.
 #'
-#'   Provider declarations describe inputs of an existing model. Provide one
+#'   Provider declarations describe inputs of an existing model. A provider can
+#'   declare the inputs of its extension quantities or ordinary model coordinates.
+#'   An external scale used by a fitted allocation may be an unmonitored
+#'   deterministic node in the model syntax. For example, if `random_sd` is
+#'   computed from a total SD and a fraction, register both public quantity IDs
+#'   as sources for `consumer_type = "coordinate"`, `consumer_id = "random_sd"`.
+#'   Reading the resulting relationship leaves the draw schema intact. A
+#'   row-shaped source with a declared reconstruction callback retains the
+#'   inputs registered from that callback.
+#'   Each such consumer has one declaring provider. Native catalog quantities
+#'   whose semantics BayesTools already assigns keep their compiler-owned inputs.
+#'   Provide one
 #'   row per input, using descriptive relation names (for example,
 #'   `sd_source`, `variance_fraction` and `complement_variance_fraction`).
 #'   Evaluation, analytic prior availability and inclusion events follow the
@@ -63,6 +84,18 @@
 #' @return `parameter_relationships()` returns a plain data frame with one
 #'   row per relationship. `register_parameter_relationships()` returns a
 #'   copy of the supplied fit, map or catalog with the provider's rows.
+#' @examples
+#' \dontrun{
+#' # The fitted model defines random_sd from tau_total and a budget fraction.
+#' catalog <- parameter_catalog(fit)
+#' tau <- parameter_catalog_resolve(catalog, "tau_total")$quantity_id
+#' r <- parameter_catalog_resolve(catalog, "Signal{total}", namespace = "fixed")$quantity_id
+#' # random_sd is a declared external SD source. Its draws were not monitored.
+#' inputs <- data.frame(source_id = c(tau, r), consumer_type = "coordinate",
+#'   consumer_id = "random_sd", relation = c("sd_source", "complement_variance_fraction"))
+#' fit <- register_parameter_relationships(fit, inputs, provider = "MyModel")
+#' subset(parameter_relationships(fit), consumer_id == "random_sd")
+#' }
 #' @seealso [parameter_map()], [parameter_catalog_extend()], [parameter_source()],
 #'   [random_variance_allocation()], [allocation_ref()], [prior_R2()]
 #' @export
@@ -95,17 +128,17 @@ register_parameter_relationships <- function(object, relationships, provider){
   required <- c("source_id", "consumer_id", "relation")
   if(!is.data.frame(relationships) || !all(required %in% names(relationships)) ||
      anyDuplicated(names(relationships)) ||
-     !all(names(relationships) %in% c(required, "component")) ||
+     !all(names(relationships) %in% c(required, "source_type", "consumer_type", "component")) ||
      !all(vapply(relationships, is.character, logical(1))) || anyNA(relationships)){
-    .bt_relationship_stop("Supply character columns 'source_id', 'consumer_id' and 'relation', with an optional 'component' column.")
+    .bt_relationship_stop(paste0("Supply character columns 'source_id', 'consumer_id' and 'relation', ",
+      "with optional 'source_type', 'consumer_type' and 'component' columns."))
   }
   if(!nrow(relationships)) return(object)
-  public <- target$quantities$quantity_id[!target$quantities$internal]
-  if(!all(c(relationships$source_id, relationships$consumer_id) %in% public)){
-    .bt_relationship_stop("Every registered endpoint must identify an existing public catalog quantity.")
-  }
-  entries <- .bt_relationship_rows("quantity", relationships$source_id,
-    "quantity", relationships$consumer_id, relationships$relation,
+  entries <- .bt_relationship_rows(
+    if("source_type" %in% names(relationships)) relationships$source_type else "quantity",
+    relationships$source_id,
+    if("consumer_type" %in% names(relationships)) relationships$consumer_type else "quantity",
+    relationships$consumer_id, relationships$relation,
     component = if("component" %in% names(relationships)) relationships$component else "",
     provider = provider)
   combined <- unique(rbind(existing, entries))
@@ -119,8 +152,7 @@ register_parameter_relationships <- function(object, relationships, provider){
     .bt_parameter_map_cache_store(target, .bt_parameter_map_cache(target))
   }
   if(!is_fit) return(target)
-  attr(object, "parameter_map") <- target
-  object
+  .bt_fit_with_parameter_map(object, target)
 }
 
 .bt_relationship_stop <- function(message){
@@ -130,10 +162,10 @@ register_parameter_relationships <- function(object, relationships, provider){
 
 .bt_relationship_rows <- function(source_type, source_id, consumer_type, consumer_id,
                                   relation, formula_parameter = "", allocation = "",
-                                  component = "", normalization = "", provider = "BayesTools"){
+                                  component = "", normalization = "", block = "", provider = "BayesTools"){
 
   data.frame(source_type, source_id, consumer_type, consumer_id, relation,
-    formula_parameter, allocation, component, normalization, provider,
+    formula_parameter, allocation, component, normalization, block, provider,
     stringsAsFactors = FALSE, row.names = NULL)
 }
 
@@ -167,8 +199,48 @@ register_parameter_relationships <- function(object, relationships, provider){
     "Type of consumer endpoint.", "Opaque consumer ID or declared coordinate.",
     "Directed relationship from source to consumer.", "Owning formula, where applicable.",
     "Declared allocation binding key.", "Declared component binding key.",
-    "Variance normalization or R2 coefficient law.", "Provider declaring the relationship."
+    "Variance normalization or R2 coefficient law.", "Declared fitted random block, where applicable.",
+    "Provider declaring the relationship."
   ), stringsAsFactors = FALSE)
+}
+
+.bt_validate_provider_relationships <- function(extra, native, quantities){
+
+  allowed_types <- c("quantity", "coordinate", "row_source")
+  if(!all(c(extra$source_type, extra$consumer_type) %in% allowed_types) ||
+     any(!grepl("^[A-Za-z][A-Za-z0-9.]*$", extra$provider))){
+    .bt_relationship_stop("A model provider must register public quantities or declared external sources.")
+  }
+  boundary <- native$relation %in% c("sd_source", "residual_sd", "source_input")
+  for(type in c("coordinate", "row_source")){
+    used <- c(extra$source_id[extra$source_type == type],
+              extra$consumer_id[extra$consumer_type == type])
+    if(!length(used)) next
+    typed <- native$source_type == type
+    # A private primitive read by a callback still belongs to its fitted prior.
+    allowed <- setdiff(native$source_id[typed & boundary], native$source_id[typed & !boundary])
+    if(!all(used %in% allowed)){
+      .bt_relationship_stop("Each coordinate or row-source endpoint must be an external input declared by the fitted model.")
+    }
+  }
+  callback_sources <- native$consumer_id[native$consumer_type == "row_source" &
+                                         native$relation %in% c("source_input", "callback_data")]
+  if(any(extra$consumer_type == "row_source" & extra$consumer_id %in% callback_sources)){
+    .bt_relationship_stop("The inputs of a row-source callback are already declared by the fitted model.")
+  }
+  quantity_edges <- extra[extra$consumer_type == "quantity", , drop = FALSE]
+  targets <- quantities[match(quantity_edges$consumer_id, quantities$quantity_id), , drop = FALSE]
+  plain_model_node <- targets$provider == "BayesTools" & !nzchar(targets$owner_type) &
+    targets$role == "parameter" & vapply(targets$extraction_key, function(key){
+      identical(key$type, "coordinate")
+    }, logical(1))
+  if(any(targets$provider != quantity_edges$provider & !plain_model_node)){
+    .bt_relationship_stop("A provider can declare inputs only for its own quantities or ordinary model coordinates.")
+  }
+  owners <- unique(extra[c("consumer_type", "consumer_id", "provider")])
+  if(anyDuplicated(owners[c("consumer_type", "consumer_id")])){
+    .bt_relationship_stop("The inputs of a model quantity or external source must be declared by one provider.")
+  }
 }
 
 .bt_validate_relationship_rows <- function(edges, quantities){
@@ -178,7 +250,7 @@ register_parameter_relationships <- function(object, relationships, provider){
     .bt_relationship_stop("Parameter relationships must follow the registered edge schema.")
   }
   if(!nrow(edges)) return(invisible(TRUE))
-  types <- c("quantity", "coordinate", "row_source", "constant", "allocation", "allocation_component", "random_block")
+  types <- c("quantity", "coordinate", "row_source", "row_data", "constant", "allocation", "allocation_component", "random_block")
   if(!all(c(edges$source_type, edges$consumer_type) %in% types) ||
      any(!nzchar(edges$source_id)) || any(!nzchar(edges$consumer_id)) ||
      any(!nzchar(edges$relation)) || any(!nzchar(edges$provider))){
@@ -188,6 +260,10 @@ register_parameter_relationships <- function(object, relationships, provider){
   if(!all(c(edges$source_id[edges$source_type == "quantity"],
             edges$consumer_id[edges$consumer_type == "quantity"]) %in% public)){
     .bt_relationship_stop("A relationship references an unknown public quantity ID.")
+  }
+  native <- edges$provider == "BayesTools"
+  if(any(!native)){
+    .bt_validate_provider_relationships(edges[!native, , drop = FALSE], edges[native, , drop = FALSE], quantities)
   }
   if(anyDuplicated(edges[setdiff(names(edges), "provider")])){
     .bt_relationship_stop("The same parameter relationship was declared more than once.")
@@ -200,7 +276,7 @@ register_parameter_relationships <- function(object, relationships, provider){
   # that the reported quantity numerically depends on the residual SD.
   # Validate data-flow and containment independently of these memberships.
   flow <- edges$provider != "BayesTools" | edges$relation %in% c(
-    "sd_source", "owned_sd_source", "source_input", "parent_component", "allocates",
+    "sd_source", "owned_sd_source", "source_input", "callback_data", "parent_component", "allocates",
     "scales_block", "block_sd", "block_var", "block_covariance", "budget_total",
     "residual_sd", "allocation_weight", "raw_gate", "budget_gate")
   edges <- edges[flow, , drop = FALSE]
@@ -229,7 +305,8 @@ register_parameter_relationships <- function(object, relationships, provider){
 
 .bt_validate_relationships <- function(edges, quantities){
 
-  .bt_validate_once("parameter_relationships", list(edges, quantities$quantity_id, quantities$internal),
+  .bt_validate_once("parameter_relationships", list(edges, quantities$quantity_id, quantities$internal,
+    quantities$provider, quantities$owner_type, quantities$role, quantities$extraction_key),
     function() .bt_validate_relationship_rows(edges, quantities))
 }
 
@@ -237,14 +314,14 @@ register_parameter_relationships <- function(object, relationships, provider){
 
   rows <- list()
   add <- function(source_type, source_id, consumer_type, consumer_id, relation,
-                  formula_parameter = "", allocation = "", component = "", normalization = ""){
+                  formula_parameter = "", allocation = "", component = "", normalization = "", block = ""){
     if(length(source_id) && length(consumer_id)){
       rows[[length(rows) + 1L]] <<- .bt_relationship_rows(source_type, source_id,
-        consumer_type, consumer_id, relation, formula_parameter, allocation, component, normalization)
+        consumer_type, consumer_id, relation, formula_parameter, allocation, component, normalization, block)
     }
   }
   for(design in .bt_random_effect_summary_designs(formula_design)){
-    if(length(design$random_allocations)){
+    if(length(design$random_effects) || length(design$random_allocations)){
       .bt_random_relationships(add, quantities, design, formula_scale)
     }
   }

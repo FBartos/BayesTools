@@ -1662,9 +1662,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       )
       BF_log_values <- c(BF_log_values, temp_BF_reporting$log_value)
       parameter_roles <- c(parameter_roles, "random_inclusion")
-      event_ids <- c(event_ids, quantities$quantity_id[
-        match(.bt_label(allocation_parts, style = "selector"), quantities$canonical_name)
-      ])
+      event_ids <- c(event_ids, .bt_inference_event_id(quantities, indicator_name))
       row_labels <- c(row_labels, temp_parameter)
     }
   }
@@ -2044,9 +2042,10 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
 # An inference row summarizes a 0/1 event. A mixture's categorical model
 # index is not itself the event for one component. Only a cataloged Bernoulli
 # quantity for that component can identify such an event.
-.bt_inference_event_id <- function(quantities, indicator, component, binary = FALSE){
+.bt_inference_event_id <- function(quantities, indicator, component = NULL, binary = FALSE){
 
-  random <- which(quantities$role == "random_inclusion" & quantities$component == component)
+  random <- which(quantities$role == "random_inclusion")
+  if(!is.null(component)) random <- random[quantities$component[random] == component]
   matches <- random[vapply(quantities$extraction_key[random], function(key){
     identical(key$source_parameter, indicator)
   }, logical(1))]
