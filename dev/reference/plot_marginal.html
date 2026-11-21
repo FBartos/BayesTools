@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9011</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9012</span>
       </span>
     </div>
 
@@ -86,7 +86,9 @@
 <span>  legend_labels <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  legend_position <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span>,</span>
-<span>  density_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"KDE"</span>, <span class="st">"precomputed"</span><span class="op">)</span></span>
+<span>  density_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"KDE"</span>, <span class="st">"precomputed"</span><span class="op">)</span>,</span>
+<span>  level <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  individual <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -179,7 +181,8 @@ parameter that needs to be transformed.</p></dd>
 
 
 <dt id="arg-legend-labels">legend_labels<a class="anchor" aria-label="anchor" href="#arg-legend-labels"></a></dt>
-<dd><p>optional labels for factor legend levels.</p></dd>
+<dd><p>optional display labels in full fitted plot order.
+Select levels by their original labels even when relabelling the legend.</p></dd>
 
 
 <dt id="arg-legend-position">legend_position<a class="anchor" aria-label="anchor" href="#arg-legend-position"></a></dt>
@@ -201,11 +204,24 @@ continuous curve stops with a remedy to supply matching metadata or use
 continuous part of the posterior; atoms are drawn from the declared
 posterior atoms with either method.</p></dd>
 
+
+<dt id="arg-level">level<a class="anchor" aria-label="anchor" href="#arg-level"></a></dt>
+<dd><p>optional character vector of original factor level labels, in
+display order. The default uses all plotted levels in fitted order. For
+interactions, use the joint cell label shown in the default legend.</p></dd>
+
+
+<dt id="arg-individual">individual<a class="anchor" aria-label="anchor" href="#arg-individual"></a></dt>
+<dd><p>whether to draw a separate figure for each selected factor
+level. With <code>plot_type = "ggplot"</code>, return a list named by level.
+To add levels to an existing plot, use <code>individual = FALSE</code>.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>plot_marginal</code> returns either <code>NULL</code> or
-an object of class 'ggplot' if plot_type is <code>plot_type = "ggplot"</code>.</p>
+    <p>Base graphics draws the figures and returns invisible <code>NULL</code>.
+With <code>plot_type = "ggplot"</code>, returns a ggplot or, for individual factor
+plots, a named list of ggplots even when one level is selected.</p>
     </div>
     <div id="details">
     <h2>Details</h2>

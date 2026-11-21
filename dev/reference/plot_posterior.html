@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9011</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9012</span>
       </span>
     </div>
 
@@ -94,7 +94,8 @@
 <span>  legend_labels <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  legend_position <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span>,</span>
-<span>  density_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"KDE"</span>, <span class="st">"precomputed"</span><span class="op">)</span></span>
+<span>  density_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"KDE"</span>, <span class="st">"precomputed"</span><span class="op">)</span>,</span>
+<span>  level <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -152,8 +153,10 @@ Other ordered families retain their existing sampling fallback.</p></dd>
 
 
 <dt id="arg-individual">individual<a class="anchor" aria-label="anchor" href="#arg-individual"></a></dt>
-<dd><p>should individual densities be returned
-(e.g., in case of weightfunction)</p></dd>
+<dd><p>for factors, draw one base figure per selected level or
+return a named list of ggplots, including for a single level. To add levels
+to an existing factor plot, use <code>individual = FALSE</code>. For weight
+functions, plot individual weights. For PET or PEESE, plot its coefficient.</p></dd>
 
 
 <dt id="arg-show-figures">show_figures<a class="anchor" aria-label="anchor" href="#arg-show-figures"></a></dt>
@@ -254,7 +257,8 @@ Supports <code>col</code>/<code>color</code>, <code>alpha</code>, <code>lwd</cod
 
 
 <dt id="arg-legend-labels">legend_labels<a class="anchor" aria-label="anchor" href="#arg-legend-labels"></a></dt>
-<dd><p>optional labels for factor legend levels.</p></dd>
+<dd><p>optional display labels in full fitted plot order.
+Select levels by their original labels even when relabelling the legend.</p></dd>
 
 
 <dt id="arg-legend-position">legend_position<a class="anchor" aria-label="anchor" href="#arg-legend-position"></a></dt>
@@ -278,11 +282,18 @@ continuous curve stops with a remedy to supply matching metadata or use
 continuous part of the posterior; atoms are drawn from the declared
 posterior atoms with either method.</p></dd>
 
+
+<dt id="arg-level">level<a class="anchor" aria-label="anchor" href="#arg-level"></a></dt>
+<dd><p>optional character vector of original factor level labels, in
+display order. The default uses all plotted levels in fitted order. For
+interactions, use the joint cell label shown in the default legend.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>plot_posterior</code> returns either <code>NULL</code> or
-an object of class 'ggplot' if plot_type is <code>plot_type = "ggplot"</code>.</p>
+    <p>Base graphics draws the figures and returns invisibly. With
+<code>plot_type = "ggplot"</code>, a combined factor plot is a ggplot and
+individual factor plots are a list of ggplots named by original level.</p>
     </div>
     <div id="details">
     <h2>Details</h2>
@@ -343,6 +354,10 @@ and point masses determine the axes. Ordered prior overlays default to the
 corresponding posterior colors and dashed lines; explicit <code>dots_prior</code>
 <code>col</code>, <code>lty</code>, or <code>linetype</code> override these defaults. The
 posterior owns the legend.</p>
+<p>For a factor-valued random-slope SD with fitted level cells, select the
+slope term and its level. A study-specific intercept or slope requires its
+grouping level and coefficient. Scalar SDs and correlations are selected
+by parameter name.</p>
 <p>For base plots, the initial call establishes the density-to-probability
 mapping. Calls with <code>add = TRUE</code> reuse that mapping so point masses from
 separate prior or posterior objects remain comparable. Point masses outside
@@ -351,9 +366,19 @@ with wider limits to display them.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
-    <div class="dont-index"><p><code><a href="prior.html">prior()</a></code> <code><a href="lines_prior_list.html">lines_prior_list()</a></code>  <code><a href="geom_prior_list.html">geom_prior_list()</a></code></p></div>
+    <div class="dont-index"><p><code><a href="posterior_factor_columns.html">posterior_factor_columns()</a></code> <code><a href="prior.html">prior()</a></code> <code><a href="lines_prior_list.html">lines_prior_list()</a></code> <code><a href="geom_prior_list.html">geom_prior_list()</a></code></p></div>
     </div>
 
+    <div id="ref-examples">
+    <h2>Examples</h2>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
+<span class="r-in"><span><span class="va">months</span> <span class="op">&lt;-</span> <span class="fu"><a href="as_mixed_posteriors.html">as_mixed_posteriors</a></span><span class="op">(</span><span class="va">fit</span>, parameters <span class="op">=</span> <span class="st">"mu_Month"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu">plot_posterior</span><span class="op">(</span><span class="va">months</span>, <span class="st">"mu_Month"</span>, level <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"May"</span>, <span class="st">"Jul"</span><span class="op">)</span>, prior <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">figures</span> <span class="op">&lt;-</span> <span class="fu">plot_posterior</span><span class="op">(</span><span class="va">months</span>, <span class="st">"mu_Month"</span>, individual <span class="op">=</span> <span class="cn">TRUE</span>, plot_type <span class="op">=</span> <span class="st">"ggplot"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">figures</span><span class="op">[[</span><span class="st">"Jul"</span><span class="op">]</span><span class="op">]</span></span></span>
+<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
+</code></pre></div>
+    </div>
   </div>
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
     <nav id="toc" data-toggle="toc" class="sticky-top"><h2 data-toc-skip>Contents</h2>
