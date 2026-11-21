@@ -37,6 +37,7 @@ test_that("model strips preserve posterior masses and declared tie and row order
   expect_identical(data$rows$label, c("Heterogeneity", "Effect", "Dose (mg)", "Publication bias"))
   expect_identical(data$runs$label, c("Components", "Location", "Components"))
   expect_identical(data$runs$y, c(3.5, 2, 1))
+  expect_identical(data$row_rules$group_boundary, c(FALSE, TRUE, TRUE))
   expect_identical(unname(data$palette["adjustment"]), "#6C4590")
   expect_identical(unname(data$legend_labels["adjustment"]), "Selection model")
 
@@ -62,6 +63,10 @@ test_that("the public model probability plot dispatches and preserves row count"
   expect_identical(p$theme$legend.position, "top")
   built <- ggplot2::ggplot_build(p)
   expect_identical(nrow(built$layout$layout), 3L)
+  separators <- built$data[[4L]]
+  separators <- separators[order(separators$PANEL, -separators$y), ]
+  expect_identical(as.integer(separators$PANEL), c(1L, 2L, 2L, 3L))
+  expect_identical(separators$y, c(2.5, 2.5, 1.5, 1.5))
   expect_identical(
     built$layout$panel_params[[1L]]$x$get_labels(),
     c("0", "0.25", "0.50", "0.75", "1")
@@ -204,15 +209,17 @@ test_that("the model probability matrix renders in both graphics backends", {
   skip_if_not_test_profile("visual")
   skip_if_not_installed("vdiffr")
   fixture <- .model_probability_plot_fixture()
+  row_order <- c("mu", "tau", "bias", "loc")
+  cells <- fixture$cells[order(match(fixture$cells$row, row_order)), ]
 
   vdiffr::expect_doppelganger("model probabilities ggplot", plot_model_probabilities(
-    fixture$probabilities, fixture$cells, labels = c(loc = "Dose (mg)"), group_labels = TRUE,
+    fixture$probabilities, cells, labels = c(loc = "Dose (mg)"), group_labels = TRUE,
     col = fixture$col, state_labels = c(adjustment = "Selection model"),
     legend = TRUE, legend_position = "top", plot_type = "ggplot"
   ))
   vdiffr::expect_doppelganger("model probabilities base", function(){
     plot_model_probabilities(
-      fixture$probabilities, fixture$cells, labels = c(loc = "Dose (mg)"), group_labels = TRUE,
+      fixture$probabilities, cells, labels = c(loc = "Dose (mg)"), group_labels = TRUE,
       col = fixture$col, state_labels = c(adjustment = "Selection model"), legend = TRUE
     )
   })

@@ -164,8 +164,9 @@ plot_model_probabilities <- function(model_probabilities, cells, plot_type = "ba
   )
   row_rules <- rows[seq_len(n_rows - 1L), c("run", "y")]
   row_rules$y <- row_rules$y - 0.5
+  row_rules$group_boundary <- diff(as.integer(rows$run)) != 0L
   line_colour <- "#939DA5"
-  row_rules$colour <- ifelse(diff(as.integer(rows$run)) != 0L, line_colour, "#A6AFB685")
+  row_rules$colour <- ifelse(row_rules$group_boundary, "#737D86", "#A6AFB685")
 
   model_probabilities <- model_probabilities[order(model_probabilities, decreasing = decreasing, method = "radix")]
   ends <- c(0, cumsum(model_probabilities))
@@ -240,8 +241,14 @@ plot_model_probabilities <- function(model_probabilities, cells, plot_type = "ba
     graphics::segments(boundaries$xmin, boundaries$ymin, boundaries$xmin, boundaries$ymax,
                        col = boundaries$colour, lty = 3, lwd = 0.7)
   }
+  group_rules <- row_rules[row_rules$group_boundary, ]
+  row_rules <- row_rules[!row_rules$group_boundary, ]
+  gutter_x <- graphics::grconvertX(0.1 / figure_inches[1L], "nfc", "user")
   if(nrow(row_rules)){
     graphics::segments(0, row_rules$y, 1, row_rules$y, lwd = 0.7, col = row_rules$colour)
+  }
+  if(nrow(group_rules)){
+    graphics::segments(gutter_x, group_rules$y, 1, group_rules$y, lwd = 0.95, col = group_rules$colour, xpd = NA)
   }
   graphics::box(col = data$line_colour, lwd = 0.7)
   graphics::axis(1L, at = data$ticks, labels = data$tick_labels, lwd = 0, lwd.ticks = 0.7,
@@ -251,8 +258,7 @@ plot_model_probabilities <- function(model_probabilities, cells, plot_type = "ba
   label_x <- graphics::grconvertX((left_margin - 0.1) / figure_inches[1L], "nfc", "user")
   graphics::text(label_x, rows$y, rows$label, adj = c(1, 0.5), xpd = NA, cex = axis_cex)
   if(nrow(runs)){
-    group_x <- graphics::grconvertX(0.1 / figure_inches[1L], "nfc", "user")
-    graphics::text(group_x, runs$y, runs$label, adj = c(0, 0.5), xpd = NA, cex = group_cex, font = 2)
+    graphics::text(gutter_x, runs$y, runs$label, adj = c(0, 0.5), xpd = NA, cex = group_cex, font = 2)
   }
   if(legend_at != "none"){
     legend_x <- graphics::grconvertX(0.5, "nfc", "user")
@@ -272,6 +278,12 @@ plot_model_probabilities <- function(model_probabilities, cells, plot_type = "ba
   # The output device can be chosen after this plot is constructed.
   key_widths <- nchar(data$legend_labels, type = "width") + 4L
   legend_cols <- max(1L, min(4L, sum(cumsum(sort(key_widths, decreasing = TRUE)) <= 64L)))
+  row_rules <- data$row_rules
+  group_rules <- row_rules[row_rules$group_boundary, ]
+  # Each facet clips strokes at its edge. Draw both halves of the separator.
+  lower_rules <- group_rules
+  lower_rules$run <- factor(as.integer(group_rules$run) + 1L, levels = levels(row_rules$run))
+  rule_mapping <- ggplot2::aes(x = 0, xend = 1, y = .data$y, yend = .data$y, colour = .data$colour)
   p <- ggplot2::ggplot(data$cells) +
     ggplot2::geom_rect(
       ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax, ymin = .data$ymin,
@@ -283,8 +295,10 @@ plot_model_probabilities <- function(model_probabilities, cells, plot_type = "ba
       data = data$boundaries, linewidth = 0.25, linetype = "dotted", show.legend = FALSE
     ) +
     ggplot2::geom_segment(
-      ggplot2::aes(x = 0, xend = 1, y = .data$y, yend = .data$y, colour = .data$colour),
-      data = data$row_rules, linewidth = 0.25, show.legend = FALSE
+      rule_mapping, data = row_rules[!row_rules$group_boundary, ], linewidth = 0.25, show.legend = FALSE
+    ) +
+    ggplot2::geom_segment(
+      rule_mapping, data = rbind(group_rules, lower_rules), linewidth = 0.65, show.legend = FALSE
     ) +
     ggplot2::scale_colour_identity() +
     ggplot2::scale_fill_manual(
