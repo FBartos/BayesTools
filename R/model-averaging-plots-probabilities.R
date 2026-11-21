@@ -172,7 +172,7 @@ plot_model_probabilities <- function(model_probabilities, cells, ..., group_labe
   cells$ymax <- rows$y[row_index] + 0.5
   cells$run <- rows$run[row_index]
   cells <- cells[order(row_index, model_index), ]
-  cells <- cells[cells$xmax > cells$xmin, ]
+  cells <- cells[cells$xmax > cells$xmin & cells$xmin < 1, ]
 
   # Use pale dots where both neighbouring fills are dark.
   brightness <- drop(c(0.21, 0.72, 0.07) %*% rgba[1:3, , drop = FALSE])
@@ -256,6 +256,10 @@ plot_model_probabilities <- function(model_probabilities, cells, ..., group_labe
 
 .model_probability_plot_ggplot <- function(data, legend_at){
 
+  # Budget display columns for the widest labels, swatches, and spacing.
+  # The output device can be chosen after this plot is constructed.
+  key_widths <- nchar(data$legend_labels, type = "width") + 4L
+  legend_cols <- max(1L, min(4L, sum(cumsum(sort(key_widths, decreasing = TRUE)) <= 64L)))
   p <- ggplot2::ggplot(data$cells) +
     ggplot2::geom_rect(
       ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax, ymin = .data$ymin,
@@ -274,7 +278,7 @@ plot_model_probabilities <- function(model_probabilities, cells, ..., group_labe
     ggplot2::scale_fill_manual(
       values = data$palette, breaks = names(data$palette), labels = unname(data$legend_labels),
       guide = ggplot2::guide_legend(
-        ncol = min(4L, length(data$palette)), order = 1L,
+        ncol = legend_cols, order = 1L,
         override.aes = list(colour = data$line_colour, linewidth = 0.25)
       )
     ) +

@@ -84,6 +84,48 @@ test_that("the public model probability plot dispatches and preserves row count"
   expect_identical(graphics::par("mai"), margin)
 })
 
+test_that("states wholly beyond the probability axis are absent from the legend", {
+  skip_if_not_test_profile("unit")
+  probabilities <- c(a = 0.6, b = 0.40000001, c = 1e-9)
+  cells <- data.frame(
+    model = names(probabilities), row = "effect", label = "Effect", group = "",
+    state = c("positive", "negative", "included")
+  )
+  p <- plot_model_probabilities(probabilities, cells, legend = TRUE, plot_type = "ggplot")
+  expect_identical(p$scales$get_scales("fill")$breaks, c("positive", "negative"))
+  expect_identical(p$data$xmax, cumsum(unname(probabilities[1:2])))
+})
+
+test_that("ggplot legend wraps long model states within the panel width", {
+  skip_if_not_test_profile("unit")
+  probabilities <- c(a = 0.4, b = 0.3, c = 0.2, d = 0.1)
+  cells <- data.frame(
+    model = names(probabilities), row = "bias", label = "Publication bias", group = "",
+    state = c("selection", "symmetric", "positive", "negative")
+  )
+  col <- c(selection = "cornflowerblue", symmetric = "darkgreen")
+  state_labels <- c(
+    selection = "Selection model (four bands)", symmetric = "Symmetric selection model",
+    positive = "Positive small-study effect", negative = "Negative small-study effect"
+  )
+  withr::local_pdf(file = NULL, width = 7, height = 3)
+  for(side in c("bottom", "top")){
+    p <- plot_model_probabilities(
+      probabilities, cells, col = col, state_labels = state_labels,
+      legend = TRUE, legend_position = side, plot_type = "ggplot"
+    )
+    plot_grid <- ggplot2::ggplotGrob(p)
+    guide <- match(paste0("guide-box-", side), plot_grid$layout$name)
+    if(is.na(guide)){
+      guide <- match("guide-box", plot_grid$layout$name)
+    }
+    guide_width <- grid::convertWidth(grid::grobWidth(plot_grid$grobs[[guide]]), "inches", valueOnly = TRUE)
+    panel <- plot_grid$layout[plot_grid$layout$name == "panel", ]
+    margins <- grid::convertWidth(sum(plot_grid$widths[-seq.int(panel$l, panel$r)]), "inches", valueOnly = TRUE)
+    expect_lt(guide_width, grDevices::dev.size("in")[1L] - margins)
+  }
+})
+
 test_that("the public model probability plot rejects invalid inputs", {
   skip_if_not_test_profile("unit")
   fixture <- .model_probability_plot_fixture()
