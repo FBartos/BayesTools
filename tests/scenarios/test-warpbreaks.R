@@ -47,9 +47,10 @@ testthat::test_that("Wool and loom tension model probabilities", {
   # Load the MCMC methods when the fit is read from cache.
   loadNamespace("runjags")
   draws <- as.matrix(coda::as.mcmc.list(fit))
+  coefficient_draws <- draws[, paste0("effect[", 2:4, "]")]
   model <- 1L + draws[, "wool_on"] + 2L * draws[, "tension_on"]
   fit_prob <- stats::setNames(tabulate(model, nbins = nrow(models)) / length(model), model_names)
-  fit_mean <- rowsum(draws[, paste0("effect[", 2:4, "]")], factor(model, levels = 1:4),
+  fit_mean <- rowsum(coefficient_draws, factor(model, levels = 1:4),
                      reorder = TRUE) / tabulate(model, nbins = nrow(models))
 
   # Independent conjugate reference. Integrating the coefficients and the
@@ -92,12 +93,18 @@ testthat::test_that("Wool and loom tension model probabilities", {
     )
   })
 
+  # Apply the fitted level design to every draw before taking within-model medians.
+  contrast_draws <- cbind(coefficient_draws[, 1L], coefficient_draws[, 2:3] %*% t(tension))
+  fit_medians <- t(vapply(seq_len(nrow(models)), function(i) {
+    apply(contrast_draws[model == i, , drop = FALSE], 2L, stats::median)
+  }, numeric(ncol(contrast_draws))))
+
   # Make the whole-factor view and the signed level view of the same four
   # models. A blank segment means the corresponding effect is switched off.
   row <- c("wool", "tension", paste0("tension_", levels(data[["tension"]])))
   label <- c("Wool B \u2212 A", "Tension", paste("Tension", levels(data[["tension"]])))
   group <- c("Material", rep("Loom setting", 4L))
-  signed <- ifelse(fit_effects > 0, "positive", ifelse(fit_effects < 0, "negative", "included"))
+  signed <- ifelse(fit_medians > 0, "positive", ifelse(fit_medians < 0, "negative", "included"))
   signed[!models[["wool"]], 1L] <- "excluded"
   signed[!models[["tension"]], 2:4] <- "excluded"
   states <- cbind(signed[, 1L], ifelse(models[["tension"]], "included", "excluded"), signed[, 2:4])
