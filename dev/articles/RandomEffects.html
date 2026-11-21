@@ -33,7 +33,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9012</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9013</span>
       </span>
     </div>
 
@@ -431,11 +431,11 @@ later).</p>
 <span><span class="op">)</span></span></code></pre></div>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">fit_sleep_intercept</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                     Mean    SD  0.025   0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat</span></span>
-<span><span class="co">#&gt; (mu) intercept     0.004 0.174 -0.332 0.002 0.361     0.01029          0.059  292 1.007</span></span>
-<span><span class="co">#&gt; (mu) Days          0.534 0.042  0.452 0.534 0.614     0.00042          0.010 9793 1.000</span></span>
-<span><span class="co">#&gt; sigma              0.554 0.031  0.496 0.553 0.619     0.00043          0.014 5311 1.000</span></span>
-<span><span class="co">#&gt; (mu) sd(intercept) 0.702 0.131  0.494 0.687 1.006     0.00538          0.041  597 1.000</span></span></code></pre></div>
+<span><span class="co">#&gt;                      Mean    SD  0.025    0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat</span></span>
+<span><span class="co">#&gt; (mu) intercept     -0.014 0.159 -0.326 -0.015 0.306     0.00869          0.054  337 1.000</span></span>
+<span><span class="co">#&gt; (mu) Days           0.535 0.042  0.453  0.535 0.617     0.00042          0.010 9727 1.000</span></span>
+<span><span class="co">#&gt; sigma               0.555 0.031  0.497  0.553 0.621     0.00043          0.014 5328 1.000</span></span>
+<span><span class="co">#&gt; (mu) sd(intercept)  0.690 0.128  0.485  0.676 0.985     0.00509          0.040  628 1.001</span></span></code></pre></div>
 <p>Table below shows close agreement in the parameter estimates from all
 three packages. The lme4 maximum likelihood estimates of the
 random-effect SD slightly differs from the Bayesian approaches because
@@ -444,10 +444,10 @@ subjects.</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">compare_sleep_estimates</span><span class="op">(</span>bayes_model <span class="op">=</span> <span class="va">fit_sleep_intercept</span>, brms_model <span class="op">=</span> <span class="va">brms_intercept</span>, lme4_model <span class="op">=</span> <span class="va">lme4_intercept</span><span class="op">)</span></span>
 <span><span class="co">#&gt;       parameter  lme4  brms BayesTools</span></span>
-<span><span class="co">#&gt; 1     intercept 0.000 0.002      0.004</span></span>
-<span><span class="co">#&gt; 2          Days 0.535 0.535      0.534</span></span>
-<span><span class="co">#&gt; 3         sigma 0.548 0.553      0.554</span></span>
-<span><span class="co">#&gt; 4 sd(intercept) 0.639 0.697      0.702</span></span></code></pre></div>
+<span><span class="co">#&gt; 1     intercept 0.000 0.002     -0.014</span></span>
+<span><span class="co">#&gt; 2          Days 0.535 0.535      0.535</span></span>
+<span><span class="co">#&gt; 3         sigma 0.548 0.553      0.555</span></span>
+<span><span class="co">#&gt; 4 sd(intercept) 0.639 0.697      0.690</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="random-slopes">Random Slopes<a class="anchor" aria-label="anchor" href="#random-slopes"></a>
@@ -549,23 +549,23 @@ spike-and-slab prior later.</p>
 <div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">fit_sleep_slope</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                           Mean    SD  0.025   0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat</span></span>
-<span><span class="co">#&gt; (mu) intercept           0.026 0.166 -0.298 0.024 0.351     0.01219          0.074  184 1.014</span></span>
-<span><span class="co">#&gt; (mu) Days                0.541 0.087  0.364 0.540 0.710     0.00367          0.042  579 1.004</span></span>
-<span><span class="co">#&gt; sigma                    0.459 0.028  0.409 0.458 0.518     0.00046          0.016 3756 1.000</span></span>
-<span><span class="co">#&gt; (mu) sd(intercept)       0.704 0.132  0.496 0.688 1.003     0.00684          0.052  373 1.002</span></span>
-<span><span class="co">#&gt; (mu) sd(Days)            0.326 0.073  0.209 0.318 0.493     0.00202          0.028 1302 1.001</span></span>
-<span><span class="co">#&gt; (mu) cor(intercept,Days) 0.669 0.173  0.247 0.700 0.918     0.00574          0.033  909 1.002</span></span></code></pre></div>
+<span><span class="co">#&gt; (mu) intercept           0.002 0.158 -0.309 0.000 0.312     0.01063          0.067  222 1.000</span></span>
+<span><span class="co">#&gt; (mu) Days                0.537 0.082  0.377 0.537 0.700     0.00359          0.044  517 1.001</span></span>
+<span><span class="co">#&gt; sigma                    0.459 0.027  0.409 0.458 0.515     0.00041          0.015 4494 1.001</span></span>
+<span><span class="co">#&gt; (mu) sd(intercept)       0.690 0.118  0.496 0.678 0.963     0.00547          0.046  470 1.009</span></span>
+<span><span class="co">#&gt; (mu) sd(Days)            0.320 0.071  0.208 0.311 0.483     0.00184          0.026 1467 1.000</span></span>
+<span><span class="co">#&gt; (mu) cor(intercept,Days) 0.671 0.167  0.268 0.701 0.912     0.00498          0.030 1125 1.000</span></span></code></pre></div>
 <p>Table below again shows close agreement between the brms and
 BayesTools posterior means.</p>
 <div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">compare_sleep_estimates</span><span class="op">(</span>bayes_model <span class="op">=</span> <span class="va">fit_sleep_slope</span>, brms_model <span class="op">=</span> <span class="va">brms_slope</span>, lme4_model <span class="op">=</span> <span class="va">lme4_slope</span><span class="op">)</span></span>
 <span><span class="co">#&gt;             parameter  lme4   brms BayesTools</span></span>
-<span><span class="co">#&gt; 1           intercept 0.000 -0.007      0.026</span></span>
-<span><span class="co">#&gt; 2                Days 0.535  0.530      0.541</span></span>
+<span><span class="co">#&gt; 1           intercept 0.000 -0.007      0.002</span></span>
+<span><span class="co">#&gt; 2                Days 0.535  0.530      0.537</span></span>
 <span><span class="co">#&gt; 3               sigma 0.454  0.459      0.459</span></span>
-<span><span class="co">#&gt; 4       sd(intercept) 0.647  0.701      0.704</span></span>
-<span><span class="co">#&gt; 5            sd(Days) 0.292  0.322      0.326</span></span>
-<span><span class="co">#&gt; 6 cor(intercept,Days) 0.759  0.670      0.669</span></span></code></pre></div>
+<span><span class="co">#&gt; 4       sd(intercept) 0.647  0.701      0.690</span></span>
+<span><span class="co">#&gt; 5            sd(Days) 0.292  0.322      0.320</span></span>
+<span><span class="co">#&gt; 6 cor(intercept,Days) 0.759  0.670      0.671</span></span></code></pre></div>
 <p>Because <code>formula_scale_list</code> standardized
 <code>Days</code> inside BayesTools,
 <code>transform_scaled = TRUE</code> reports the estimates on the
@@ -580,12 +580,12 @@ the prior distributions still act on the standardized scale.</p>
 <span><span class="op">)</span></span>
 <span><span class="fu">compare_sleep_estimates</span><span class="op">(</span>bayes_model <span class="op">=</span> <span class="va">fit_sleep_slope</span>, lme4_model <span class="op">=</span> <span class="va">lme4_slope_days</span>, transform_scaled <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt;             parameter   lme4 BayesTools</span></span>
-<span><span class="co">#&gt; 1           intercept -0.836     -0.819</span></span>
-<span><span class="co">#&gt; 2                Days  0.186      0.188</span></span>
+<span><span class="co">#&gt; 1           intercept -0.836     -0.837</span></span>
+<span><span class="co">#&gt; 2                Days  0.186      0.186</span></span>
 <span><span class="co">#&gt; 3               sigma  0.454      0.459</span></span>
-<span><span class="co">#&gt; 4       sd(intercept)  0.422      0.521</span></span>
-<span><span class="co">#&gt; 5            sd(Days)  0.101      0.113</span></span>
-<span><span class="co">#&gt; 6 cor(intercept,Days)  0.081     -0.037</span></span></code></pre></div>
+<span><span class="co">#&gt; 4       sd(intercept)  0.422      0.509</span></span>
+<span><span class="co">#&gt; 5            sd(Days)  0.101      0.111</span></span>
+<span><span class="co">#&gt; 6 cor(intercept,Days)  0.081     -0.039</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="testing-the-random-slope">Testing the Random Slope<a class="anchor" aria-label="anchor" href="#testing-the-random-slope"></a>
@@ -639,8 +639,8 @@ presence of the random slope.</p>
 <span>             <span class="fu">log_BF</span><span class="op">(</span><span class="va">marglik_sleep_slope</span>, <span class="va">marglik_sleep_intercept</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt;                        method   log_BF</span></span>
-<span><span class="co">#&gt; 1       brms, bridge sampling 17.34698</span></span>
-<span><span class="co">#&gt; 2 BayesTools, bridge sampling 17.37809</span></span></code></pre></div>
+<span><span class="co">#&gt; 1       brms, bridge sampling 17.34587</span></span>
+<span><span class="co">#&gt; 2 BayesTools, bridge sampling 17.31419</span></span></code></pre></div>
 <p>Second, BayesTools allows us to obtain the Bayes factor using a
 spike-and-slab prior <span class="citation">(Kuo &amp; Mallick,
 1998)</span> within a single model fit. An inclusion indicator switches
@@ -763,20 +763,20 @@ random-effect prior distributions from the random-intercept model,
 <span><span class="op">)</span></span></code></pre></div>
 <div class="sourceCode" id="cb38"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">fit_sleep_independent</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                      Mean    SD  0.025    0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat</span></span>
-<span><span class="co">#&gt; (mu) intercept     -0.007 0.169 -0.351 -0.002 0.303     0.01170          0.069  206 1.012</span></span>
-<span><span class="co">#&gt; (mu) Days           0.532 0.082  0.372  0.531 0.692     0.00268          0.033  943 1.003</span></span>
-<span><span class="co">#&gt; sigma               0.458 0.027  0.409  0.456 0.515     0.00042          0.016 4163 1.000</span></span>
-<span><span class="co">#&gt; (mu) sd(intercept)  0.706 0.140  0.499  0.684 1.037     0.00840          0.060  312 1.009</span></span>
-<span><span class="co">#&gt; (mu) sd(Days)       0.327 0.073  0.212  0.317 0.494     0.00192          0.026 1459 1.002</span></span></code></pre></div>
+<span><span class="co">#&gt;                     Mean    SD  0.025    0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat</span></span>
+<span><span class="co">#&gt; (mu) intercept     0.003 0.173 -0.325 -0.002 0.353     0.01199          0.069  210 1.017</span></span>
+<span><span class="co">#&gt; (mu) Days          0.531 0.085  0.364  0.531 0.698     0.00306          0.036  780 1.001</span></span>
+<span><span class="co">#&gt; sigma              0.459 0.027  0.410  0.457 0.514     0.00040          0.015 4619 1.000</span></span>
+<span><span class="co">#&gt; (mu) sd(intercept) 0.706 0.131  0.490  0.691 1.000     0.00648          0.049  425 1.019</span></span>
+<span><span class="co">#&gt; (mu) sd(Days)      0.327 0.072  0.210  0.318 0.494     0.00177          0.025 1638 1.000</span></span></code></pre></div>
 <p>Table below shows close agreement in the parameter estimates from all
 three packages.</p>
 <div class="sourceCode" id="cb39"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">compare_sleep_estimates</span><span class="op">(</span>bayes_model <span class="op">=</span> <span class="va">fit_sleep_independent</span>, brms_model <span class="op">=</span> <span class="va">brms_independent</span>, lme4_model <span class="op">=</span> <span class="va">lme4_independent</span><span class="op">)</span></span>
 <span><span class="co">#&gt;       parameter  lme4  brms BayesTools</span></span>
-<span><span class="co">#&gt; 1     intercept 0.000 0.000     -0.007</span></span>
-<span><span class="co">#&gt; 2          Days 0.535 0.531      0.532</span></span>
-<span><span class="co">#&gt; 3         sigma 0.454 0.459      0.458</span></span>
+<span><span class="co">#&gt; 1     intercept 0.000 0.000      0.003</span></span>
+<span><span class="co">#&gt; 2          Days 0.535 0.531      0.531</span></span>
+<span><span class="co">#&gt; 3         sigma 0.454 0.459      0.459</span></span>
 <span><span class="co">#&gt; 4 sd(intercept) 0.647 0.700      0.706</span></span>
 <span><span class="co">#&gt; 5      sd(Days) 0.292 0.329      0.327</span></span></code></pre></div>
 </div>
@@ -804,8 +804,8 @@ correlation.</p>
 <span>         <span class="fu">bridgesampling</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/bridgesampling/man/bf.html" class="external-link">bf</a></span><span class="op">(</span><span class="va">marglik_sleep_slope</span>, <span class="va">marglik_sleep_independent</span><span class="op">)</span><span class="op">$</span><span class="va">bf</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt;       method       BF</span></span>
-<span><span class="co">#&gt; 1       brms 19.43482</span></span>
-<span><span class="co">#&gt; 2 BayesTools 22.08361</span></span></code></pre></div>
+<span><span class="co">#&gt; 1       brms 20.43474</span></span>
+<span><span class="co">#&gt; 2 BayesTools 20.91077</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
@@ -892,45 +892,50 @@ correlation posterior samples.</p>
 <span><span class="op">)</span></span></code></pre></div>
 <div class="sourceCode" id="cb47"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">fit_sleep_hcs</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                      Mean    SD  0.025    0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat</span></span>
-<span><span class="co">#&gt; (mu) intercept     -0.074 0.139 -0.362 -0.070 0.190     0.00966          0.069  208 1.000</span></span>
-<span><span class="co">#&gt; (mu) Days           0.502 0.060  0.377  0.504 0.615     0.00302          0.050  397 1.002</span></span>
-<span><span class="co">#&gt; sigma               0.396 0.056  0.282  0.400 0.500     0.00387          0.069  210 1.007</span></span>
-<span><span class="co">#&gt; (mu) sd(Days_f[0])  0.393 0.145  0.126  0.390 0.699     0.00555          0.038  682 1.003</span></span>
-<span><span class="co">#&gt; (mu) sd(Days_f[1])  0.466 0.146  0.202  0.459 0.777     0.00456          0.031 1020 1.006</span></span>
-<span><span class="co">#&gt; (mu) sd(Days_f[2])  0.391 0.131  0.149  0.385 0.668     0.00324          0.025 1645 1.001</span></span>
-<span><span class="co">#&gt; (mu) sd(Days_f[3])  0.621 0.146  0.365  0.609 0.940     0.00434          0.030 1125 1.000</span></span>
-<span><span class="co">#&gt; (mu) sd(Days_f[4])  0.709 0.151  0.450  0.700 1.045     0.00486          0.032 1075 1.001</span></span>
-<span><span class="co">#&gt; (mu) sd(Days_f[5])  0.897 0.178  0.596  0.881 1.288     0.00660          0.037  734 1.003</span></span>
-<span><span class="co">#&gt; (mu) sd(Days_f[6])  1.097 0.214  0.736  1.079 1.570     0.00805          0.038  708 1.003</span></span>
-<span><span class="co">#&gt; (mu) sd(Days_f[7])  0.838 0.172  0.537  0.822 1.217     0.00576          0.033  911 1.002</span></span>
-<span><span class="co">#&gt; (mu) sd(Days_f[8])  1.055 0.194  0.724  1.038 1.483     0.00739          0.038  692 1.000</span></span>
-<span><span class="co">#&gt; (mu) sd(Days_f[9])  1.194 0.221  0.823  1.171 1.673     0.00944          0.043  552 1.004</span></span>
-<span><span class="co">#&gt; (mu) cor            0.842 0.077  0.670  0.850 0.970     0.00561          0.073  192 1.007</span></span></code></pre></div>
+<span><span class="co">#&gt;                      Mean    SD  0.025    0.5 0.975 error(MCMC) error(MCMC)/SD ESS R-hat</span></span>
+<span><span class="co">#&gt; (mu) intercept     -0.098 0.142 -0.369 -0.097 0.185     0.01064          0.075 195 1.019</span></span>
+<span><span class="co">#&gt; (mu) Days           0.496 0.060  0.378  0.497 0.616     0.00325          0.054 372 1.005</span></span>
+<span><span class="co">#&gt; sigma               0.374 0.096  0.097  0.394 0.505     0.01672          0.174  77 1.244</span></span>
+<span><span class="co">#&gt; (mu) sd(Days_f[0])  0.421 0.159  0.134  0.411 0.735     0.01244          0.078 352 1.064</span></span>
+<span><span class="co">#&gt; (mu) sd(Days_f[1])  0.478 0.149  0.211  0.473 0.783     0.00647          0.043 662 1.026</span></span>
+<span><span class="co">#&gt; (mu) sd(Days_f[2])  0.403 0.140  0.152  0.395 0.696     0.00613          0.044 731 1.026</span></span>
+<span><span class="co">#&gt; (mu) sd(Days_f[3])  0.627 0.146  0.362  0.619 0.942     0.00465          0.032 990 1.009</span></span>
+<span><span class="co">#&gt; (mu) sd(Days_f[4])  0.710 0.151  0.453  0.696 1.046     0.00518          0.034 854 1.002</span></span>
+<span><span class="co">#&gt; (mu) sd(Days_f[5])  0.902 0.173  0.611  0.883 1.288     0.00689          0.040 628 1.002</span></span>
+<span><span class="co">#&gt; (mu) sd(Days_f[6])  1.090 0.203  0.742  1.075 1.534     0.00790          0.039 658 1.004</span></span>
+<span><span class="co">#&gt; (mu) sd(Days_f[7])  0.854 0.179  0.547  0.841 1.244     0.00696          0.039 681 1.004</span></span>
+<span><span class="co">#&gt; (mu) sd(Days_f[8])  1.057 0.196  0.728  1.039 1.492     0.00757          0.039 671 1.004</span></span>
+<span><span class="co">#&gt; (mu) sd(Days_f[9])  1.202 0.218  0.832  1.187 1.701     0.00942          0.043 540 1.003</span></span>
+<span><span class="co">#&gt; (mu) cor            0.827 0.098  0.608  0.844 0.975     0.01083          0.110  97 1.131</span></span></code></pre></div>
 <p>Table below compares the estimates with the lme4 <code>cs()</code>
 fit.</p>
 <div class="sourceCode" id="cb48"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">compare_structured_estimates</span><span class="op">(</span>lme4_model <span class="op">=</span> <span class="va">lme4_hcs</span>, bayes_model <span class="op">=</span> <span class="va">fit_sleep_hcs</span><span class="op">)</span></span>
 <span><span class="co">#&gt;        parameter   lme4 BayesTools</span></span>
-<span><span class="co">#&gt; 1      intercept -0.107     -0.074</span></span>
-<span><span class="co">#&gt; 2           Days  0.491      0.502</span></span>
-<span><span class="co">#&gt; 3          sigma  0.369      0.396</span></span>
-<span><span class="co">#&gt; 4  sd(Days_f[0])  0.378      0.393</span></span>
-<span><span class="co">#&gt; 5  sd(Days_f[1])  0.440      0.466</span></span>
-<span><span class="co">#&gt; 6  sd(Days_f[2])  0.357      0.391</span></span>
-<span><span class="co">#&gt; 7  sd(Days_f[3])  0.582      0.621</span></span>
-<span><span class="co">#&gt; 8  sd(Days_f[4])  0.655      0.709</span></span>
-<span><span class="co">#&gt; 9  sd(Days_f[5])  0.840      0.897</span></span>
-<span><span class="co">#&gt; 10 sd(Days_f[6])  1.043      1.097</span></span>
-<span><span class="co">#&gt; 11 sd(Days_f[7])  0.782      0.838</span></span>
-<span><span class="co">#&gt; 12 sd(Days_f[8])  0.986      1.055</span></span>
-<span><span class="co">#&gt; 13 sd(Days_f[9])  1.136      1.194</span></span>
-<span><span class="co">#&gt; 14           cor  0.824      0.842</span></span></code></pre></div>
+<span><span class="co">#&gt; 1      intercept -0.107     -0.098</span></span>
+<span><span class="co">#&gt; 2           Days  0.491      0.496</span></span>
+<span><span class="co">#&gt; 3          sigma  0.369      0.374</span></span>
+<span><span class="co">#&gt; 4  sd(Days_f[0])  0.378      0.421</span></span>
+<span><span class="co">#&gt; 5  sd(Days_f[1])  0.440      0.478</span></span>
+<span><span class="co">#&gt; 6  sd(Days_f[2])  0.357      0.403</span></span>
+<span><span class="co">#&gt; 7  sd(Days_f[3])  0.582      0.627</span></span>
+<span><span class="co">#&gt; 8  sd(Days_f[4])  0.655      0.710</span></span>
+<span><span class="co">#&gt; 9  sd(Days_f[5])  0.840      0.902</span></span>
+<span><span class="co">#&gt; 10 sd(Days_f[6])  1.043      1.090</span></span>
+<span><span class="co">#&gt; 11 sd(Days_f[7])  0.782      0.854</span></span>
+<span><span class="co">#&gt; 12 sd(Days_f[8])  0.986      1.057</span></span>
+<span><span class="co">#&gt; 13 sd(Days_f[9])  1.136      1.202</span></span>
+<span><span class="co">#&gt; 14           cor  0.824      0.827</span></span></code></pre></div>
 <p>The day-specific SDs generally increase over the study, implying
 similar pattern to the one modeled by the random-slope model previously.
 HCS recovers the increase without assuming a linear trend per subject,
 and its day-specific SDs also capture departures from the smooth pattern
-implied by the random-slope model, such as the smaller SD on day 7.</p>
+implied by the random-slope model, such as the smaller SD on day 7. The
+two chains give less precise estimates for the residual SD and the
+common correlation. Their reported
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mover><mi>R</mi><mo accent="true">̂</mo></mover><annotation encoding="application/x-tex">\hat{R}</annotation></semantics></math>
+values are 1.24 and 1.13, respectively, so the last digits of those
+estimates warrant caution.</p>
 </div>
 <div class="section level3">
 <h3 id="testing-the-correlation-1">Testing the Correlation<a class="anchor" aria-label="anchor" href="#testing-the-correlation-1"></a>
@@ -948,7 +953,7 @@ density of the correlation at 0.9 by its prior density.</p>
 <div class="sourceCode" id="cb49"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/hypothesis_BF.html">hypothesis_BF</a></span><span class="op">(</span><span class="va">fit_sleep_hcs</span>, hypothesis <span class="op">=</span> <span class="st">"(mu) cor = 0.9"</span>, BF01 <span class="op">=</span> <span class="cn">TRUE</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="co">#&gt;     Alternative:          Null:  1/BF error%(BF)</span></span>
-<span><span class="co">#&gt;  (mu) cor != 0.9 (mu) cor = 0.9 5.218         NA</span></span></code></pre></div>
+<span><span class="co">#&gt;  (mu) cor != 0.9 (mu) cor = 0.9 4.630         NA</span></span></code></pre></div>
 <p>Second, a mixture prior places half of the prior probability on a
 correlation of 0.9 (the spike) and half on the same uniform distribution
 (the slab) and tests the hypothesis within a single fit using the
@@ -981,7 +986,7 @@ the spike, so an inclusion Bayes factor below 1 favors a correlation of
 <div class="sourceCode" id="cb52"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_inference_table</a></span><span class="op">(</span><span class="va">fit_sleep_hcs_test</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                   Prior prob. Post. prob. Inclusion BF</span></span>
-<span><span class="co">#&gt; (mu) Subject: cor       0.500       0.194        0.241</span></span></code></pre></div>
+<span><span class="co">#&gt; (mu) Subject: cor       0.500       0.163        0.195</span></span></code></pre></div>
 <p>Both approaches come to a similar conclusion. The data favor a
 correlation of 0.9 over the uniform alternative by a Bayes factor of
 about 5. The Savage-Dickey ratio reuses the estimated model but relies
@@ -1094,23 +1099,23 @@ its SD from the allocation, so it needs no <code>sd</code> prior.</p>
 <div class="sourceCode" id="cb58"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">fit_nested</span>, random_effects_summary <span class="op">=</span> <span class="st">"standard"</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                   Mean    SD  0.025    0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat</span></span>
-<span><span class="co">#&gt; (mu) intercept                  -0.002 0.242 -0.484 -0.001 0.479     0.00906          0.037  720 1.009</span></span>
-<span><span class="co">#&gt; sigma                            0.266 0.036  0.208  0.262 0.346     0.00062          0.017 3300 1.001</span></span>
-<span><span class="co">#&gt; (mu) nested_re: sd_total         1.055 0.172  0.792  1.029 1.466     0.00921          0.054  353 1.005</span></span>
-<span><span class="co">#&gt; (mu) nested_re: var_prop(batch)  0.251 0.164  0.011  0.232 0.607     0.00912          0.056  359 1.008</span></span>
-<span><span class="co">#&gt; (mu) nested_re: var_prop(cask)   0.749 0.164  0.393  0.768 0.989     0.00912          0.056  359 1.008</span></span></code></pre></div>
+<span><span class="co">#&gt; (mu) intercept                  -0.003 0.231 -0.437 -0.010 0.475     0.00976          0.042  574 1.004</span></span>
+<span><span class="co">#&gt; sigma                            0.265 0.036  0.207  0.261 0.345     0.00062          0.017 3496 1.001</span></span>
+<span><span class="co">#&gt; (mu) nested_re: sd_total         1.044 0.157  0.782  1.027 1.398     0.00779          0.050  406 1.006</span></span>
+<span><span class="co">#&gt; (mu) nested_re: var_prop(batch)  0.230 0.153  0.010  0.208 0.565     0.00873          0.057  310 1.005</span></span>
+<span><span class="co">#&gt; (mu) nested_re: var_prop(cask)   0.770 0.153  0.435  0.792 0.990     0.00873          0.057  310 1.005</span></span></code></pre></div>
 <p>The nested lme4 and BayesTools estimates are compared in the table
 below.</p>
 <div class="sourceCode" id="cb59"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">compare_nested_estimates</span><span class="op">(</span>lme4_model <span class="op">=</span> <span class="va">lme4_nested</span>, bayes_model <span class="op">=</span> <span class="va">fit_nested</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                    parameter  lme4 BayesTools</span></span>
-<span><span class="co">#&gt; 1                  intercept 0.000     -0.002</span></span>
-<span><span class="co">#&gt; 2                      sigma 0.254      0.266</span></span>
-<span><span class="co">#&gt; 3       batch: sd(intercept) 0.338      0.505</span></span>
-<span><span class="co">#&gt; 4  cask_batch: sd(intercept) 0.897      0.899</span></span>
-<span><span class="co">#&gt; 5        nested_re: sd_total 0.958      1.055</span></span>
-<span><span class="co">#&gt; 6 nested_re: var_prop(batch) 0.124      0.251</span></span>
-<span><span class="co">#&gt; 7  nested_re: var_prop(cask) 0.876      0.749</span></span></code></pre></div>
+<span><span class="co">#&gt; 1                  intercept 0.000     -0.003</span></span>
+<span><span class="co">#&gt; 2                      sigma 0.254      0.265</span></span>
+<span><span class="co">#&gt; 3       batch: sd(intercept) 0.338      0.476</span></span>
+<span><span class="co">#&gt; 4  cask_batch: sd(intercept) 0.897      0.905</span></span>
+<span><span class="co">#&gt; 5        nested_re: sd_total 0.958      1.044</span></span>
+<span><span class="co">#&gt; 6 nested_re: var_prop(batch) 0.124      0.230</span></span>
+<span><span class="co">#&gt; 7  nested_re: var_prop(cask) 0.876      0.770</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="crossed-random-effects">Crossed Random Effects<a class="anchor" aria-label="anchor" href="#crossed-random-effects"></a>
@@ -1189,11 +1194,11 @@ intercept a posteriori.</p>
 <span><span class="op">)</span></span></code></pre></div>
 <div class="sourceCode" id="cb65"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">fit_crossed_independent</span>, random_effects_summary <span class="op">=</span> <span class="st">"standard"</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                             Mean    SD  0.025   0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat</span></span>
-<span><span class="co">#&gt; (mu) intercept             0.010 0.396 -0.780 0.011 0.808     0.00400          0.010 9946 1.000</span></span>
-<span><span class="co">#&gt; sigma                      0.274 0.018  0.241 0.273 0.313     0.00022          0.012 6905 1.000</span></span>
-<span><span class="co">#&gt; (mu) plate: sd(intercept)  0.441 0.076  0.319 0.431 0.619     0.00267          0.035  870 1.002</span></span>
-<span><span class="co">#&gt; (mu) sample: sd(intercept) 1.043 0.318  0.592 0.985 1.817     0.00431          0.014 5581 1.001</span></span></code></pre></div>
+<span><span class="co">#&gt;                             Mean    SD  0.025   0.5 0.975 error(MCMC) error(MCMC)/SD   ESS R-hat</span></span>
+<span><span class="co">#&gt; (mu) intercept             0.011 0.401 -0.785 0.011 0.805     0.00403          0.010 10712 1.000</span></span>
+<span><span class="co">#&gt; sigma                      0.274 0.018  0.241 0.273 0.312     0.00021          0.012  7310 1.001</span></span>
+<span><span class="co">#&gt; (mu) plate: sd(intercept)  0.438 0.074  0.317 0.429 0.605     0.00250          0.034   898 1.003</span></span>
+<span><span class="co">#&gt; (mu) sample: sd(intercept) 1.032 0.311  0.589 0.975 1.806     0.00391          0.013  6395 1.002</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="variance-allocation-prior">Variance Allocation Prior<a class="anchor" aria-label="anchor" href="#variance-allocation-prior"></a>
@@ -1229,11 +1234,11 @@ from the allocation specification.</p>
 <div class="sourceCode" id="cb68"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">fit_crossed_allocation</span>, random_effects_summary <span class="op">=</span> <span class="st">"standard"</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                   Mean    SD  0.025    0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat</span></span>
-<span><span class="co">#&gt; (mu) intercept                  -0.001 0.365 -0.730 -0.001 0.727     0.00443          0.012 7070 1.001</span></span>
-<span><span class="co">#&gt; sigma                            0.274 0.018  0.240  0.273 0.313     0.00022          0.012 6757 1.000</span></span>
-<span><span class="co">#&gt; (mu) total_re: sd_total          1.023 0.233  0.701  0.980 1.627     0.01226          0.053  390 1.029</span></span>
-<span><span class="co">#&gt; (mu) total_re: var_prop(plate)   0.216 0.096  0.064  0.204 0.432     0.00452          0.047  459 1.014</span></span>
-<span><span class="co">#&gt; (mu) total_re: var_prop(sample)  0.784 0.096  0.568  0.796 0.936     0.00452          0.047  459 1.014</span></span></code></pre></div>
+<span><span class="co">#&gt; (mu) intercept                  -0.003 0.373 -0.761 -0.004 0.737     0.00436          0.012 7464 1.000</span></span>
+<span><span class="co">#&gt; sigma                            0.274 0.019  0.241  0.273 0.313     0.00022          0.012 7203 1.000</span></span>
+<span><span class="co">#&gt; (mu) total_re: sd_total          1.043 0.242  0.699  1.001 1.630     0.01288          0.053  375 1.008</span></span>
+<span><span class="co">#&gt; (mu) total_re: var_prop(plate)   0.204 0.091  0.062  0.192 0.411     0.00404          0.044  516 1.009</span></span>
+<span><span class="co">#&gt; (mu) total_re: var_prop(sample)  0.796 0.091  0.589  0.808 0.938     0.00404          0.044  516 1.009</span></span></code></pre></div>
 <p>The two BayesTools fits differ only in the prior on the random-effect
 SDs: the independent priors treat the two blocks separately, while the
 allocation prior sets the scale of their total and estimates how it
@@ -1244,10 +1249,10 @@ splits. The table below compares both with lme4.</p>
 <span>  bayes_independent <span class="op">=</span> <span class="va">fit_crossed_independent</span>, </span>
 <span>  bayes_allocation <span class="op">=</span> <span class="va">fit_crossed_allocation</span><span class="op">)</span></span>
 <span><span class="co">#&gt;               parameter  lme4 BayesTools_independent BayesTools_allocation</span></span>
-<span><span class="co">#&gt; 1             intercept 0.000                  0.010                -0.001</span></span>
+<span><span class="co">#&gt; 1             intercept 0.000                  0.011                -0.003</span></span>
 <span><span class="co">#&gt; 2                 sigma 0.271                  0.274                 0.274</span></span>
-<span><span class="co">#&gt; 3  plate: sd(intercept) 0.416                  0.441                 0.447</span></span>
-<span><span class="co">#&gt; 4 sample: sd(intercept) 0.872                  1.043                 0.912</span></span></code></pre></div>
+<span><span class="co">#&gt; 3  plate: sd(intercept) 0.416                  0.438                 0.441</span></span>
+<span><span class="co">#&gt; 4 sample: sd(intercept) 0.872                  1.032                 0.938</span></span></code></pre></div>
 </div>
 <div class="section level3 unnumbered">
 <h3 class="unnumbered" id="references">References<a class="anchor" aria-label="anchor" href="#references"></a>

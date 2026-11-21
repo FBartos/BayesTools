@@ -47,7 +47,7 @@ indices do not describe a continuous MCMC trajectory."><meta name="robots" conte
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9012</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9013</span>
       </span>
     </div>
 
@@ -137,11 +137,17 @@ indices do not describe a continuous MCMC trajectory.</p>
 <span></span>
 <span><span class="fu">JAGS_with_draws</span><span class="op">(</span><span class="va">fit</span>, <span class="va">draws</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># S3 method for class 'BayesTools_draws_view'</span></span>
+<span><span class="co"># S3 method for class 'BayesTools_fit'</span></span>
 <span><span class="fu">as.mcmc.list</span><span class="op">(</span><span class="va">x</span>, <span class="va">...</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># S3 method for class 'BayesTools_draws_view'</span></span>
+<span><span class="co"># S3 method for class 'BayesTools_fit'</span></span>
 <span><span class="fu">as.mcmc</span><span class="op">(</span><span class="va">x</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'BayesTools_fit'</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">x</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'BayesTools_fit'</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">object</span>, <span class="va">...</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># S3 method for class 'BayesTools_draws_view'</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">x</span>, <span class="va">...</span><span class="op">)</span></span></code></pre></div>
@@ -169,11 +175,15 @@ indices do not describe a continuous MCMC trajectory.</p>
 
 
 <dt id="arg-x">x<a class="anchor" aria-label="anchor" href="#arg-x"></a></dt>
-<dd><p>a derived-draw view.</p></dd>
+<dd><p>a fitted model or a derived-draw view.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>additional arguments.</p></dd>
+<dd><p>arguments passed to <code><a href="BayesTools_model_tables.html">JAGS_estimates_table()</a></code> by <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code>.</p></dd>
+
+
+<dt id="arg-object">object<a class="anchor" aria-label="anchor" href="#arg-object"></a></dt>
+<dd><p>a fitted model or a derived-draw view to summarize.</p></dd>
 
 </dl></div>
     <div id="value">

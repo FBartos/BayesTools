@@ -18,7 +18,7 @@ JAGS_fit function."><meta name="robots" content="noindex"><!-- mathjax --><scrip
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9012</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9013</span>
       </span>
     </div>
 
@@ -110,7 +110,8 @@ JAGS_fit function."><meta name="robots" content="noindex"><!-- mathjax --><scrip
 
 
 <dt id="arg-sample">sample<a class="anchor" aria-label="anchor" href="#arg-sample"></a></dt>
-<dd><p>number of sampling iterations of the MCMC chains, defaults to <code>4000</code></p></dd>
+<dd><p>number of draws to retain per chain, defaults to <code>4000</code>.
+Each chain runs <code>sample * thin</code> sampling iterations.</p></dd>
 
 
 <dt id="arg-thin">thin<a class="anchor" aria-label="anchor" href="#arg-thin"></a></dt>
@@ -123,12 +124,14 @@ specified in <code>autofit_control</code>. Defaults to <code>FALSE</code>.</p></
 
 
 <dt id="arg-parallel">parallel<a class="anchor" aria-label="anchor" href="#arg-parallel"></a></dt>
-<dd><p>whether the chains should be run in parallel <code>FALSE</code></p></dd>
+<dd><p>whether to distribute chains over PSOCK worker processes.
+Defaults to <code>FALSE</code>, which runs all chains in the calling process.
+Each sampling process uses one JAGS thread.</p></dd>
 
 
 <dt id="arg-cores">cores<a class="anchor" aria-label="anchor" href="#arg-cores"></a></dt>
-<dd><p>number of cores used for multithreading if <code>parallel = TRUE</code>,
-defaults to <code>chains</code></p></dd>
+<dd><p>maximum number of workers when <code>parallel = TRUE</code>,
+defaults to <code>chains</code>.</p></dd>
 
 
 <dt id="arg-silent">silent<a class="anchor" aria-label="anchor" href="#arg-silent"></a></dt>
@@ -140,9 +143,7 @@ defaults to <code>chains</code></p></dd>
 integer between <code>-.Machine$integer.max</code> and <code>.Machine$integer.max</code>.
 Draws are reproducible for the same <code>seed</code>, <code>chains</code>, and R
 random-number generator settings (<code><a href="https://rdrr.io/r/base/Random.html" class="external-link">RNGkind()</a></code>), and, with
-<code>parallel = TRUE</code>, the same <code>cores</code>. Parallel draws need not equal
-serial draws with the same seed, because the backend passes each chain's
-initial state to its worker in a serialized text form. Initial values are
+<code>parallel = TRUE</code>, the same <code>cores</code> and backend versions. Initial values are
 drawn from the priors after <code>set.seed(seed)</code>, and each chain's JAGS
 random-number seed is drawn from the same seed with
 <code>sample.int(.Machine$integer.max, chains)</code> (see

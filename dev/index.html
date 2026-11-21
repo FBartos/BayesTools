@@ -34,7 +34,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9012</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9013</span>
       </span>
     </div>
 
@@ -90,6 +90,7 @@
 <!-- badges: start -->
 
 <p>The goal of BayesTools is to provide functions that simplify building R packages focused on Bayesian inference and Bayesian model-averaging.</p>
+<p>Install JAGS 5.0.0 or later before installing BayesTools. BayesTools uses rjags 5-5 or later. Use <code><a href="reference/JAGS_fit.html">JAGS_extend()</a></code> to continue a fit and <code><a href="https://rdrr.io/pkg/coda/man/mcmc.list.html" class="external-link">coda::as.mcmc.list()</a></code> to extract its chains.</p>
 <p>The package provides several tools:</p>
 <ul>
 <li>prior distribution (with S3 methods for plot/print/pdf/cdf/rng/…)</li>
@@ -240,7 +241,7 @@
 <span><span class="va">priors_list0</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mu <span class="op">=</span> <span class="va">p0</span><span class="op">)</span></span>
 <span><span class="va">priors_list1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mu <span class="op">=</span> <span class="va">p1</span><span class="op">)</span></span>
 <span><span class="va">priors_list2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mu <span class="op">=</span> <span class="va">p2</span><span class="op">)</span></span></code></pre></div>
-<p>We create a <code>model_syntax</code> that defines likelihood of the data for the JAGs model and fit the models with the <code>JAGS_fit</code> wrapper that automatically adds prior distributions to the syntax, generates starting values, creates list of monitored variables, and contains additional control options (most of the functionality is build upon <code>runjags</code> package).</p>
+<p>We define the likelihood in <code>model_syntax</code>. <code><a href="reference/JAGS_fit.html">JAGS_fit()</a></code> adds the priors, prepares initial values, and samples with rjags.</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># define likelihood for the data</span></span>
 <span><span class="va">model_syntax</span> <span class="op">&lt;-</span></span>
@@ -254,10 +255,10 @@
 <span><span class="va">fit0</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span><span class="va">model_syntax</span>, <span class="va">data</span>, <span class="va">priors_list0</span>, seed <span class="op">=</span> <span class="fl">0</span><span class="op">)</span></span>
 <span><span class="va">fit1</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span><span class="va">model_syntax</span>, <span class="va">data</span>, <span class="va">priors_list1</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="va">fit2</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span><span class="va">model_syntax</span>, <span class="va">data</span>, <span class="va">priors_list2</span>, seed <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span></code></pre></div>
-<p>The <code>runjags_estimates_table</code> function then provides a nicely formated summary for the fitted model using its stored prior distributions.</p>
+<p>The <code>JAGS_estimates_table</code> function then provides a nicely formated summary for the fitted model using its stored prior distributions.</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># formatted summary tables</span></span>
-<span><span class="fu"><a href="reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">fit1</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">fit1</span><span class="op">)</span></span>
 <span><span class="co">#&gt;     Mean    SD  0.025   0.5 0.975 error(MCMC) error(MCMC)/SD   ESS R-hat</span></span>
 <span><span class="co">#&gt; mu 0.120 0.301 -0.467 0.121 0.713     0.00240          0.008 15656 1.000</span></span></code></pre></div>
 <p>We create a <code>log_posterior</code> function that defines the log likelihood of the data for marginal likelihood estimation via <code>bridgesampling</code>. For the point-prior model, the marginal likelihood is the likelihood evaluated at its fixed mean, so we use <code>bridgesampling_object</code> to create a supported marginal-likelihood object from its analytic natural-log value.</p>
@@ -286,9 +287,9 @@
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co">## create an object with the models</span></span>
 <span><span class="va">models</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>fit <span class="op">=</span> <span class="va">fit0</span>, marglik <span class="op">=</span> <span class="va">marglik0</span>, priors <span class="op">=</span> <span class="va">priors_list0</span>, prior_weights <span class="op">=</span> <span class="fl">1</span>, fit_summary <span class="op">=</span> <span class="fu"><a href="reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">fit0</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>fit <span class="op">=</span> <span class="va">fit1</span>, marglik <span class="op">=</span> <span class="va">marglik1</span>, priors <span class="op">=</span> <span class="va">priors_list1</span>, prior_weights <span class="op">=</span> <span class="fl">1</span>, fit_summary <span class="op">=</span> <span class="fu"><a href="reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">fit1</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>fit <span class="op">=</span> <span class="va">fit2</span>, marglik <span class="op">=</span> <span class="va">marglik2</span>, priors <span class="op">=</span> <span class="va">priors_list2</span>, prior_weights <span class="op">=</span> <span class="fl">1</span>, fit_summary <span class="op">=</span> <span class="fu"><a href="reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">fit2</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>fit <span class="op">=</span> <span class="va">fit0</span>, marglik <span class="op">=</span> <span class="va">marglik0</span>, priors <span class="op">=</span> <span class="va">priors_list0</span>, prior_weights <span class="op">=</span> <span class="fl">1</span>, fit_summary <span class="op">=</span> <span class="fu"><a href="reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">fit0</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>fit <span class="op">=</span> <span class="va">fit1</span>, marglik <span class="op">=</span> <span class="va">marglik1</span>, priors <span class="op">=</span> <span class="va">priors_list1</span>, prior_weights <span class="op">=</span> <span class="fl">1</span>, fit_summary <span class="op">=</span> <span class="fu"><a href="reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">fit1</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>fit <span class="op">=</span> <span class="va">fit2</span>, marglik <span class="op">=</span> <span class="va">marglik2</span>, priors <span class="op">=</span> <span class="va">priors_list2</span>, prior_weights <span class="op">=</span> <span class="fl">1</span>, fit_summary <span class="op">=</span> <span class="fu"><a href="reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">fit2</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co"># compare and summarize the models</span></span>
 <span><span class="va">models</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/ensemble_inference.html">models_inference</a></span><span class="op">(</span><span class="va">models</span><span class="op">)</span></span>

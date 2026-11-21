@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9012</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9013</span>
       </span>
     </div>
 
@@ -100,7 +100,7 @@
 </div>
 <div class="section level2">
 <h2 id="development-and-backend">Development and backend<a class="anchor" aria-label="anchor" href="#development-and-backend"></a></h2>
-<p>Requires R &gt;= 4.3.0 and JAGS 4.x (&gt;= 4.3.0; the native module does not support JAGS 5), through <code>runjags</code>/<code>rjags</code>. In the workspace, use its configured R and private agent library for these commands:</p>
+<p>Requires R &gt;= 4.3.0, JAGS &gt;= 5.0.0 and rjags &gt;= 5-5. BayesTools owns the fitted object, coda coercions and continuation through <code><a href="reference/JAGS_fit.html">JAGS_extend()</a></code>. In the workspace, use its configured R and private agent library for these commands:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://devtools.r-lib.org/reference/load_all.html" class="external-link">load_all</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://devtools.r-lib.org/reference/document.html" class="external-link">document</a></span><span class="op">(</span><span class="op">)</span></span>

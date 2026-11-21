@@ -33,7 +33,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9012</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9013</span>
       </span>
     </div>
 
@@ -293,13 +293,13 @@ function earlier.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">M1</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                  Mean    SD  0.025    0.5  0.975 error(MCMC) error(MCMC)/SD</span></span>
-<span><span class="co">#&gt; (mu) intercept -0.546 0.104 -0.750 -0.547 -0.341     0.00081          0.008</span></span>
-<span><span class="co">#&gt; (mu) x          0.189 0.101 -0.008  0.189  0.389     0.00078          0.008</span></span>
-<span><span class="co">#&gt; sigma           1.041 0.075  0.907  1.036  1.201     0.00076          0.010</span></span>
+<span><span class="co">#&gt; (mu) intercept -0.548 0.105 -0.752 -0.547 -0.341     0.00083          0.008</span></span>
+<span><span class="co">#&gt; (mu) x          0.190 0.100 -0.008  0.190  0.387     0.00080          0.008</span></span>
+<span><span class="co">#&gt; sigma           1.041 0.075  0.908  1.036  1.205     0.00075          0.010</span></span>
 <span><span class="co">#&gt;                  ESS R-hat</span></span>
-<span><span class="co">#&gt; (mu) intercept 16593 1.000</span></span>
-<span><span class="co">#&gt; (mu) x         16687 1.000</span></span>
-<span><span class="co">#&gt; sigma           9730 1.000</span></span></code></pre></div>
+<span><span class="co">#&gt; (mu) intercept 15948 1.000</span></span>
+<span><span class="co">#&gt; (mu) x         15914 1.000</span></span>
+<span><span class="co">#&gt; sigma          10239 1.000</span></span></code></pre></div>
 <p>To obtain the marginal likelihoods and compute Bayes factors, we only
 need to write the likelihood function corresponding to the JAGS model.
 Importantly, BayesTools handles all priors and formula related
@@ -357,14 +357,12 @@ about the test for the beta parameter.</p>
 <span></span>
 <span><span class="fu"><a href="../reference/BayesTools_ensemble_tables.html">ensemble_inference_table</a></span><span class="op">(</span><span class="va">ensemble_info</span>, parameters <span class="op">=</span> <span class="st">"x"</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   Models Prior prob. Post. prob. Inclusion BF</span></span>
-<span><span class="co">#&gt; x    1/2       0.500       0.541        1.180</span></span></code></pre></div>
-<p>We find absence of evidence for either of the hypotheses,
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mn>1.180</mn></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = 1.180</annotation></semantics></math>,
-with posterior probability of
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mo stretchy="false" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="false" form="postfix">)</mo><mo>=</mo><mn>0.541</mn></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1} \mid \text{data}) = 0.541</annotation></semantics></math>
-(asuming equal prior probability specified via
-<code>prior_weights</code> in the <code>models_inference</code> function
-previously).</p>
+<span><span class="co">#&gt; x    1/2       0.500       0.542        1.182</span></span></code></pre></div>
+<p>With equal prior model probabilities, bridge sampling gives
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mn>1.18</mn></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = 1.18</annotation></semantics></math>
+and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mo stretchy="false" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="false" form="postfix">)</mo><mo>=</mo><mn>0.542</mn></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1} \mid \text{data}) = 0.542</annotation></semantics></math>.
+The data provide little evidence for choosing between the models.</p>
 </div>
 <div class="section level2">
 <h2 id="spike-and-slab-priors">Spike and Slab Priors<a class="anchor" aria-label="anchor" href="#spike-and-slab-priors"></a>
@@ -437,23 +435,26 @@ slab.)</p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">MS</span>, conditional <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                      Mean    SD  0.025    0.5  0.975</span></span>
-<span><span class="co">#&gt; (mu) intercept     -0.540 0.104 -0.745 -0.540 -0.337</span></span>
-<span><span class="co">#&gt; (mu) x (inclusion)  0.545    NA     NA     NA     NA</span></span>
-<span><span class="co">#&gt; (mu) x              0.192 0.101 -0.006  0.193  0.393</span></span>
-<span><span class="co">#&gt; sigma               1.049 0.077  0.913  1.044  1.207</span></span></code></pre></div>
+<span><span class="co">#&gt; (mu) intercept     -0.541 0.105 -0.750 -0.540 -0.338</span></span>
+<span><span class="co">#&gt; (mu) x (inclusion)  0.563    NA     NA     NA     NA</span></span>
+<span><span class="co">#&gt; (mu) x              0.189 0.100 -0.010  0.189  0.384</span></span>
+<span><span class="co">#&gt; sigma               1.049 0.076  0.912  1.045  1.207</span></span></code></pre></div>
 <p>The estimates are essentially identical to the estimates from the
 previous models. Finally, we can also obtain summary of the inclusion
 probabilities via the <code>JAGS_inference_table</code> function</p>
 <div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_inference_table</a></span><span class="op">(</span><span class="va">MS</span>, BF_diagnostics <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt;        Prior prob. Post. prob. Inclusion BF  ESS error(Post. prob.)</span></span>
-<span><span class="co">#&gt; (mu) x       0.500       0.545        1.199 5170            0.00694</span></span>
+<span><span class="co">#&gt; (mu) x       0.500       0.563        1.290 5014            0.00703</span></span>
 <span><span class="co">#&gt;        error%(Inclusion BF)</span></span>
-<span><span class="co">#&gt; (mu) x                2.798</span></span></code></pre></div>
-<p>As before, we find absence of evidence for either of the hypotheses,
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mn>1.199</mn></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = 1.199</annotation></semantics></math>,
-with posterior probability of
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mo stretchy="false" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="false" form="postfix">)</mo><mo>=</mo><mn>0.545</mn></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1} \mid \text{data}) = 0.545</annotation></semantics></math>.</p>
+<span><span class="co">#&gt; (mu) x                2.859</span></span></code></pre></div>
+<p>The inclusion indicator gives
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mn>1.29</mn></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = 1.29</annotation></semantics></math>
+and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mo stretchy="false" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="false" form="postfix">)</mo><mo>=</mo><mn>0.563</mn></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1} \mid \text{data}) = 0.563</annotation></semantics></math>,
+with an estimated Monte Carlo standard error of 0.007 for the
+probability. Both approaches give only weak support for including the
+predictor.</p>
 <div class="section level3 unnumbered">
 <h3 class="unnumbered" id="references">References<a class="anchor" aria-label="anchor" href="#references"></a>
 </h3>
