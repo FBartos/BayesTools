@@ -8,8 +8,12 @@
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
 #'
-#' @return \code{plot_marginal} returns either \code{NULL} or
-#' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+#' @param individual whether to draw a separate figure for each selected factor
+#' level. With \code{plot_type = "ggplot"}, return a list named by level.
+#' To add levels to an existing plot, use \code{individual = FALSE}.
+#' @return Base graphics draws the figures and returns invisible \code{NULL}.
+#' With \code{plot_type = "ggplot"}, returns a ggplot or, for individual factor
+#' plots, a named list of ggplots even when one level is selected.
 #'
 #' @details Marginal posterior vectors may carry \code{posterior_density}
 #' metadata ([posterior_metadata()]) with \code{x} and \code{y} coordinates. These densities are used
@@ -52,7 +56,8 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
                           transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                           rescale_x = FALSE, par_name = NULL, dots_prior = list(),
                           legend = TRUE, legend_title = NULL, legend_labels = NULL, legend_position = NULL,
-                          ..., density_method = c("KDE", "precomputed")){
+                          ..., density_method = c("KDE", "precomputed"),
+                          level = NULL, individual = FALSE){
 
   # check input
   if(any(!sapply(samples, inherits, what = "marginal_posterior")))
@@ -60,6 +65,11 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   check_char(parameter, "parameter")
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(legend, "legend", allow_NA = FALSE)
+  check_bool(individual, "individual", allow_NA = FALSE)
+  factor_plot <- inherits(samples[[parameter]], "marginal_posterior.factor") && is.list(samples[[parameter]])
+  if(!is.null(level) && !factor_plot){
+    stop("'level' requires a factor-valued marginal posterior.", call. = FALSE)
+  }
   density_method <- .posterior_density_method(density_method)
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
 
@@ -72,7 +82,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   plot_data <- .plot_data_marginal_samples(samples, parameter = parameter, prior = prior, n_points = n_points,
                                            transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
                                            x_range = xlim,
-                                           density_method = density_method)
+                                           density_method = density_method, level = level)
 
 
 
@@ -80,6 +90,12 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   # that declare no prior have none, with a warning)
   plot_data_prior <- if(prior){
     unlist(lapply(plot_data, attr, which = "prior", exact = TRUE), recursive = FALSE)
+  }
+  if(factor_plot && (!is.null(level) || individual || isTRUE(dots$add))){
+    plot <- .plot_posterior_factor_levels(plot_data, plot_data_prior, level, individual,
+      plot_type, par_name, dots, dots_prior, legend, legend_title, legend_labels, legend_position)
+    if(plot_type == "ggplot") return(plot)
+    return(invisible(NULL))
   }
   if(prior && length(plot_data_prior) > 0L){
 
@@ -167,35 +183,30 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
 .plot_data_marginal_samples     <- function(samples, parameter, prior, n_points, transformation, transformation_arguments, transformation_settings,
                                             x_range = NULL,
-                                            density_method = c("KDE", "precomputed")){
+                                            density_method = c("KDE", "precomputed"), level = NULL){
 
   check_list(samples, "samples", check_names = parameter, allow_other = TRUE)
   density_method <- .posterior_density_method(density_method)
 
   # extract the relevant information
-  posterior_samples   <- .plot_data_marginal_level_samples(samples, parameter)
-  prior_densities     <- .marginal_posterior_parameter_prior_densities(samples, parameter)
-  posterior_densities <- .marginal_posterior_parameter_posterior_densities(samples, parameter)
   level_metadata <- samples[[parameter]]
-  levels <- if(is.list(level_metadata)) level_metadata else list(level_metadata)
-  if(identical(density_method, "precomputed")){
-    posterior_densities <- lapply(seq_along(levels), function(i){
-      name <- if(is.null(names(levels))) parameter else names(levels)[[i]]
-      .plot_data_selected_posterior_density(level_metadata, levels[[i]], name)
-    })
-  }
+  levels <- if(is.list(level_metadata)) level_metadata else stats::setNames(list(level_metadata), parameter)
+  # Marginal producers name the leaves with the fitted cell labels, including
+  # joint labels for interactions and the evaluation settings of formula rows.
   reference <- attr(level_metadata, "factor_reference_levels", exact = TRUE)
   if(isTRUE(attr(level_metadata, "ordered", exact = TRUE)) && !is.null(reference)){
-    if(!identical(names(reference), names(posterior_samples))){
+    if(!identical(names(reference), names(levels))){
       stop("The persisted reference-level metadata do not match the marginal factor levels.", call. = FALSE)
     }
-    posterior_samples <- posterior_samples[!reference]
-    prior_densities <- prior_densities[!reference]
-    posterior_densities <- posterior_densities[!reference]
     levels <- levels[!reference]
   }
+  level_names <- names(levels)
+  selected <- if(is.null(level)) seq_along(levels) else .plot_factor_level_indices(level, level_names)
+  levels <- levels[selected]
+  posterior_samples <- .plot_data_marginal_level_samples(samples, parameter, levels)
+  prior_densities <- lapply(levels, .bt_meta_get, field = "prior_density")
   if(prior){
-    for(level in levels) .bt_formula_measure_check(level, "prior_density")
+    for(leaf in levels) .bt_formula_measure_check(leaf, "prior_density")
     missing <- vapply(prior_densities, is.null, logical(1))
     # levels that declare no prior (prior_none()) have no prior curve; any
     # other level without a prior density was created without one
@@ -218,13 +229,15 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
       transformation,
       transformation_arguments,
       transformation_settings,
-      posterior_density = posterior_densities[[i]],
+      posterior_density = if(identical(density_method, "precomputed")){
+        .plot_data_selected_posterior_density(level_metadata, levels[[i]], names(levels)[i])
+      },
       density_method    = density_method,
       label             = names(posterior_samples)[i]
     )
 
     for(j in seq_along(out_level)){
-      attr(out_level[[j]], "level")      <- i
+      attr(out_level[[j]], "level")      <- selected[i]
       attr(out_level[[j]], "level_name") <- names(posterior_samples)[i]
     }
 
@@ -237,7 +250,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
         transformation_arguments  = transformation_arguments,
         transformation_settings   = transformation_settings,
         factor                    = TRUE,
-        level                     = i,
+        level                     = selected[i],
         level_name                = names(posterior_samples)[i],
         posterior_plot            = TRUE
       )
@@ -264,15 +277,14 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     prior_data <- attr(out[[i]], "prior", exact = TRUE)
     if(!is.null(prior_data)){
       attr(out[[i]], "prior") <- .plot_factor_level_universe(prior_data,
-        names(posterior_samples), ordered = ordered)
+        level_names, ordered = ordered)
     }
   }
-  .plot_factor_level_universe(out, names(posterior_samples), ordered = ordered)
+  .plot_factor_level_universe(out, level_names, ordered = ordered)
 }
 # Numeric draws of each marginal posterior level with their declared atoms.
-.plot_data_marginal_level_samples <- function(samples, parameter){
+.plot_data_marginal_level_samples <- function(samples, parameter, levels = samples[[parameter]]){
 
-  levels <- samples[[parameter]]
   if(!is.list(levels)){
     levels <- stats::setNames(list(levels), parameter)
   }
