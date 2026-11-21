@@ -23,9 +23,17 @@
 #' @param dots_data additional styling arguments for observed p-value rug marks.
 #' Supports \code{col}/\code{color}, \code{alpha}, \code{lwd}/\code{linewidth},
 #' \code{side}/\code{rug_side}, and \code{height}/\code{rug_height}.
+#' @param level optional character vector of original factor level labels, in
+#' display order. The default uses all plotted levels in fitted order. For
+#' interactions, use the joint cell label shown in the default legend.
+#' @param individual for factors, draw one base figure per selected level or
+#' return a named list of ggplots, including for a single level. To add levels
+#' to an existing factor plot, use \code{individual = FALSE}. For weight
+#' functions, plot individual weights. For PET or PEESE, plot its coefficient.
 #' @param legend whether factor legends should be drawn.
 #' @param legend_title optional title for factor legends.
-#' @param legend_labels optional labels for factor legend levels.
+#' @param legend_labels optional display labels in full fitted plot order.
+#' Select levels by their original labels even when relabelling the legend.
 #' @param legend_position optional legend position for factor legends.
 #' @param density_method density source for continuous posterior curves.
 #' \code{"KDE"} computes a kernel density estimate. Plot methods with exact
@@ -104,16 +112,29 @@
 #' \code{col}, \code{lty}, or \code{linetype} override these defaults. The
 #' posterior owns the legend.
 #'
+#' For a factor-valued random-slope SD with fitted level cells, select the
+#' slope term and its level. A study-specific intercept or slope requires its
+#' grouping level and coefficient. Scalar SDs and correlations are selected
+#' by parameter name.
+#'
 #' For base plots, the initial call establishes the density-to-probability
 #' mapping. Calls with \code{add = TRUE} reuse that mapping so point masses from
 #' separate prior or posterior objects remain comparable. Point masses outside
 #' the active \code{ylim2} are clipped with a warning; redraw the initial plot
 #' with wider limits to display them.
 #'
-#' @return \code{plot_posterior} returns either \code{NULL} or
-#' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+#' @return Base graphics draws the figures and returns invisibly. With
+#' \code{plot_type = "ggplot"}, a combined factor plot is a ggplot and
+#' individual factor plots are a list of ggplots named by original level.
 #'
-#' @seealso [prior()] [lines_prior_list()]  [geom_prior_list()]
+#' @examples
+#' \dontrun{
+#' months <- as_mixed_posteriors(fit, parameters = "mu_Month")
+#' plot_posterior(months, "mu_Month", level = c("May", "Jul"), prior = TRUE)
+#' figures <- plot_posterior(months, "mu_Month", individual = TRUE, plot_type = "ggplot")
+#' figures[["Jul"]]
+#' }
+#' @seealso [posterior_factor_columns()] [prior()] [lines_prior_list()] [geom_prior_list()]
 #' @export
 plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE,
                            n_points = 1000, n_samples = 10000, force_samples = FALSE,
@@ -122,7 +143,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
                            rescale_x = FALSE, par_name = NULL, effect_direction = "positive",
                            dots_prior = list(), data = NULL, show_data = FALSE, dots_data = list(),
                            legend = TRUE, legend_title = NULL, legend_labels = NULL, legend_position = NULL,
-                           ..., density_method = c("KDE", "precomputed")){
+                           ..., density_method = c("KDE", "precomputed"), level = NULL){
 
   # check input
   check_list(samples, "prior_list")
@@ -158,6 +179,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     parameter <- "PET"
   }else if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% "peese"){
     parameter <- "PEESE"
+  }
+
+  if(!is.null(level) && !inherits(samples[[parameter]], "mixed_posteriors.factor")){
+    stop("'level' requires a factor-valued posterior.", call. = FALSE)
   }
 
   if(identical(parameter, "PETPEESE") && individual){
@@ -519,10 +544,12 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     prior_list  <- .simplify_prior_list(prior_list)
 
 
-    if(any(sapply(prior_list, is.prior.factor))){
+    factor_plot <- inherits(samples[[parameter]], "mixed_posteriors.factor") ||
+      any(vapply(prior_list, is.prior.factor, logical(1)))
+    if(factor_plot){
       plot_data <- .plot_data_samples.factor(samples, parameter = parameter, n_points = n_points,
                                              transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
-                                             density_method = density_method)
+                                             density_method = density_method, level = level)
     }else{
       plot_data <- .plot_data_samples.simple(samples, parameter = parameter, n_points = n_points,
                                              transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
@@ -538,6 +565,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       # prior list of a bias parameter already carries the branch weights
       # implied by the condition
       plot_data_prior <- .plot_data_attached_prior_density(
+        selected = attr(plot_data, "visible_levels", exact = TRUE),
         samples = samples, parameter = parameter, n_points = n_points,
         x_range = xlim, transformation = transformation,
         transformation_arguments = transformation_arguments,
@@ -547,6 +575,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         .plot_data_prior_should_use_context(samples, parameter, transform_scaled, prior_list)){
         # a prior law that only JAGS evaluates is no curve (omitted below)
         plot_data_prior <- tryCatch(.plot_data_prior_density_context(
+          selected = attr(plot_data, "visible_levels", exact = TRUE),
           prior_density_context      = prior_density_context,
           samples                   = samples,
           parameter                 = parameter,
@@ -573,18 +602,6 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         )
       }
 
-      if(is.null(plot_data_prior)){
-        plot_data_prior <- .plot_data_attached_prior_density(
-          samples                   = samples,
-          parameter                 = parameter,
-          n_points                  = n_points,
-          x_range                   = xlim,
-          transformation            = transformation,
-          transformation_arguments  = transformation_arguments,
-          transformation_settings   = transformation_settings
-        )
-      }
-
       if(is.null(plot_data_prior) &&
          (.plot_data_samples_without_prior(samples[[parameter]]) || .bt_prior_has_expression(prior_list))){
         # the draws declare no prior (prior_none()) or a prior with expression()
@@ -595,10 +612,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       }else if(is.null(plot_data_prior)){
         plot_data_prior <- tryCatch(
           .plot_data_prior_list.simple(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
-                                       n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
+                                       n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual && !factor_plot,
                                        transformation = transformation, transformation_arguments = transformation_arguments,
                                        transformation_settings = transformation_settings,
-                                       automatic_range = .density.prior_automatic_range(prior_list, xlim, NULL, individual)),
+                                       automatic_range = .density.prior_automatic_range(prior_list, xlim, NULL, individual && !factor_plot)),
           BayesTools_prior_range_unavailable = function(condition){
             # the automatic transformed prior range is unavailable (e.g., a very
             # wide prior under exp): only the prior curve is omitted
@@ -614,6 +631,13 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     }
 
     if(prior && length(plot_data_prior) == 0L) prior <- FALSE
+
+    if(factor_plot){
+      plot <- .plot_posterior_factor_levels(plot_data, if(prior) plot_data_prior, level, individual,
+        plot_type, par_name, dots, dots_prior, legend, legend_title, legend_labels, legend_position)
+      if(plot_type == "base") return(invisible(NULL))
+      return(plot)
+    }
 
     if(prior){
 
@@ -638,7 +662,6 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
       scale_y2   <- .get_scale_y2(plot_data_prior, ...)
       dots_prior <- .transfer_dots(dots_prior, ...)
-      dots_prior <- .plot_ordered_overlay_styles(dots_prior, plot_data, list(...))
 
 
       # set the y/x ranges
@@ -665,12 +688,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       args_prior$legend_labels <- legend_labels
       args_prior$legend_position <- legend_position
 
-      if(any(sapply(plot_data_prior, inherits, what = "density.prior.factor"))){
-        plot <- do.call(.plot_prior_list.factor, args_prior)
-      }else{
-        plot <- do.call(.plot_prior_list.both, args_prior)
-      }
-
+      plot <- do.call(.plot_prior_list.both, args_prior)
 
       # plot posterior
       args           <- list(...)
@@ -685,32 +703,15 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       args$legend_position <- legend_position
 
       if(plot_type == "base"){
-        if(any(sapply(prior_list, is.prior.factor))){
-          plot <- do.call(.plot_prior_list.factor, args)
-        }else{
-          plot <- do.call(.plot_prior_list.both, args)
-        }
-      }else if(plot_type == "ggplot"){
-        if(any(sapply(prior_list, is.prior.factor))){
-          plot <- plot + do.call(.plot_prior_list.factor, args)
-        }else{
-          plot <- plot + do.call(.plot_prior_list.both, args)
-        }
+        plot <- do.call(.plot_prior_list.both, args)
+      }else{
+        plot <- plot + do.call(.plot_prior_list.both, args)
       }
-
 
     }else{
 
       # plot just posterior otherwise
-      if(any(sapply(prior_list, is.prior.factor))){
-        plot <- .plot_prior_list.factor(
-          plot_data = plot_data, plot_type = plot_type, par_name = par_name,
-          legend = legend, legend_title = legend_title, legend_labels = legend_labels,
-          legend_position = legend_position, ...
-        )
-      }else{
-        plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
-      }
+      plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
 
     }
 

@@ -6,6 +6,7 @@
 
 ### Features
 - `plot_model_probabilities()` displays posterior model probabilities and model states in a matrix
+- `plot_posterior()` and `plot_marginal()` can select factor levels by name and draw a separate plot for each selected level
 - `hypothesis_BF()` accepts interval hypotheses such as `"-0.1 <= mu <= 0.1"` and explicit comparisons with `unconstrained`
 - `hypothesis_BF()` can display the method, prior and posterior point densities, and region probabilities with separate switches
 - Selection contexts support observation-level publication-bias exemptions

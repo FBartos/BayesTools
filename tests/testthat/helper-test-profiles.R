@@ -104,6 +104,7 @@ bayestools_test_profile_contexts <- list(
     "model-averaging-edge-cases",
     "model-averaging-plots-edge-cases",
     "model-probability-plot",
+    "posterior-factor-levels",
     "native-registration",
     "native-range",
     "parameter-labels",
