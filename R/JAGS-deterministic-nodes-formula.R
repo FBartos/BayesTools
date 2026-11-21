@@ -395,6 +395,8 @@
       intercept_name
     )
   }
+  # the total and allocation priors of R-squared budgets are not terms
+  formula_prior_list <- formula_prior_list[!vapply(formula_prior_list, .bt_R2_is_budget_prior, logical(1))]
   for(name in setdiff(names(formula_prior_list), intercept_name)){
     .bt_JAGS_formula_design_term_columns(
       design,

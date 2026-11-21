@@ -395,7 +395,24 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     }
   }
 
-  prior_list <- .bt_regularized_assign_terms(prior_list, model_terms, model_terms_type)
+  # R-squared budgets (the entries named by their budgets): their terms get
+  # unbound R2 term priors before the defaults fill the remaining terms (see
+  # R/priors-R2.R)
+  R2_entries <- .bt_R2_budget_entries(prior_list)
+  R2_declarations <- prior_list[R2_entries]
+  prior_list <- .bt_regularized_assign_terms(
+    prior_list[!R2_entries], model_terms, model_terms_type, R2_declarations
+  )
+  R2_budgets <- .bt_R2_formula_budgets(R2_declarations, model_terms, prior_list)
+  if(!is.null(R2_budgets)){
+    if(length(parsed_random_effects) > 0L){
+      .bt_R2_unavailable("R-squared budget priors are unavailable in formulas with random effects.")
+    }
+    if(log_intercept){
+      .bt_R2_unavailable("R-squared budget priors are unavailable for formulas with a 'log(intercept)' attribute.")
+    }
+    prior_list <- .bt_R2_assign_terms(R2_budgets, prior_list, model_terms, model_terms_type)
+  }
 
   # handle default priors: __default_factor and __default_continuous
   default_factor_prior     <- prior_list[["__default_factor"]]
@@ -704,6 +721,20 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   }
 
   prior_list <- .bt_regularized_bind_terms(prior_list, parameter)
+  # bind the R-squared budgets to the design: coefficient maps, Beta shapes,
+  # and the total and allocation priors of each budget
+  if(!is.null(R2_budgets)){
+    prior_list <- .bt_R2_bind_formula(
+      prior_list    = prior_list,
+      budgets       = R2_budgets,
+      parameter     = parameter,
+      model_matrix  = model_matrix,
+      terms_indexes = terms_indexes,
+      model_terms   = model_terms,
+      formula       = formula,
+      data          = data
+    )
+  }
 
   # compile the random effects
   random_scale_terms <- character()

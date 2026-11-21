@@ -159,8 +159,20 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       # simple priors
       out[[temp_parameter]] <- .as_mixed_posteriors.simple(model_samples, temp_prior, temp_parameter)
 
+    }else if(is.prior.R2_budget(temp_prior)){
+      # the realized total of a gated or spiked R-squared budget (an atom at
+      # zero): the mixed posterior of its catalog quantity
+      out[[temp_parameter]] <- .bt_R2_as_mixed_total(model_samples, temp_prior, temp_parameter,
+        law = .bt_R2_conditioned_law(priors, condition_event, temp_parameter))
+
     }else{
       stop("The posterior samples cannot be mixed: unsupported prior distributions.")
+    }
+    # the coefficients of a gated R-squared budget term have an atom at zero
+    if(is.prior.R2(temp_prior) && .bt_R2_term_is_gated(temp_prior)){
+      out[[temp_parameter]] <- .bt_R2_set_gated_atoms(out[[temp_parameter]], original_model_samples,
+                                                       temp_parameter, temp_prior,
+                                                       law = .bt_R2_conditioned_law(priors, condition_event, temp_parameter))
     }
 
     # add formula relevant information
@@ -287,6 +299,9 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       memo             = .bt_prior_density_memo(model),
       formula_design   = random_designs
     )
+    # the coefficients of R-squared budget terms: their own law, rescaled (with
+    # the atom of a gate), in place of the linear-combination grid
+    prior_densities <- .bt_R2_scaled_prior_densities(prior_densities, priors, formula_scale, condition_event)
     out <- .bt_meta_set(out, "prior_densities", prior_densities)
     out <- .as_mixed_posteriors_mark_random_sd_densities(out, prior_densities, formula_scale)
     out <- .bt_meta_set(out, "prior_context", .prior_density_build_context(

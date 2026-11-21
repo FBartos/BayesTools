@@ -16,6 +16,7 @@
 - `JAGS_extend()` gains `adapt` to set the adaptation of one extension; fits record their adaptation settings in the `adaptation` attribute
 - `JAGS_fit()` can declare publication-bias mixture branches to a gated sampler (`sampler_gates`) and blocks of priors to a factor slice sampler (`sampler_blocks`) of the BayesTools JAGS module
 - `JAGS_fit()` and `JAGS_extend()` gain `runtime_report`, a callback that collects small values from every process that ran chains, parallel workers included, into the `runtime_report_values` attribute
+- `prior_R2()` adds R-squared variance-budget priors for formula terms
 
 ### Fixes
 - on Apple silicon, numeric constants in generated JAGS models and the values of compiled hypotheses are exact

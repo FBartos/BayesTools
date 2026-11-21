@@ -302,9 +302,16 @@
   if(length(prior_list) == 0L){
     return(character())
   }
-  unique(unlist(lapply(prior_list, function(prior){
+  unique(unlist(Map(function(prior, parameter_name){
     if(.bt_has_regularized_term(prior)){
       return(.bt_regularized_auxiliary_names(prior))
+    }
+    if(is.prior.R2(prior)){
+      return(.bt_R2_direction_name(parameter_name))
+    }
+    if(is.prior.R2_budget(prior)){
+      nodes <- .bt_R2_core_nodes(prior)
+      return(c(sub("\\[.*$", "", nodes$eta[[1L]]), nodes$H, nodes$variable))
     }
     if(is.prior.ordered(prior)){
       return(vapply(
@@ -321,7 +328,7 @@
       return(private)
     }
     character()
-  }), use.names = FALSE))
+  }, prior_list, names(prior_list)), use.names = FALSE))
 }
 
 # A point prior whose location is an expression is a deterministic function
@@ -851,7 +858,8 @@
   name_map <- .bt_parameter_coordinates_name_map(formula_design)
   factor_cache <- new.env(parent = emptyenv())
   weight_bins <- .bt_weight_bin_interval_labels(prior_list)
-  ordered_totals <- .bt_ordered_total_label_parts_list(prior_list)
+  ordered_totals <- c(.bt_ordered_total_label_parts_list(prior_list),
+                      .bt_R2_total_label_parts_list(prior_list))
   lapply(seq_len(nrow(coordinates)), function(i){
     coordinate_name <- coordinates$coordinate_name[i]
     base_name <- .bt_parameter_coordinates_base(coordinate_name)
@@ -978,9 +986,13 @@
     .bt_parameter_coordinates_random_prior_auxiliary_owners(prior_list)
   )
   weight_bins <- .bt_weight_bin_interval_labels(prior_list)
-  ordered_totals <- .bt_ordered_total_label_parts_list(prior_list)
+  ordered_totals <- c(.bt_ordered_total_label_parts_list(prior_list),
+                      .bt_R2_total_label_parts_list(prior_list))
   coefficient_auxiliaries <-
     .bt_parameter_coordinates_coefficient_auxiliaries(prior_list)
+  # the allocation of an R-squared budget is a backend coordinate: its public
+  # quantities are the shares of its terms (see R/JAGS-R2-catalog.R)
+  R2_allocations <- .bt_R2_allocation_names(prior_list)
   dirichlet_auxiliaries <- c(
     vapply(
       names(prior_list)[vapply(prior_list, is.prior.simplex, logical(1))],
@@ -1138,6 +1150,7 @@
         "random_sd_variable"
       ) ||
         base_name %in% dirichlet_auxiliaries ||
+        base_name %in% R2_allocations ||
         isTRUE(prior_metadata$allocation),
       NA_character_
     )

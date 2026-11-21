@@ -272,6 +272,7 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
   "prior_mt",
   "ordered_allocation",
   "ordered_coefficient",
+  "R2_coefficient",
   "linear_predictor",
   "point_expression"
 )
@@ -321,6 +322,7 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
     prior_mt = .bt_dnode_prior_mt_emit(node),
     ordered_allocation = .bt_dnode_ordered_allocation_emit(node),
     ordered_coefficient = .bt_dnode_ordered_coefficient_emit(node),
+    R2_coefficient = .bt_dnode_R2_coefficient_emit(node),
     linear_predictor = .bt_dnode_linear_predictor_emit(node),
     point_expression = node$spec$syntax,
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
@@ -343,6 +345,7 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
     prior_mt = .bt_dnode_prior_mt_evaluate(node, lookup),
     ordered_allocation = .bt_dnode_ordered_allocation_evaluate(node, lookup),
     ordered_coefficient = .bt_dnode_ordered_coefficient_evaluate(node, lookup),
+    R2_coefficient = .bt_dnode_R2_coefficient_evaluate(node, lookup),
     linear_predictor = .bt_dnode_linear_predictor_evaluate(node, lookup),
     point_expression = .bt_dnode_point_expression_evaluate(node, lookup),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
@@ -448,7 +451,9 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
   ordered_keys <- character()
   for(i in seq_along(prior_list)){
     prior <- prior_list[[i]]
-    prior_nodes <- if(is.prior.ordered(prior)){
+    prior_nodes <- if(is.prior.R2(prior)){
+      list(.bt_dnode_R2_coefficient(prior_names[[i]], prior))
+    }else if(is.prior.ordered(prior)){
       spec <- .bt_ordered_spec(prior_names[[i]], prior)
       records <- spec$allocations[vapply(spec$allocations, function(record){
         identical(record$spec$type, "dirichlet") && !record$key %in% ordered_keys
