@@ -7,10 +7,12 @@
 #'   probabilities. The names must be unique model IDs and the probabilities
 #'   must sum to one up to numerical tolerance.
 #' @param cells Data frame with character columns `model` (model ID), `row`
-#'   (row ID), `label` (row label), `group` (group label, or `""` for no
-#'   group), and `state`. Supply exactly one cell per model and row, with
-#'   the same label and group for every cell of a row. Rows appear from top
-#'   to bottom in order of first occurrence in `cells`.
+#'   (row ID), `label` (row label), and `state`. The optional character column
+#'   `group` provides group labels, with `""` for ungrouped rows. Supply
+#'   exactly one cell per model and row, with the same label and group for
+#'   every cell of a row. Rows appear from top to bottom in order of first
+#'   occurrence in `cells`.
+#' @param plot_type Either `"base"` or `"ggplot"`.
 #' @param ... Reserved for future use.
 #' @param group_labels Whether to label consecutive groups of rows in the left
 #'   margin. A group that reappears later has its label repeated.
@@ -28,7 +30,6 @@
 #'   `"top"`.
 #' @param state_labels Named character vector of optional legend labels keyed
 #'   by state. Custom states use their keys as labels by default.
-#' @param plot_type Either `"base"` or `"ggplot"`.
 #'
 #' @details
 #' The caller supplies the model states. For example, directional states can
@@ -48,16 +49,15 @@
 #'   model = rep(names(probabilities), 2),
 #'   row = rep(c("effect", "heterogeneity"), each = 3),
 #'   label = rep(c("Effect", "Heterogeneity"), each = 3),
-#'   group = "Components",
 #'   state = c("excluded", "positive", "positive",
 #'             "excluded", "excluded", "included")
 #' )
 #' plot_model_probabilities(probabilities, cells, legend = TRUE)
 #' @md
 #' @export
-plot_model_probabilities <- function(model_probabilities, cells, ..., group_labels = FALSE,
+plot_model_probabilities <- function(model_probabilities, cells, plot_type = "base", ..., group_labels = FALSE,
                                      labels = NULL, decreasing = TRUE, col = NULL, legend = FALSE,
-                                     legend_position = "bottom", state_labels = NULL, plot_type = "base"){
+                                     legend_position = "bottom", state_labels = NULL){
 
   rlang::check_dots_empty()
   check_bool(group_labels)
@@ -94,14 +94,18 @@ plot_model_probabilities <- function(model_probabilities, cells, ..., group_labe
     stop("The 'model_probabilities' argument must sum to one.", call. = FALSE)
   }
 
-  columns <- c("model", "row", "label", "group", "state")
+  columns <- c("model", "row", "label", "state")
   if(!is.data.frame(cells) || !nrow(cells) ||
      !all(columns %in% names(cells)) || anyDuplicated(names(cells))){
-    stop("The 'cells' argument must be a nonempty data frame with 'model', 'row', 'label', 'group', and 'state' columns.",
+    stop("The 'cells' argument must be a nonempty data frame with 'model', 'row', 'label', and 'state' columns.",
          call. = FALSE)
   }
-  cells <- as.data.frame(cells)[columns]
-  for(column in columns){
+  cells <- as.data.frame(cells)
+  if(!"group" %in% names(cells)){
+    cells$group <- ""
+  }
+  cells <- cells[c(columns, "group")]
+  for(column in names(cells)){
     check_char(cells[[column]], paste0("cells$", column), check_length = 0, allow_NA = FALSE)
   }
   if(any(!nzchar(cells$row)) || any(!nzchar(cells$label)) || any(!nzchar(cells$state))){
@@ -195,6 +199,11 @@ plot_model_probabilities <- function(model_probabilities, cells, ..., group_labe
 
 .model_probability_plot_base <- function(data, legend_at){
 
+  # Advance to the next layout panel before measuring its figure dimensions.
+  old_par <- graphics::par(mai = rep(0, 4L))
+  on.exit(graphics::par(old_par))
+  graphics::plot.new()
+
   rows <- data$rows
   runs <- data$runs[nzchar(data$runs$label), ]
   cells <- data$cells
@@ -219,9 +228,7 @@ plot_model_probabilities <- function(model_probabilities, cells, ..., group_labe
     legend_side <- if(legend_at == "top") 3L else 1L
     margins[legend_side] <- margins[legend_side] + (legend_rows + 0.5) * line_inches
   }
-  old_par <- graphics::par(mai = margins)
-  on.exit(graphics::par(old_par))
-  graphics::plot.new()
+  graphics::par(mai = margins)
   graphics::plot.window(c(0, 1), c(0.5, nrow(rows) + 0.5), xaxs = "i", yaxs = "i")
   graphics::rect(cells$xmin, cells$ymin, cells$xmax, cells$ymax, col = data$palette[cells$state], border = NA)
   if(nrow(boundaries)){

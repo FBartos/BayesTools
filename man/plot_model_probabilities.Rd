@@ -7,6 +7,7 @@
 plot_model_probabilities(
   model_probabilities,
   cells,
+  plot_type = "base",
   ...,
   group_labels = FALSE,
   labels = NULL,
@@ -14,8 +15,7 @@ plot_model_probabilities(
   col = NULL,
   legend = FALSE,
   legend_position = "bottom",
-  state_labels = NULL,
-  plot_type = "base"
+  state_labels = NULL
 )
 }
 \arguments{
@@ -24,10 +24,13 @@ probabilities. The names must be unique model IDs and the probabilities
 must sum to one up to numerical tolerance.}
 
 \item{cells}{Data frame with character columns \code{model} (model ID), \code{row}
-(row ID), \code{label} (row label), \code{group} (group label, or \code{""} for no
-group), and \code{state}. Supply exactly one cell per model and row, with
-the same label and group for every cell of a row. Rows appear from top
-to bottom in order of first occurrence in \code{cells}.}
+(row ID), \code{label} (row label), and \code{state}. The optional character column
+\code{group} provides group labels, with \code{""} for ungrouped rows. Supply
+exactly one cell per model and row, with the same label and group for
+every cell of a row. Rows appear from top to bottom in order of first
+occurrence in \code{cells}.}
+
+\item{plot_type}{Either \code{"base"} or \code{"ggplot"}.}
 
 \item{...}{Reserved for future use.}
 
@@ -53,8 +56,6 @@ are \code{"positive"} (blue), \code{"negative"} (red), \code{"included"} (black)
 
 \item{state_labels}{Named character vector of optional legend labels keyed
 by state. Custom states use their keys as labels by default.}
-
-\item{plot_type}{Either \code{"base"} or \code{"ggplot"}.}
 }
 \value{
 With \code{plot_type = "base"}, draws a plot and returns \code{NULL}
@@ -79,7 +80,6 @@ cells <- data.frame(
   model = rep(names(probabilities), 2),
   row = rep(c("effect", "heterogeneity"), each = 3),
   label = rep(c("Effect", "Heterogeneity"), each = 3),
-  group = "Components",
   state = c("excluded", "positive", "positive",
             "excluded", "excluded", "included")
 )

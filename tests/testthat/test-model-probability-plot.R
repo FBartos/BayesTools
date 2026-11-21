@@ -68,6 +68,11 @@ test_that("the public model probability plot dispatches and preserves row count"
   )
   expect_no_warning(ggplot2::ggplotGrob(p))
 
+  ungrouped <- cells[setdiff(names(cells), "group")]
+  p <- plot_model_probabilities(fixture$probabilities, ungrouped, "ggplot", group_labels = TRUE, col = fixture$col)
+  expect_identical(attr(p, "n_rows", exact = TRUE), 3L)
+  expect_identical(nrow(ggplot2::ggplot_build(p)$layout$layout), 1L)
+
   one_cell <- data.frame(model = "m", row = "tau", label = "Heterogeneity", group = "", state = "included")
   p <- plot_model_probabilities(c(m = 1), one_cell, legend = TRUE, plot_type = "ggplot")
   expect_identical(attr(p, "n_rows", exact = TRUE), 1L)
@@ -82,6 +87,33 @@ test_that("the public model probability plot dispatches and preserves row count"
   ))
   expect_identical(base, list(value = NULL, visible = FALSE))
   expect_identical(graphics::par("mai"), margin)
+})
+
+test_that("base row labels are positioned using the current layout panel", {
+  skip_if_not_test_profile("unit")
+  probabilities <- c(a = 0.6, b = 0.4)
+  cells <- data.frame(model = names(probabilities), row = "effect", label = "Effect",
+                      state = c("positive", "negative"))
+  withr::local_pdf(file = NULL, width = 9, height = 4)
+  draw_text <- graphics::text
+  label_gaps <- numeric()
+  testthat::local_mocked_bindings(
+    text = function(x, y, labels, ...){
+      if(identical(labels, "Effect")){
+        label_gaps <<- c(label_gaps, diff(graphics::grconvertX(c(x, 0), "user", "inches")))
+      }
+      draw_text(x, y, labels, ...)
+    },
+    .package = "graphics"
+  )
+  plot_model_probabilities(probabilities, cells)
+  graphics::layout(matrix(1:2, 1L), widths = c(1, 3))
+  graphics::plot.new()
+  graphics::plot.new()
+  plot_model_probabilities(probabilities, cells)
+  plot_model_probabilities(probabilities, cells)
+
+  expect_equal(label_gaps, rep(0.1, 3L))
 })
 
 test_that("states wholly beyond the probability axis are absent from the legend", {
@@ -142,6 +174,10 @@ test_that("the public model probability plot rejects invalid inputs", {
   cells$label[2L] <- "Inconsistent"
   expect_error(plot_model_probabilities(probabilities, cells),
                "The 'label' and 'group' in 'cells' must be constant within each row.", fixed = TRUE)
+  cells <- fixture$cells
+  cells$group[2L] <- NA_character_
+  expect_error(plot_model_probabilities(probabilities, cells),
+               "The 'cells$group' argument cannot contain NA/NaN values.", fixed = TRUE)
   expect_error(plot_model_probabilities(probabilities, fixture$cells),
                "Supply a colour in 'col' for each state without a default: 'adjustment'.", fixed = TRUE)
   expect_error(plot_model_probabilities(probabilities, fixture$cells, col = c(adjustment = "invalid")),
