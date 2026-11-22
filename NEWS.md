@@ -1,7 +1,7 @@
 # development version
 ### Breaking changes
 - The fitted parameter map uses schema 23 and can read complete pre-R2 schema 22 fits
-- BayesTools requires JAGS 5.0.0 or later and rjags 5-5 or later
+- BayesTools requires JAGS 5.0.0 or later and rjags 5-5 or later. Thanks to [Matt Denwood](https://github.com/FBartos/BayesTools/pull/87) for the patch to obtain JAGS compiler flags directly from rjags, and to [Martyn Plummer](https://github.com/FBartos/RoBMA/pull/80) for the JAGS 5 C++ API guidance applied to the native module.
 - `JAGS_fit()` returns a `BayesTools_fit` with coda methods on success and the error condition if initial fitting fails. Use `JAGS_extend()` to continue a fit
 - `hypothesis_BF()` and `hypothesis_BF_model()` replace `columns` with `include_densities`, `include_probabilities`, and `include_method`; the `prior` and `posterior` columns are replaced by point densities and region probabilities, and table labels keep the notation of the hypothesis, with a constant on the right of a single relation
 - hypothesis statements cannot contain `#` comments
