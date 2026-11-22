@@ -1,5 +1,5 @@
-# Package-supplied declarations enter the graph only as observed markers and
-# numeric data. The provider owns the marker distribution's constant density.
+# Package-supplied declarations add observed zero markers or terminal
+# deterministic tags, with optional numeric data for their arguments.
 .bt_sampler_finite_prefix <- "BayesTools_finite_"
 .bt_sampler_finite_readout_prefix <- "BayesTools_finite_readout_"
 .bt_sampler_node_pattern <- "[A-Za-z][A-Za-z0-9_.]*"
@@ -78,7 +78,8 @@
   })
 
   reserved <- c(.bt_sampler_gate_prefix, .bt_sampler_block_prefix, .bt_sampler_finite_prefix)
-  provider_prefix <- paste0("d", tolower(jags_modules), "_", recycle0 = TRUE)
+  tag_prefix <- paste0(tolower(jags_modules), "_", recycle0 = TRUE)
+  distribution_prefix <- paste0("d", tag_prefix, recycle0 = TRUE)
   marked <- names(payload)
   check_nested <- function(nodes){
     conflict <- intersect(nodes, retired)
@@ -98,20 +99,25 @@
   check_fresh(marked)
   known <- c(model_nodes, marked)
   markers <- lapply(unname(joint[["markers"]]), function(marker){
-    if(!.bt_sampler_joint_fields(marker, c("name", "distribution", "arguments")) ||
+    type <- intersect(names(marker), c("distribution", "tag"))
+    if(!.bt_sampler_joint_fields(marker, c("name", "arguments"), c("distribution", "tag")) ||
+       length(type) != 1L ||
        length(marker$name) != 1L || !.bt_sampler_joint_names(marker$name) ||
-       length(marker$distribution) != 1L || !.bt_sampler_joint_names(marker$distribution) ||
+       length(marker[[type]]) != 1L || !.bt_sampler_joint_names(marker[[type]]) ||
        !is.list(marker$arguments) || is.object(marker$arguments)){
-      fail("each marker must have a JAGS 'name', a 'distribution' name and an ordered 'arguments' list")
+      fail("each marker must have a JAGS 'name', exactly one of 'distribution' and 'tag', and an ordered 'arguments' list")
     }
-    if(identical(as.vector(marker$distribution), "dbt_gate")){
+    symbol <- as.vector(marker[[type]])
+    if(type == "tag"){
+      if(!any(startsWith(symbol, tag_prefix))){
+        fail("tag '", symbol, "' must use the lowercase prefix of a provider listed in 'jags_modules'")
+      }
+    }else if(symbol == "dbt_gate"){
       fail("distribution 'dbt_gate' is reserved for gates verified from the model. Use 'sampler_gates' to enable those gates")
-    }
-    if(marker$distribution == "dbt_block" && ordinary_blocks){
+    }else if(symbol == "dbt_block" && ordinary_blocks){
       fail("callback 'dbt_block' markers cannot be combined with blocks from 'sampler_blocks'. Declare BayesTools blocks through one argument")
-    }
-    if(marker$distribution != "dbt_block" && !any(startsWith(marker$distribution, provider_prefix))){
-      fail("distribution '", marker$distribution,
+    }else if(symbol != "dbt_block" && !any(startsWith(symbol, distribution_prefix))){
+      fail("distribution '", symbol,
         "' must be a BayesTools marker or use the prefix of a provider listed in 'jags_modules'")
     }
     check_fresh(marker$name)
@@ -135,7 +141,7 @@
       }
       fail("each argument must contain JAGS node references or finite numeric literals")
     })
-    list(name = as.vector(marker$name), distribution = as.vector(marker$distribution), arguments = arguments)
+    stats::setNames(list(as.vector(marker$name), symbol, arguments), c("name", type, "arguments"))
   })
   arguments <- unlist(lapply(markers, "[[", "arguments"), recursive = FALSE, use.names = FALSE)
   references <- unlist(Filter(is.character, arguments), use.names = FALSE)
@@ -148,10 +154,15 @@
       if(is.numeric(value)) value <- trimws(formatC(value, digits = 17L, format = "g", decimal.mark = "."))
       if(length(value) == 1L) value else paste0("c(", paste(value, collapse = ", "), ")")
     }, character(1))
-    paste0(marker$name, " ~ ", marker$distribution, "(", paste(args, collapse = ", "), ")")
+    if(!is.null(marker$tag)){
+      paste0(marker$name, " <- ", marker$tag, "(", paste(args, collapse = ", "), ")")
+    }else{
+      paste0(marker$name, " ~ ", marker$distribution, "(", paste(args, collapse = ", "), ")")
+    }
   }, character(1))
-  marker_names <- setdiff(marked, names(payload))
-  list(lines = lines, data = c(payload, stats::setNames(rep(list(0), length(marker_names)), marker_names)),
+  observed <- Filter(function(marker) !is.null(marker$distribution), markers)
+  observed <- vapply(observed, "[[", character(1), "name")
+  list(lines = lines, data = c(payload, stats::setNames(rep(list(0), length(observed)), observed)),
     declaration = list(markers = markers, data = names(payload)))
 }
 
@@ -190,7 +201,7 @@
     return(legacy)
   }
   existing <- unique(c(.bt_sampler_tokens(legacy$model), names(legacy$data),
-    names(prior_list), .bt_jags_parameter_base(model_names)))
+    names(prior_list), trimws(.bt_jags_parameter_base(trimws(model_names)))))
   graph <- .bt_jags_syntax_graph(legacy$model)
   model_nodes <- unique(c(graph$stochastic, names(graph$deterministic), graph$data, names(legacy$data)))
   if(!is.null(joint)){
@@ -200,7 +211,9 @@
     package_markers <- .bt_sampler_joint_markers(joint, existing, jags_modules, retired,
       model_nodes = model_nodes, ordinary_blocks = NROW(legacy$declarations$blocks) > 0L)
     legacy$model <- .bt_sampler_insert_markers(legacy$model, package_markers$lines)
-    legacy$data <- c(legacy$data, package_markers$data)
+    if(length(package_markers$data)){
+      legacy$data <- c(legacy$data, package_markers$data)
+    }
     legacy$declarations$joint <- package_markers$declaration
     legacy$uses_module <- TRUE
   }

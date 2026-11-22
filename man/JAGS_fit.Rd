@@ -347,13 +347,20 @@ Callback packages must be listed in \code{required_packages}. Passing
 the finalized formula designs and the combined model and formula data,
 once before compilation. Return \code{NULL} to decline, or a list with a
 nonempty \code{markers} list and optional \code{data} list of named finite numeric
-constants that are referenced by the markers. Each marker specifies a fresh \code{name}, a registered JAGS
-\code{distribution} that is a normalized point mass at zero for every
-admissible parent value, and an ordered
-\code{arguments} list. Each argument contains one or more node references
+constants that are referenced by the markers. Each marker specifies a fresh
+\code{name}, an ordered \code{arguments} list and one of \code{tag} or \code{distribution}.
+Each argument contains one or more node references
 (bare names or positive integer subscripts or ranges) or finite numeric
 literals. Multiple entries in one argument are combined with \code{c()}.
-Markers are observed at zero. Use a distribution name prefixed with
+References can come from the existing model and data or the callback's
+numeric constants. Marker names are reserved to the declarations.
+A \code{tag} is a registered deterministic JAGS function with a name prefixed
+with \code{<lowercased-module>_} for a provider listed in \code{jags_modules}. It must
+return a fixed finite value for admissible arguments. The tag creates an
+unmonitored terminal node with no observed likelihood contribution.
+A \code{distribution} must be a normalized point mass at zero for every
+admissible parent value. Its marker is observed at zero.
+Use a distribution name prefixed with
 \code{d<lowercased-module>_} for a provider listed in \code{jags_modules}, or use
 the BayesTools block marker \code{dbt_block}. Declare BayesTools blocks through
 one of \code{sampler_joint} or \code{sampler_blocks}. Use \code{sampler_gates} for model-verified

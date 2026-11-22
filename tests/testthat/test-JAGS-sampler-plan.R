@@ -165,6 +165,54 @@ test_that("typed callbacks cannot bypass the scientific gate check", {
     fixed = TRUE, class = "BayesTools_sampler_declaration_error")
 })
 
+test_that("package tags are terminal declarations with no observed marker data", {
+
+  tag <- list(name = "package_terminal", tag = "package_zero", arguments = list("x"))
+  marker <- list(name = "package_observed", distribution = "dpackage_marker",
+    arguments = list("x", "geometry"))
+  legacy <- list(model = "model { x ~ dnorm(0, 1) }", data = NULL)
+  plan <- function(markers, payload = NULL, model = legacy$model, monitor = NULL){
+    legacy$model <- model
+    .bt_sampler_apply_plan(legacy, monitor, NULL, NULL, NULL,
+      sampler_joint = function(prior_list, formula_design, data){
+        list(markers = markers, data = payload)
+      },
+      sampler_probabilities = NULL, jags_modules = "Package")
+  }
+
+  tag_only <- plan(list(tag))
+  expect_identical(tag_only$data, legacy$data)
+  expect_match(tag_only$model, "package_terminal <- package_zero(x)", fixed = TRUE)
+  expect_identical(tag_only$declarations$joint$markers, list(tag))
+  combined <- plan(list(tag, marker), list(geometry = 2))
+  expect_identical(combined$data, list(geometry = 2, package_observed = 0))
+  expect_match(combined$model, "package_observed ~ dpackage_marker(x, geometry)", fixed = TRUE)
+  expect_identical(combined$declarations$joint$markers, list(tag, marker))
+
+  for(symbol in c("other_zero", "Package_zero", "exp")){
+    wrong_provider <- tag
+    wrong_provider$tag <- symbol
+    expect_error(plan(list(wrong_provider)), "must use the lowercase prefix of a provider",
+      fixed = TRUE, class = "BayesTools_sampler_declaration_error")
+  }
+  expect_error(plan(list(c(tag, list(distribution = "dbt_gate")))), "exactly one of 'distribution' and 'tag'",
+    fixed = TRUE, class = "BayesTools_sampler_declaration_error")
+
+  marker$arguments <- list("package_terminal")
+  for(markers in list(list(tag, marker), list(marker, tag))){
+    expect_error(plan(markers), "unknown node 'package_terminal'", fixed = TRUE,
+      class = "BayesTools_sampler_declaration_error")
+  }
+  expect_error(plan(list(tag, tag)), "is used more than once", fixed = TRUE,
+    class = "BayesTools_sampler_declaration_error")
+  expect_error(plan(list(tag), payload = list(package_terminal = 0)), "is used more than once",
+    fixed = TRUE, class = "BayesTools_sampler_declaration_error")
+  expect_error(plan(list(tag), model = "model { x ~ dnorm(package_terminal, 1) }"),
+    "is already used or reserved", fixed = TRUE, class = "BayesTools_sampler_declaration_error")
+  expect_error(plan(list(tag), monitor = " package_terminal [1] "),
+    "is already used or reserved", fixed = TRUE, class = "BayesTools_sampler_declaration_error")
+})
+
 test_that("parallel merge checks probability schema by indicator and reports mixed gate ownership", {
 
   make_worker <- function(ids, start, gate_sampler){

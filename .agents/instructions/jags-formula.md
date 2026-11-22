@@ -294,9 +294,13 @@ compiled alias.
 
 Package sampler callbacks receive the bound priors, finalized formula designs,
 and combined input data once. Their typed declarations add fresh observed
-zero markers and finite data constants after the legacy gate scan. A marker
-uses the BayesTools block marker or the name prefix of a declared provider
-module. Only the scientific gate scanner emits `dbt_gate` in this API.
+zero markers or terminal deterministic tags after the legacy gate scan.
+Tags use the lowercase prefix of a declared provider module with a fixed
+finite value at every admitted parent value. Tags have no observed data
+entry, cannot be read by the model or any other declaration, and are excluded
+from scientific monitors. An observed marker uses the BayesTools block marker
+or a distribution prefixed with `d<lowercased-module>_`. Only the scientific
+gate scanner emits `dbt_gate` in this API.
 Its gates take priority over `dbt_block`. Declare BayesTools FactorSlice
 blocks through one fitting argument to avoid ID and compiled alias collisions.
 Marker references must come from model relations or inputs. Each extra

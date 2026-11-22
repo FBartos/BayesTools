@@ -168,13 +168,20 @@
 #'   the finalized formula designs and the combined model and formula data,
 #'   once before compilation. Return `NULL` to decline, or a list with a
 #'   nonempty `markers` list and optional `data` list of named finite numeric
-#'   constants that are referenced by the markers. Each marker specifies a fresh `name`, a registered JAGS
-#'   `distribution` that is a normalized point mass at zero for every
-#'   admissible parent value, and an ordered
-#'   `arguments` list. Each argument contains one or more node references
+#'   constants that are referenced by the markers. Each marker specifies a fresh
+#'   `name`, an ordered `arguments` list and one of `tag` or `distribution`.
+#'   Each argument contains one or more node references
 #'   (bare names or positive integer subscripts or ranges) or finite numeric
 #'   literals. Multiple entries in one argument are combined with `c()`.
-#'   Markers are observed at zero. Use a distribution name prefixed with
+#'   References can come from the existing model and data or the callback's
+#'   numeric constants. Marker names are reserved to the declarations.
+#'   A `tag` is a registered deterministic JAGS function with a name prefixed
+#'   with `<lowercased-module>_` for a provider listed in `jags_modules`. It must
+#'   return a fixed finite value for admissible arguments. The tag creates an
+#'   unmonitored terminal node with no observed likelihood contribution.
+#'   A `distribution` must be a normalized point mass at zero for every
+#'   admissible parent value. Its marker is observed at zero.
+#'   Use a distribution name prefixed with
 #'   `d<lowercased-module>_` for a provider listed in `jags_modules`, or use
 #'   the BayesTools block marker `dbt_block`. Declare BayesTools blocks through
 #'   one of `sampler_joint` or `sampler_blocks`. Use `sampler_gates` for model-verified
