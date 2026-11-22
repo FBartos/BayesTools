@@ -116,6 +116,23 @@ plot.prior <- function(x, plot_type = "base",
   # ordered and simplex priors select several figures, others a single one
   check_int(show_figures, "show_figures", check_length = if(is.prior.ordered(x) || is.prior.simplex(x)) 0 else 1, allow_NULL = TRUE)
 
+  # the total of a gated R-squared budget: its prior law (atom at zero)
+  if(is.prior.R2_budget(x)){
+    return(plot(.bt_R2_core_total_law(x), plot_type = plot_type, x_seq = x_seq, xlim = xlim,
+                x_range_quant = x_range_quant, n_points = n_points, n_samples = n_samples,
+                force_samples = force_samples, transformation = transformation,
+                transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                show_figures = show_figures, individual = individual, rescale_x = rescale_x, par_name = par_name, ...))
+  }
+  # a term of a gated R-squared budget: its continuous part and the atom at
+  # zero of the closed term
+  if(is.prior.R2(x) && .bt_R2_term_is_gated(x) && !isTRUE(x$gated_slab)){
+    return(plot_prior_list(.bt_R2_gated_plot_components(x), plot_type = plot_type, x_seq = x_seq, xlim = xlim,
+                           x_range_quant = x_range_quant, n_points = n_points,
+                           n_samples = n_samples, force_samples = force_samples, transformation = transformation,
+                           transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                           show_figures = show_figures, individual = individual, rescale_x = rescale_x, par_name = par_name, ...))
+  }
   # spike-and-slab priors are mixtures whose components carry unit weights;
   # plot them with the inclusion probability
   if(is.prior.spike_and_slab(x)){

@@ -14,6 +14,23 @@
     indicator <- attr(prior, "random_allocation_indicator", exact = TRUE)
     label_parts <- .bt_random_allocation_inference_parts(fit, indicator)
     groups <- c("null", "alternative")
+  }else if(is.prior.R2(prior) || is.prior.R2_budget(prior)){
+    # The open event includes a possible spike on the total. The sampler's
+    # raw term gate can be one while that spike closes the whole budget.
+    if(is.prior.R2(prior)){
+      indicator <- .bt_R2_term_open_column(prior)
+    }else{
+      indicator <- .bt_R2_core_nodes(prior)$indicator
+      if(!is.null(indicator)){
+        label_parts <- .bt_R2_total_label_parts_list(attr(fit, "prior_list", exact = TRUE))[[indicator]]
+      }
+    }
+    if(is.null(indicator)){
+      .bt_diagnostics_unavailable("No inclusion event is declared for the R-squared budget parameter '",
+                                  parameter, "'.")
+    }
+    groups <- c("null", "alternative")
+    gate <- TRUE
   }else if(is.prior.mixture(prior) && length(prior) > 1L){
     groups <- attr(prior, "components", exact = TRUE)
   }else{

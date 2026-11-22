@@ -279,7 +279,7 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
           )
         )
         par_summary <- rbind(par_summary, .bt_ensemble_draw_summary(defined$values, probs))
-        if(defined$n_defined < defined$n_draws){
+        if(defined$n_defined < defined$n_draws || identical(defined$reason, "term_included")){
           undefined_footnotes <- c(undefined_footnotes, .bt_undefined_draws_footnote(
             row       = if(is.null(parameter_name)) parameter else parameter_name[column],
             n_defined = defined$n_defined,
@@ -301,11 +301,15 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
         label  = parameter,
         reason = .bt_ensemble_undefined_draws_reason(undefined_draws[[parameter]])
       )
+      omitted <- .bt_meta_get(samples[[parameter]], "omitted_undefined_draws")
+      if(!is.null(omitted)){
+        defined$n_draws <- defined$n_draws + omitted
+      }
       par_summary <- .bt_ensemble_draw_summary(defined$values, probs)
       estimates_table <- rbind(estimates_table, par_summary)
 
       rownames(estimates_table)[nrow(estimates_table)] <- parameter_name
-      if(defined$n_defined < defined$n_draws){
+      if(defined$n_defined < defined$n_draws || identical(defined$reason, "term_included")){
         undefined_footnotes <- c(undefined_footnotes, .bt_undefined_draws_footnote(
           row       = parameter_name,
           n_defined = defined$n_defined,

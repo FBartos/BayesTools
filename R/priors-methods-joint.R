@@ -200,6 +200,12 @@ rng.prior   <- function(x, n, ...){
   }else{
     transform_factor_samples <- TRUE
   }
+  if(is.prior.R2(prior)){
+    return(.bt_R2_prior_method(prior, "rng", n, transform_factor_samples = transform_factor_samples))
+  }
+  if(is.prior.R2_budget(prior)){
+    return(.bt_R2_core_method(prior, "rng", n))
+  }
   if(!is.null(dots[["sample_components"]])){
     check_bool(dots[["sample_components"]], "sample_components")
     sample_components <- dots[["sample_components"]]
@@ -483,6 +489,12 @@ cdf.prior   <- function(x, q, ...){
   .check_q(as.vector(q))
   .check_prior(prior)
   .check_regularized_joint_method(prior, "cdf")
+  if(is.prior.R2(prior)){
+    return(.bt_R2_prior_method(prior, "cdf", q))
+  }
+  if(is.prior.R2_budget(prior)){
+    return(.bt_R2_core_method(prior, "cdf", q))
+  }
 
   if(is.prior.spike_and_slab(prior)){
 
@@ -524,6 +536,12 @@ ccdf.prior  <- function(x, q, ...){
   .check_q(as.vector(q))
   .check_prior(prior)
   .check_regularized_joint_method(prior, "ccdf")
+  if(is.prior.R2(prior)){
+    return(.bt_R2_prior_method(prior, "ccdf", q))
+  }
+  if(is.prior.R2_budget(prior)){
+    return(.bt_R2_core_method(prior, "ccdf", q))
+  }
 
   if(is.prior.spike_and_slab(prior)){
 
@@ -573,6 +591,12 @@ lpdf.prior  <- function(x, y, ...){
 # (pdf() evaluates the same density).
 .prior_joint_lpdf <- function(prior, x, method){
 
+  if(is.prior.R2(prior)){
+    return(.bt_R2_prior_method(prior, "lpdf", x))
+  }
+  if(is.prior.R2_budget(prior)){
+    return(.bt_R2_core_method(prior, "lpdf", x))
+  }
   if(is.prior.spike_and_slab(prior)){
 
     stop(sprintf("No %s are implemented for spike and slab priors.", method), call. = FALSE)
@@ -660,7 +684,11 @@ pdf.prior   <- function(x, y, ...){
   .check_prior(prior)
   .check_regularized_joint_method(prior, "pdf")
 
-  if(is.prior.simple(prior)){
+  if(is.prior.R2(prior)){
+    lik <- .bt_R2_prior_method(prior, "pdf", x)
+  }else if(is.prior.R2_budget(prior)){
+    lik <- .bt_R2_core_method(prior, "pdf", x)
+  }else if(is.prior.simple(prior)){
     lik <- .prior_simple_pdf(prior, x)
   }else{
     log_lik <- .prior_joint_lpdf(prior, x, "pdf")
@@ -677,6 +705,12 @@ quant.prior <- function(x, p, ...){
   .check_p(p, log.p = FALSE)
   .check_prior(prior)
   .check_regularized_joint_method(prior, "quant")
+  if(is.prior.R2(prior)){
+    return(.bt_R2_prior_method(prior, "quant", p))
+  }
+  if(is.prior.R2_budget(prior)){
+    return(.bt_R2_core_method(prior, "quant", p))
+  }
 
   if(is.prior.spike_and_slab(prior)){
 

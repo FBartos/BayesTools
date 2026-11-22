@@ -430,10 +430,10 @@ Math.BayesTools_BF <- function(x, ...){
     attr(out, "type") <- type[source_cols]
   }
 
-  n_models <- attr(x, "n_models")
-  if(!is.null(n_models) && length(n_models) == nrow(x)){
-    if(length(row_indices) == nrow(out)){
-      attr(out, "n_models") <- n_models[row_indices]
+  for(attribute in c("n_models", "parameter_roles", "event_quantity_ids")){
+    values <- attr(x, attribute, exact = TRUE)
+    if(!is.null(values) && length(values) == nrow(x) && length(row_indices) == nrow(out)){
+      attr(out, attribute) <- values[row_indices]
     }
   }
 

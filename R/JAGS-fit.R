@@ -1182,12 +1182,13 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   # object. Extending from the stored chain states alone makes it depend only
   # on the fitted object, as after saving and reloading it.
   fit[["live_model"]] <- NULL
-  fitted_parameter_map <- attr(fit, "parameter_map", exact = TRUE)
+  fitted_parameter_map <- parameter_map(fit)
   backend_anchor     <- attr(fit, "backend_anchor", exact = TRUE)
   sampler_declarations <- attr(fit, "sampler_declarations", exact = TRUE)
   formula_design     <- attr(fit, "formula_design", exact = TRUE)
 
   coordinates <- .bt_require_fit_contract(fit)
+  .bt_R2_validate_fitted_owners(fit)
   if(!is.null(formula_design)){
     if(!is.list(formula_design) || is.null(names(formula_design)) ||
        any(!nzchar(names(formula_design))) || anyDuplicated(names(formula_design))){

@@ -33,6 +33,7 @@
     attr(fit, "formula_design")
   )
   has_fitted_formula_design <- length(fitted_formula_design) > 0L
+  .bt_R2_validate_fitted_owners(fit)
   for(design in fitted_formula_design){
     .bt_regularized_check_fitted_priors(design, attr(fit, "prior_list", exact = TRUE))
   }

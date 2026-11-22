@@ -23,6 +23,9 @@ field.}
 \item{\code{"undefined_draws"}}{a character vector naming quantities
 whose draws may be \code{NA} because the quantity is undefined in those
 draws (e.g. \code{"correlation"}), as returned by \code{\link[=parameter_draws]{parameter_draws()}}.}
+\item{\code{"omitted_undefined_draws"}}{for the scalar mixed posterior
+of a term share conditional on inclusion in an R-squared budget, the
+number of fitted draws excluded because the term is closed.}
 \item{\code{"prior_density"}}{the prior density of the quantity.}
 \item{\code{"prior_densities"}}{a list of prior densities keyed by
 parameter, attached to the list returned by \code{\link[=as_mixed_posteriors]{as_mixed_posteriors()}}

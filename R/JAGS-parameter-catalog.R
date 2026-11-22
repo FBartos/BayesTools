@@ -39,7 +39,30 @@
 #' allocation of an ordered term is a derived quantity,
 #' `<parameter>_ordered_allocation[<level>]` displayed as `term[share: level]`
 #' (support \[0, 1\], the Beta marginal of the Dirichlet prior); its earlier
-#' labels (`term_ordered_allocation[level]`) are aliases. The level names of transformed summaries,
+#' labels (`term_ordered_allocation[level]`) are aliases. The total of an
+#' R-squared budget ([prior_R2()]) is the quantity of its total coordinate
+#' `<parameter>_<name>` displayed as `<name>{total}` (support \[0, 1\], the
+#' Beta prior of the model), and each retained term of a budget that retains
+#' two or more terms has a derived share quantity
+#' `<parameter>_<name>_allocation[<term>]` displayed as `<name>[share: <term>]`
+#' (support \[0, 1\], the Beta marginal of the Dirichlet allocation summed over
+#' the term's allocation units); the allocation coordinates of a budget are
+#' backend coordinates. For a budget with inclusion gates or a spike-and-slab
+#' total, the total has an atom at zero (the budget null) and the inclusion
+#' event of the budget indicator, displayed `<name>{total} (inclusion)`;
+#' every gated term has a realized inclusion quantity `<parameter>_<name>_open[<term>]`
+#' displayed as `<term> (inclusion)`, with the Bernoulli prior of its marginal
+#' inclusion probability. The earlier selector `<parameter>_<name>_gate[<term>]`
+#' remains an alias of that realized event. A share is undefined (`"term_included"`) on
+#' the draws where its term is closed, with the prior of the share given that
+#' the term is open. The scalar coefficients of a gated term have an atom at
+#' zero (the term closed) and are tested on these quantities; the levels and
+#' coded coefficients of an exact-law factor have a catalog prior law, including
+#' under gating. For the normal and Laplace kernels, a level that combines
+#' several coded coefficients has no supported marginal prior law. R-squared quantities record
+#' `owner_type = "r2_budget"`, the declared budget in `owner_name`, and their
+#' `quantity` (total, share, term or budget inclusion, inclusion rate, or
+#' coefficient). The budget total is the parent of its members. The level names of transformed summaries,
 #' `<parameter>[dif: level]`, and the row labels those summaries display,
 #' `(formula) term[dif: level]` and `term[dif: level]`, are aliases of the
 #' level quantity. JAGS
@@ -148,7 +171,9 @@
 #' derived quantities. For gated total-variance allocations, realized
 #' `sd_total` and `var_total` draws include the all-off zero branch.
 #' `var_prop(...)` draws are normalized over active components and are `NA` on
-#' draws where the realized allocation total is zero. Random-effect
+#' draws where its parent gate is closed or no local component is active. The
+#' normalized allocation weights can remain defined when a separate external
+#' scale is zero and all realized component variances are zero. Random-effect
 #' correlations (`cor(...)` of LKJ blocks; original-scale correlations in a
 #' block with scaled columns) are `NA` on draws where the correlation is
 #' undefined, i.e. where one of the SDs of its pair is zero; a correlation
@@ -182,7 +207,8 @@
 #' the linear predictor; structural levels are point masses at their fixed
 #' value), one-to-one transformations, Dirichlet allocation marginals, and
 #' allocation-derived component SDs. Variance proportions are conditional on
-#' positive allocation variance. A shared parent inclusion gate cancels from
+#' an active allocation. They describe the relative gated weights and hence
+#' can remain defined at a zero external scale. A shared parent inclusion gate cancels from
 #' that conditional law, leaving the Dirichlet marginal
 #' `Beta(alpha_i, sum(alpha) - alpha_i)`. Independently gated components keep the mixed measure
 #' over the realized active set: atoms at 0 and 1, and a Beta mixture over
@@ -347,7 +373,7 @@ parameter_catalog.BayesTools_fit <- function(object, transform_scaled = TRUE, ..
   parameter_map_cache(
     map      = map,
     provider = "BayesTools.fitted_scale",
-    key      = list(version = 2L, prior_list = prior_list, formula_design = formula_design),
+    key      = list(version = 3L, prior_list = prior_list, formula_design = formula_design),
     compute  = function(){
       catalog <- .bt_build_parameter_catalog(
         coordinates    = map$coordinates,
@@ -355,7 +381,10 @@ parameter_catalog.BayesTools_fit <- function(object, transform_scaled = TRUE, ..
         formula_design = formula_design,
         formula_scale  = NULL
       )
-      if(identical(catalog$quantities, map$quantities)){
+      provided <- map$relationships$provider != "BayesTools"
+      relationships <- rbind(catalog$relationships, map$relationships[provided, , drop = FALSE])
+      rownames(relationships) <- NULL
+      if(identical(catalog$quantities, map$quantities) && identical(relationships, map$relationships)){
         return(map)
       }
       # The accepted names do not depend on the scale: the aliases of the stored
@@ -371,7 +400,7 @@ parameter_catalog.BayesTools_fit <- function(object, transform_scaled = TRUE, ..
       aliases <- rbind(aliases, added)
       rownames(aliases) <- NULL
 
-      .bt_parameter_map_new(map$coordinates, catalog$quantities, aliases)
+      .bt_parameter_map_new(map$coordinates, catalog$quantities, aliases, relationships)
     }
   )
 }
@@ -382,9 +411,7 @@ parameter_catalog.BayesTools_fit <- function(object, transform_scaled = TRUE, ..
 
   map <- .bt_parameter_fitted_map(fit)
   attr(fit, "formula_scale") <- list()
-  attr(fit, "parameter_map") <- map
-
-  fit
+  .bt_fit_with_parameter_map(fit, map)
 }
 
 # The fit on the fitted scale of its predictors, and the quantity of 'selection'
@@ -487,7 +514,7 @@ parameter_catalog_schema <- function(){
       "Whether the quantity is private implementation metadata.",
       "Relationship to concrete source coordinates: identity, one_to_one_transform, composite, or none.",
       "Exact support of the quantity from the prior provenance of its source coordinates (a posterior_support_attribute() object; a quantity with point masses lists them as the points of a support of type \"mixed\"), or NULL when it is not derivable.",
-      "Draws where the quantity is defined: 'always', or the reason of possibly undefined (NA) draws ('correlation': an SD is zero; 'allocation_active': no allocation component is active).",
+      "Draws where the quantity is defined: 'always', or the reason of possibly undefined (NA) draws ('correlation': an SD is zero; 'allocation_active': no allocation component is active; 'term_included': the R-squared term is closed).",
       "Structured label parts from which parameter_labels() renders the selector, table, plot, and warning labels of the quantity (NULL for extension quantities described by their display label only).",
       "Serializable plain-data extraction recipe."
     ),
@@ -513,7 +540,8 @@ parameter_catalog_schema <- function(){
   list(
     schema_version = .bt_parameter_map_version,
     quantities = quantities,
-    aliases = aliases
+    aliases = aliases,
+    relationships = .bt_relationship_schema()
   )
 }
 
@@ -801,6 +829,9 @@ parameter_draws.BayesTools_fit <- function(object, selection,
   dependencies <- if(is.null(model_samples)){
     .bt_parameter_draw_dependencies(object, key$dependencies)
   }else{
+    if(key$type %in% c("R2_share", "R2_open") && is.matrix(model_samples) && is.numeric(model_samples)){
+      .bt_R2_require_columns(model_samples, key$dependencies)
+    }
     .bt_parameter_draw_supplied_dependencies(
       model_samples,
       key$dependencies
@@ -824,6 +855,10 @@ parameter_draws.BayesTools_fit <- function(object, selection,
       .bt_parameter_draw_factor_level(key, model_samples)
     }else if(identical(key$type, "ordered_allocation")){
       .bt_parameter_draw_ordered_allocation(object, key, model_samples)
+    }else if(identical(key$type, "R2_share")){
+      .bt_parameter_draw_R2_share(object, key, model_samples)
+    }else if(identical(key$type, "R2_open")){
+      .bt_parameter_draw_R2_open(object, key, model_samples)
     }else{
       .bt_parameter_draw_random_summary(
         fit = object,
@@ -911,6 +946,21 @@ parameter_prior_density.BayesTools_fit <- function(
          call. = FALSE)
   }
   key <- quantity$extraction_key[[1L]]
+  if(identical(key$type, "R2_share")){
+    return(.bt_parameter_prior_density_R2_share(object, quantity, key, n_grid, tail_prob))
+  }
+  R2_law <- .bt_R2_quantity_law(object, key, conditional)
+  if(!is.null(R2_law)){
+    out <- .bt_parameter_prior_density_scalar(.bt_R2_grid_law(R2_law), n_grid = n_grid,
+                                              tail_prob = tail_prob)
+    if(!is.null(out)){
+      attr(out, "parameter_prior_density") <- c(
+        list(quantity_id = quantity$quantity_id, source = "fitted_parameter_map"),
+        if(isTRUE(conditional)) list(conditional = "inclusion")
+      )
+    }
+    return(out)
+  }
   if(identical(key$type, "ordered_allocation") ||
      (identical(key$type, "coordinate") &&
       !is.null(.bt_ordered_total_owner(attr(object, "prior_list", exact = TRUE), key$dependencies)))){
@@ -2686,12 +2736,13 @@ parameter_transform_jacobian <- function(values, transform){
   out
 }
 
-.bt_parameter_catalog_new <- function(quantities, aliases){
+.bt_parameter_catalog_new <- function(quantities, aliases, relationships = .bt_empty_relationships()){
 
   out <- list(
     schema_version = .bt_parameter_map_version,
     quantities = quantities,
-    aliases = aliases
+    aliases = aliases,
+    relationships = relationships
   )
   class(out) <- c("BayesTools_parameter_catalog", "list")
   .bt_validate_parameter_catalog(out)
@@ -3304,7 +3355,12 @@ parameter_transform_jacobian <- function(values, transform){
       values <- unique(c(
         quantity$canonical_name,
         quantity$display_label,
-        quantity$term,
+        if(!identical(quantity$owner_type, "r2_budget") || identical(quantity$quantity, "coefficient")){
+          quantity$term
+        },
+        if(identical(quantity$owner_type, "r2_budget") && identical(quantity$quantity, "term_inclusion")){
+          paste0(quantity$extraction_key[[1L]]$total, "_gate[", quantity$term, "]")
+        },
         if(nzchar(quantity$term) && nzchar(quantity$component) &&
            .bt_parameter_catalog_is_factor_quantity(quantity)){
           .bt_parameter_catalog_level_alias(
@@ -4732,9 +4788,11 @@ parameter_transform_jacobian <- function(values, transform){
   )
   quantities <- rbind(
     base, factor_map$quantities, random_map$derived,
-    .bt_ordered_share_quantities(coordinates, prior_list)
+    .bt_ordered_share_quantities(coordinates, prior_list),
+    .bt_R2_share_quantities(coordinates, prior_list)
   )
   rownames(quantities) <- NULL
+  quantities <- .bt_R2_register_catalog_owners(quantities, prior_list)
   quantities <- .bt_parameter_catalog_add_support(
     quantities     = quantities,
     prior_list     = prior_list,
@@ -4747,7 +4805,8 @@ parameter_transform_jacobian <- function(values, transform){
     formula_scale = formula_scale,
     legacy_parts = .bt_ordered_legacy_label_parts(prior_list)
   )
-  .bt_parameter_catalog_new(quantities, aliases)
+  .bt_parameter_catalog_new(quantities, aliases,
+    .bt_build_parameter_relationships(quantities, formula_design, prior_list, formula_scale))
 }
 
 # Exact support and definedness of the catalog quantities, declared when the
@@ -4824,6 +4883,15 @@ parameter_transform_jacobian <- function(values, transform){
     return(.posterior_support_point(quantity$fixed_value, source = "catalog"))
   }
   key <- quantity$extraction_key[[1L]]
+  # the supports of the quantities of R-squared budgets are structural (no
+  # configuration of a gated budget is enumerated)
+  R2_support <- .bt_R2_quantity_support(object, key)
+  if(!is.null(R2_support)){
+    return(R2_support)
+  }
+  if(identical(key$type, "R2_share")){
+    return(.posterior_support_new(c(0, 1), source = "catalog", type = "interval"))
+  }
   if(identical(key$type, "ordered_allocation") || identical(key$type, "coordinate")){
     ordered <- .bt_ordered_quantity_support(object, key)
     if(!is.null(ordered)){
@@ -5272,6 +5340,15 @@ parameter_transform_jacobian <- function(values, transform){
 .bt_parameter_catalog_quantity_definedness <- function(object, quantity){
 
   key <- quantity$extraction_key[[1L]]
+  # the share of a gated term is undefined where the term is closed
+  if(identical(key$type, "R2_share")){
+    prior <- attr(object, "prior_list", exact = TRUE)[[key$term]]
+    if(.bt_R2_term_is_gated(prior) && !is.null(.bt_R2_term_open_column(prior)) &&
+       .bt_R2_term_can_close(prior)){
+      return("term_included")
+    }
+    return("always")
+  }
   if(!identical(key$type, "random_summary")){
     return("always")
   }
@@ -5313,6 +5390,12 @@ parameter_transform_jacobian <- function(values, transform){
         all(is.finite(key$weights)) &&
         length(key$weights) == length(key$dependencies)
     )
+  }
+  if(identical(key$type, "R2_share")){
+    return(.bt_parameter_catalog_valid_R2_share_key(key))
+  }
+  if(identical(key$type, "R2_open")){
+    return(.bt_parameter_catalog_valid_R2_open_key(key))
   }
   if(identical(key$type, "ordered_allocation")){
     return(
@@ -5543,12 +5626,13 @@ parameter_transform_jacobian <- function(values, transform){
 
   valid <- inherits(catalog, "BayesTools_parameter_catalog") &&
     is.list(catalog) &&
-    identical(names(catalog), c("schema_version", "quantities", "aliases")) &&
+    identical(names(catalog), c("schema_version", "quantities", "aliases", "relationships")) &&
     identical(catalog$schema_version, .bt_parameter_map_version)
   if(!valid){
     .bt_stop_refit_required("Parameter catalog metadata are missing or unsupported. Refit or rebuild the catalog with this version of BayesTools.")
   }
   .bt_validate_parameter_catalog_tables(catalog$quantities, catalog$aliases)
+  .bt_validate_relationships(catalog$relationships, catalog$quantities)
   invisible(TRUE)
 }
 

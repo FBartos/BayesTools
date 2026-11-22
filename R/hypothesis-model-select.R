@@ -349,10 +349,10 @@
 # message says that a statement refers to one parameter.
 .hypothesis_model_stop_multiple_parameters <- function(entries, provider) {
 
-  # an ordered quantity is named by its displayed label, not by its root
+  # Formula catalog marginals use their displayed labels.
   shown <- entries[["parameter"]]
-  ordered <- entries[["source"]] %in% "ordered"
-  shown[ordered] <- vapply(entries[["aliases"]][ordered], `[[`, character(1), 1L)
+  marginal <- .hypothesis_model_formula_marginal(entries[["source"]])
+  shown[marginal] <- vapply(entries[["aliases"]][marginal], `[[`, character(1), 1L)
   parameters <- paste(unique(shown), collapse = ", ")
   components <- unique(entries[["component"]])
   # parameters of one component: choosing a component cannot resolve them
@@ -566,16 +566,16 @@
 }
 
 
-# The references of the statement to an ordered quantity (the total or a share
-# of an ordered term) as the plain symbol of its entry. The parser reads the
+# The references to an ordered or R2 catalog quantity as the plain symbol
+# of its entry. The parser reads the
 # trailing bracket of a share or sliced total, `f[share: a]` or
 # `f:g_ordered_total[1]`, as the level of a factor term, and a name that ends
 # in a bracket cannot be a root of the rewritten statement; the references
 # that the resolution matched to the quantity are replaced by its parameter.
-.hypothesis_model_ordered_symbols <- function(hypothesis, selected) {
+.hypothesis_model_catalog_symbols <- function(hypothesis, selected) {
 
   entry <- selected[["entry"]]
-  if (!identical(entry[["source"]], "ordered")) {
+  if (!isTRUE(.hypothesis_model_formula_marginal(entry[["source"]]))) {
     return(hypothesis)
   }
   occurrences <- selected[["resolution"]][["occurrences"]]

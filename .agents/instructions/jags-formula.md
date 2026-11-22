@@ -686,6 +686,34 @@ a second transformation path.
 
 ## Parameter Map
 
+Map schema 23 includes the directed relationships between public quantities,
+declared scalar or row sources, formula-scoped allocations and their components.
+Use `parameter_relationships()` to traverse source and consumer identities,
+including the exact parent component, ownership and normalization. Use the
+stored numeric recipe for draws and prior densities. A containment/reporting
+edge alone does not define an equality between random variables. Register a
+model builder's additional declared inputs with
+`register_parameter_relationships()`; keep those rows when extending catalogs,
+requesting the fitted predictor scale, or serializing a fit.
+
+For an ordinary public model coordinate, the native `prior_owns` edge identifies
+its fitted prior-list entry, including the base entry of an indexed coordinate.
+A provider may use that quantity as a source. Additional provider inputs belong
+to model-defined coordinates and the provider's own derived quantities.
+
+For a saved pre-R² map 22 with complete fitted declarations, the fit accessors
+preserve its coordinate, quantity and alias tables and derive the new relationship
+table from the stored model metadata. The read view is memoized by its inputs.
+Older maps, experimental R² map 22 recipes and incomplete bindings require refitting.
+
+An R² budget owns its total, term shares, realized inclusion events, rate and
+coefficient members. Closed terms have undefined shares even while another
+term is open. Conditions and share summaries consume the same effective-open
+sources as the catalog. A partial draw view needs every source used by the
+requested result. Use `parameter_plot_samples()` for a selected scalar's
+posterior plot input. The residual SD multiplies predictor contributions,
+and an allocation share remains unitless.
+
 For a log-intercept formula, `exp(intercept)` aliases the fitted coefficient
 quantity; selection alone does not unscale it. Downstream display scale, such
 as RoBMA's `standardized_coefficients`, is selected independently.
@@ -1000,7 +1028,7 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   tables re-runs validation. The fit contract stores one
   `parameter_map_version`; there are no separate registry/catalog versions or
   fit attributes. Bump `.bt_parameter_map_version` whenever selectors or map
-  semantics change; fits with another version must be refitted.
+  semantics change. The verified pre-R² map 22 read path is the compatibility exception.
   Version 17 corrects the persisted pure-rescaling classification of named
   random-effect fallback maps; older maps must not be relabelled in place.
   Version 18 gives the spike-and-slab and mixture nodes of a structured

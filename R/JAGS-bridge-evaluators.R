@@ -84,6 +84,8 @@
     ))
   }else if(is.prior.PET(prior_object) | is.prior.PEESE(prior_object)){
     return(.bt_JAGS_bridge_compile_PP_evaluator(prior_object))
+  }else if(is.prior.R2(prior_object)){
+    return(.bt_JAGS_bridge_compile_R2_evaluator(prior_object, parameter_name))
   }else if(is.prior.factor(prior_object)){
     return(.bt_JAGS_bridge_compile_factor_evaluator(prior_object, parameter_name))
   }else if(is.prior.vector(prior_object)){
@@ -251,6 +253,13 @@
 
   force(prior_object)
   force(parameter_names)
+
+  if(is.prior.R2(prior_object)){
+    return(.bt_JAGS_marglik_compile_R2_parameter_values(
+      prior_object,
+      .bt_parameter_coordinates_base(parameter_names[[1L]])
+    ))
+  }
 
   if(is.prior.ordered(prior_object)){
     return(.bt_JAGS_marglik_compile_ordered_parameter_values(

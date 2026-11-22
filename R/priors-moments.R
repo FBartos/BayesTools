@@ -32,6 +32,12 @@ mean.prior   <- function(x, ...){
 
   .check_prior(x, "x")
   if(is.prior.regularized_term(x)) return(.regularized_moment(.bt_regularized_level_prior(x), FALSE))
+  if(is.prior.R2(x)){
+    return(.bt_R2_prior_method(x, "mean"))
+  }
+  if(is.prior.R2_budget(x)){
+    return(.bt_R2_core_method(x, "mean"))
+  }
 
   if(is.prior.spike_and_slab(x)){
 
@@ -227,6 +233,12 @@ var.prior   <- function(x, ...){
 
   .check_prior(x, "x")
   if(is.prior.regularized_term(x)) return(.regularized_moment(.bt_regularized_level_prior(x), TRUE))
+  if(is.prior.R2(x)){
+    return(.bt_R2_prior_method(x, "var"))
+  }
+  if(is.prior.R2_budget(x)){
+    return(.bt_R2_core_method(x, "var"))
+  }
 
   if(is.prior.spike_and_slab(x)){
 

@@ -25,6 +25,8 @@
 #' `JAGS_fit_contract()` returns the schema contract attached to a fit.
 #' `JAGS_validate_fit_contract()` checks the components named in `requires` and
 #' requires unsupported objects to be refitted rather than adapted.
+#' A complete pre-R2 version 22 parameter map is reported as version 23 after
+#' its fitted declarations are validated.
 #'
 #' Every error that asks to refit the model has class
 #' `BayesTools_refit_required`: these validators, and every function that
@@ -137,6 +139,10 @@ JAGS_fit_contract <- function(fit){
   }
   contract <- attr(fit, "fit_contract", exact = TRUE)
   .bt_validate_fit_contract_object(contract)
+  map <- attr(fit, "parameter_map", exact = TRUE)
+  if(.bt_parameter_map_v22_pair(map, contract)){
+    contract$parameter_map_version <- .bt_parameter_map_from_v22(fit, map, contract)$schema_version
+  }
   contract
 }
 

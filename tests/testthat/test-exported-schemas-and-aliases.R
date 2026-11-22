@@ -188,8 +188,8 @@ test_that("parameter_catalog_schema describes the tables of parameter_catalog()"
   )
 
   schema <- parameter_catalog_schema()
-  expect_identical(names(schema), c("schema_version", "quantities", "aliases"))
-  for(table in c("quantities", "aliases")){
+  expect_identical(names(schema), c("schema_version", "quantities", "aliases", "relationships"))
+  for(table in c("quantities", "aliases", "relationships")){
     expect_identical(names(schema[[table]]), c("field", "type", "description"), info = table)
     expect_identical(anyDuplicated(schema[[table]]$field), 0L, info = table)
     expect_true(all(nzchar(schema[[table]]$description)), info = table)
@@ -206,6 +206,7 @@ test_that("parameter_catalog_schema describes the tables of parameter_catalog()"
     expect_identical(schema$schema_version, parameter_map(fit)$schema_version, info = name)
     expect_identical(schema$quantities$field, names(catalog$quantities), info = name)
     expect_identical(schema$aliases$field, names(catalog$aliases), info = name)
+    expect_identical(schema$relationships$field, names(catalog$relationships), info = name)
 
     # and their declared types, also for the columns that hold only NA or lists
     expect_identical(.schema_type_problems(schema$quantities, catalog$quantities), character(), info = name)

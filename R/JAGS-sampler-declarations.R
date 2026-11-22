@@ -403,6 +403,9 @@
   if(is.prior.spike_and_slab(prior)) return(reason("it is a spike-and-slab prior"))
   if(is.prior.mixture(prior))        return(reason("it is a mixture prior"))
   if(is.prior.ordered(prior))        return(reason("it is an ordered prior"))
+  if(is.prior.R2(prior) || is.prior.R2_budget(prior)){
+    return(reason("its R-squared budget value is deterministic"))
+  }
   if(is.prior.point(prior))          return(reason("it is a point prior"))
   if(is.prior.discrete(prior))       return(reason("it is a discrete prior"))
   if(!is.null(attr(prior, "random_allocation_inclusion", exact = TRUE))){

@@ -1,7 +1,8 @@
 # A named regularization group supplies the coefficient priors of its terms
 # before formula defaults and contrasts are resolved. The ordinary formula
 # compiler determines their fitted basis and dimension.
-.bt_regularized_assign_terms <- function(prior_list, model_terms, model_terms_type){
+.bt_regularized_assign_terms <- function(prior_list, model_terms, model_terms_type,
+                                         R2_budgets = list()){
 
   labels <- names(prior_list)
   declarations <- vapply(prior_list, is.prior.regularized, logical(1))
@@ -52,7 +53,25 @@
   if(length(implicit) > 1L){
     stop("At most one regularization group per formula may omit 'terms'.", call. = FALSE)
   }
-  if(length(implicit)) members[[implicit]] <- setdiff(terms, c(names(prior_list), explicit))
+  # Reserve explicitly budgeted R2 terms before expanding a regularization
+  # default. The R2 binder runs next and sees the resolved regularized terms.
+  reserved <- character()
+  if(length(R2_budgets)){
+    if(any(names(groups) %in% names(R2_budgets))){
+      .bt_R2_stop("An R-squared budget and a regularization group must have distinct names.")
+    }
+    R2_terms <- lapply(R2_budgets, `[[`, "terms")
+    if(length(implicit) && any(vapply(R2_terms, is.null, logical(1)))){
+      .bt_R2_stop("An R-squared budget and a regularization group cannot both omit 'terms'.")
+    }
+    reserved <- terms[keys(terms) %in% keys(as.character(unlist(R2_terms, use.names = FALSE)))]
+    overlap <- intersect(explicit, reserved)
+    if(length(overlap)){
+      .bt_R2_stop(paste0("Term '", overlap[1L],
+        "' belongs to both an R-squared budget and a regularization group. Name each term in only one group."))
+    }
+  }
+  if(length(implicit)) members[[implicit]] <- setdiff(terms, c(names(prior_list), explicit, reserved))
 
   for(group in names(groups)){
     .bt_check_jags_node_name(group, "regularization group name")

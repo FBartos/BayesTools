@@ -104,7 +104,25 @@
 #' coordinate, but they are not catalog quantities and do not select one in
 #' [parameter_catalog_resolve()], hypotheses, or plots (the shares of the
 #' ordered-factor allocations, which the table shows as \code{<term>[share:
-#' <level>]}, are catalog quantities).
+#' <level>]}, and the shares of the terms of R-squared budgets, shown as
+#' \code{<budget>[share: <term>]} in place of the budget's allocation
+#' coordinates, are catalog quantities). An R-squared budget with inclusion
+#' gates or a spike-and-slab total shows inclusion rows as spike-and-slab
+#' priors do (\code{<term> (inclusion)} for every gated term and
+#' \code{<budget>{total} (inclusion)} for a total that can be zero), the
+#' shares on the draws where their terms are open (reported with their
+#' defined draw counts), and with
+#' \code{conditional = TRUE} the coefficients of a gated term (and the total)
+#' on the draws where the term (the budget) is open. Both catalog extraction
+#' and tables normalize the declared Gamma weights over the open units. The
+#' registered realized-open flags include the budget spike. An ungated member
+#' of a spiked budget reads the budget indicator. A view lacking a required
+#' source signals \code{BayesTools_draws_view_coordinate_unavailable} from
+#' estimates extraction or \code{BayesTools_R2_coordinates_unavailable} from
+#' event reconstruction. A fit without the required monitors signals
+#' \code{BayesTools_refit_monitoring} when extracting its quantities.
+#' \code{JAGS_inference_table()} reports the prior and posterior inclusion
+#' probabilities and inclusion Bayes factors.
 #' Internal latent and realized group-coefficient coordinates
 #' are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
 #' mode, because those coordinates remain on the fitted standardized scale.
@@ -166,7 +184,7 @@
 #' [parameter_catalog()] quantity id of the quantity the row's label names,
 #' its canonical name or an exact alias such as a transformed factor level
 #' \code{<parameter>[dif: level]}; \code{""} for rows that are not catalog
-#' quantities, such as inclusion rows, mixture components, backend
+#' quantities, such as unregistered inclusion events, mixture components, backend
 #' coordinates, fitted random-effect summaries whose catalog quantity is on
 #' the original scale, ordered-factor allocation shares, and rows whose values
 #' \code{transformations} changed, whose
@@ -192,7 +210,13 @@
 #'
 #' The inference table has a row for every spike-and-slab and mixture prior,
 #' for the spike-and-slab total of an ordered-factor prior (reported under the
-#' term label), and for every random-effect inclusion gate.
+#' term label), for random-effect inclusion gates and for the budget and term
+#' inclusion events of R-squared budgets. The per-row \code{event_quantity_ids}
+#' attribute identifies the catalog quantity of the tested 0/1 event, with
+#' an empty string when no such quantity is registered. \code{parameters}
+#' identifies the tested owner and \code{parameter_roles} distinguishes
+#' \code{r2_budget_inclusion} and \code{r2_term_inclusion}. Subsetting the
+#' table retains the corresponding event IDs, owners and roles.
 #'
 #' An original-scale random-effect correlation is defined in a posterior draw
 #' whenever both of its SDs are positive, including draws with a singular
@@ -831,6 +855,29 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     }
   }
 
+  # R-squared budgets show the share of each retained term after the budget
+  # total, in place of the allocation coordinates (raw summaries show the
+  # coordinates). Conditional coefficient and total rows still require their
+  # realized inclusion event when raw coordinates are shown.
+  raw_R2 <- identical(random_effects_summary, "raw")
+  if(!raw_R2 || conditional){
+    R2_budgets <- .bt_JAGS_estimates_R2_budgets(
+      fit               = fit,
+      model_samples     = model_samples,
+      raw_model_samples = raw_model_samples,
+      prior_list        = attr(fit, "prior_list", exact = TRUE),
+      conditional       = conditional,
+      remove_inclusion  = remove_inclusion,
+      raw               = raw_R2
+    )
+    model_samples     <- R2_budgets$model_samples
+    created_parts     <- c(created_parts, R2_budgets$created)
+    inclusion_columns <- c(inclusion_columns, R2_budgets$inclusion_columns)
+    if(length(R2_budgets$warnings)){
+      warnings <- c(warnings, R2_budgets$warnings)
+    }
+  }
+
   # untransformed ordered-factor priors show their total and allocation
   if(!transform_factors){
     ordered <- .bt_JAGS_estimates_ordered_allocations(
@@ -934,10 +981,27 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     character()
   }
 
+  catalog <- parameter_catalog(fit)
+  term_shares <- which(parameter_names %in% catalog$quantities$canonical_name[
+    catalog$quantities$definedness == "term_included"
+  ])
+  share_labels <- if(length(term_shares)) make.unique(colnames(model_samples))
+  share_counts <- colSums(!is.na(model_samples[, term_shares, drop = FALSE]))
+  for(i in seq_along(term_shares)){
+    footnotes <- c(footnotes, .bt_undefined_draws_footnote(
+      share_labels[[term_shares[[i]]]], share_counts[[i]], nrow(model_samples), "term_included"
+    ))
+  }
+
   # return samples if requested
   if(return_samples){
     attr(model_samples, "prior_list") <- prior_list
-    if(length(transform_notes)) attr(model_samples, "footnotes") <- c(footnotes, transform_notes)
+    if(length(term_shares)){
+      colnames(model_samples) <- share_labels
+      declared <- stats::setNames(rep("term_included", length(term_shares)), colnames(model_samples)[term_shares])
+      model_samples <- .bt_meta_set(model_samples, "undefined_draws", declared)
+    }
+    if(length(term_shares) || length(transform_notes)) attr(model_samples, "footnotes") <- c(footnotes, transform_notes)
     return(model_samples)
   }
 
@@ -991,6 +1055,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       structural          = parameter_names %in% structural_columns
     )
     if(any(!is.na(unavailable))) runjags_summary[!is.na(unavailable), ] <- NA_real_
+    if(any(share_counts == 0L)) runjags_summary[term_shares[share_counts == 0L], ] <- NA_real_
     correlation_notes <- .bt_random_effect_summary_correlation_footnotes(
       model_samples   = model_samples,
       parameter_names = parameter_names,
@@ -1015,7 +1080,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   class(runjags_summary)              <- c("BayesTools_table", "BayesTools_runjags_summary", class(runjags_summary))
   attr(runjags_summary, "type")       <- c(rep("estimate", n_estimate_cols), summary_diagnostic_columns)
   attr(runjags_summary, "parameters") <- parameter_names
-  quantity_ids <- .bt_table_quantity_ids(column_parts, parameter_catalog(fit))
+  quantity_ids <- .bt_table_quantity_ids(column_parts, catalog)
   quantity_ids[quantity_ids %in% c(random_summary$fitted_quantity_ids,
                                   random_summary$unavailable_quantity_ids)] <- ""
   attr(runjags_summary, "quantities") <- .bt_table_quantities(
@@ -1353,7 +1418,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   if(!any(vapply(prior_list, function(p){
     is.prior.spike_and_slab(p) | is.prior.mixture(p) |
       .bt_is_random_allocation_inclusion_prior(p) |
-      .bt_is_ordered_spike_and_slab_total(p)
+      .bt_is_ordered_spike_and_slab_total(p) |
+      is.prior.R2_budget(p)
   }, logical(1)))){
     runjags_summary <- runjags_inference_empty_table(
       title          = title,
@@ -1379,6 +1445,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   BF_bound_operators <- character()
   BF_log_values <- numeric()
   parameter_roles <- character()
+  event_ids <- character()
+  quantities <- if(!is.null(attr(fit, "parameter_map", exact = TRUE))) parameter_catalog(fit)$quantities
   row_labels <- character()
 
   for(par in names(prior_list)){
@@ -1434,6 +1502,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
       BF_log_values <- c(BF_log_values, temp_BF_reporting$log_value)
       parameter_roles <- c(parameter_roles, "model_inclusion")
+      event_ids <- c(event_ids, .bt_inference_event_id(quantities, indicator_name, "alternative", binary = TRUE))
       row_labels <- c(row_labels, term_label)
     }else if(is.prior.mixture(prior_list[[par]])){
 
@@ -1484,6 +1553,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
         BF_log_values <- c(BF_log_values, temp_BF_reporting$log_value)
         parameter_roles <- c(parameter_roles, mixture_role)
+        event_ids <- c(event_ids, .bt_inference_event_id(quantities, paste0(par, "_indicator"), "alternative"))
         row_labels <- c(row_labels, term_label)
 
       }else{
@@ -1516,6 +1586,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
           BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
           BF_log_values <- c(BF_log_values, temp_BF_reporting$log_value)
           parameter_roles <- c(parameter_roles, mixture_role)
+          event_ids <- c(event_ids, .bt_inference_event_id(quantities, paste0(par, "_indicator"), component))
           # a component row names the component after the term, as in 0.3.0
           row_labels <- c(row_labels, paste0(term_label, " [", component, "]"))
         }
@@ -1591,13 +1662,49 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       )
       BF_log_values <- c(BF_log_values, temp_BF_reporting$log_value)
       parameter_roles <- c(parameter_roles, "random_inclusion")
+      event_ids <- c(event_ids, .bt_inference_event_id(quantities, indicator_name))
       row_labels <- c(row_labels, temp_parameter)
     }
   }
 
+  # gated and spiked R-squared budgets: the budget and every gated term
+  R2_chains <- if(is.null(model_samples_list)) list(model_samples) else model_samples_list
+  for(row in .bt_R2_inference_rows(prior_list, R2_chains, quantities)){
+    temp_prior_prob <- row$prior_prob
+    temp_post_prob  <- mean(unlist(row$indicators, use.names = FALSE))
+    temp_log_BF     <- .inclusion_log_BF.probs(
+      prior_probs = c(null = 1 - temp_prior_prob, alternative = temp_prior_prob),
+      post_probs  = c(null = 1 - temp_post_prob,  alternative = temp_post_prob),
+      is_null     = c(TRUE, FALSE)
+    )
+    temp_BF           <- exp(temp_log_BF)
+    temp_BF_reporting <- .indicator_BF_reporting_value(temp_BF, temp_post_prob, temp_prior_prob,
+                                                       nrow(model_samples), log_BF = temp_log_BF)
+    temp_row <- data.frame(
+      Parameter    = row$parameter,
+      prior_prob   = temp_prior_prob,
+      post_prob    = temp_post_prob,
+      inclusion_BF = temp_BF_reporting$value
+    )
+    if(BF_diagnostics){
+      temp_diagnostics <- .indicator_BF_diagnostics(row$indicators, temp_prior_prob, temp_BF, log_BF = temp_log_BF)
+      temp_row <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
+      if(BF_error_diagnostics){
+        temp_label <- .bt_label(row$parts, style = "warning", formula_prefix = formula_prefix)
+        warnings <- c(warnings, .indicator_BF_warnings(temp_label, temp_diagnostics, label = temp_label))
+      }
+    }
+    runjags_summary    <- rbind(runjags_summary, temp_row)
+    BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
+    BF_log_values      <- c(BF_log_values, temp_BF_reporting$log_value)
+    parameter_roles    <- c(parameter_roles, row$role)
+    event_ids          <- c(event_ids, row$event_id)
+    row_labels         <- c(row_labels, .bt_label(row$parts, style = "table", formula_prefix = formula_prefix))
+  }
+
   # store parameter names before removing formula attachments
   parameter_names           <- runjags_summary$Parameter
-  rownames(runjags_summary) <- parameter_names
+  rownames(runjags_summary) <- make.unique(parameter_names)
   runjags_summary           <- runjags_summary[,-1]
 
   # format BF and BF MC error on the requested scale
@@ -1618,13 +1725,14 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     attr(runjags_summary[["BF_error_percent"]], "name") <- .BF_error_column_name(BF01)
   }
 
-  # row labels rendered from the priors
-  rownames(runjags_summary) <- row_labels
+  # Distinct formula owners may share an unqualified display label.
+  rownames(runjags_summary) <- make.unique(row_labels)
 
   class(runjags_summary)               <- c("BayesTools_table", "BayesTools_runjags_inference", class(runjags_summary))
   attr(runjags_summary, "type")        <- c("prior_prob", "post_prob", "inclusion_BF", .JAGS_BF_diagnostic_column_types(BF_diagnostic_columns))
   attr(runjags_summary, "parameters")  <- parameter_names
   attr(runjags_summary, "parameter_roles") <- parameter_roles
+  attr(runjags_summary, "event_quantity_ids") <- event_ids
   attr(runjags_summary, "rownames")    <- TRUE
   attr(runjags_summary, "title")       <- title
   attr(runjags_summary, "footnotes")   <- footnotes
@@ -1931,6 +2039,22 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     is.character(indicator) && length(indicator) == 1L && nzchar(indicator)
 }
 
+# An inference row summarizes a 0/1 event. A mixture's categorical model
+# index is not itself the event for one component. Only a cataloged Bernoulli
+# quantity for that component can identify such an event.
+.bt_inference_event_id <- function(quantities, indicator, component = NULL, binary = FALSE){
+
+  random <- which(quantities$role == "random_inclusion")
+  if(!is.null(component)) random <- random[quantities$component[random] == component]
+  matches <- random[vapply(quantities$extraction_key[random], function(key){
+    identical(key$source_parameter, indicator)
+  }, logical(1))]
+  if(!length(matches) && binary){
+    matches <- which(quantities$canonical_name == indicator & quantities$source_type == "identity")
+  }
+  if(length(matches) == 1L) quantities$quantity_id[[matches]] else ""
+}
+
 # Label parts of the random-effect inclusion quantity whose source is the
 # allocation indicator 'indicator_name'.
 .bt_random_allocation_inference_parts <- function(fit, indicator_name){
@@ -2045,6 +2169,7 @@ runjags_inference_empty_table <- function(title = NULL, footnotes = NULL, warnin
   }
 
   class(empty_table)             <- c("BayesTools_table", "BayesTools_runjags_inference", class(empty_table))
+  attr(empty_table, "event_quantity_ids") <- character()
   attr(empty_table, "type")      <- c("prior_prob", "post_prob", "inclusion_BF", .JAGS_BF_diagnostic_column_types(BF_diagnostic_columns))
   attr(empty_table, "rownames")  <- FALSE
   attr(empty_table, "title")     <- title

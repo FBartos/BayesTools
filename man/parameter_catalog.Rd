@@ -142,7 +142,30 @@ versions (\code{term_ordered_total}) remain aliases. Each share of a random
 allocation of an ordered term is a derived quantity,
 \verb{<parameter>_ordered_allocation[<level>]} displayed as \code{term[share: level]}
 (support [0, 1], the Beta marginal of the Dirichlet prior); its earlier
-labels (\code{term_ordered_allocation[level]}) are aliases. The level names of transformed summaries,
+labels (\code{term_ordered_allocation[level]}) are aliases. The total of an
+R-squared budget (\code{\link[=prior_R2]{prior_R2()}}) is the quantity of its total coordinate
+\verb{<parameter>_<name>} displayed as \verb{<name>\{total\}} (support [0, 1], the
+Beta prior of the model), and each retained term of a budget that retains
+two or more terms has a derived share quantity
+\verb{<parameter>_<name>_allocation[<term>]} displayed as \verb{<name>[share: <term>]}
+(support [0, 1], the Beta marginal of the Dirichlet allocation summed over
+the term's allocation units); the allocation coordinates of a budget are
+backend coordinates. For a budget with inclusion gates or a spike-and-slab
+total, the total has an atom at zero (the budget null) and the inclusion
+event of the budget indicator, displayed \verb{<name>\{total\} (inclusion)};
+every gated term has a realized inclusion quantity \verb{<parameter>_<name>_open[<term>]}
+displayed as \verb{<term> (inclusion)}, with the Bernoulli prior of its marginal
+inclusion probability. The earlier selector \verb{<parameter>_<name>_gate[<term>]}
+remains an alias of that realized event. A share is undefined (\code{"term_included"}) on
+the draws where its term is closed, with the prior of the share given that
+the term is open. The scalar coefficients of a gated term have an atom at
+zero (the term closed) and are tested on these quantities; the levels and
+coded coefficients of an exact-law factor have a catalog prior law, including
+under gating. For the normal and Laplace kernels, a level that combines
+several coded coefficients has no supported marginal prior law. R-squared quantities record
+\code{owner_type = "r2_budget"}, the declared budget in \code{owner_name}, and their
+\code{quantity} (total, share, term or budget inclusion, inclusion rate, or
+coefficient). The budget total is the parent of its members. The level names of transformed summaries,
 \verb{<parameter>[dif: level]}, and the row labels those summaries display,
 \verb{(formula) term[dif: level]} and \code{term[dif: level]}, are aliases of the
 level quantity. JAGS
@@ -251,7 +274,9 @@ Downstream packages can provide methods for package-owned
 derived quantities. For gated total-variance allocations, realized
 \code{sd_total} and \code{var_total} draws include the all-off zero branch.
 \code{var_prop(...)} draws are normalized over active components and are \code{NA} on
-draws where the realized allocation total is zero. Random-effect
+draws where its parent gate is closed or no local component is active. The
+normalized allocation weights can remain defined when a separate external
+scale is zero and all realized component variances are zero. Random-effect
 correlations (\code{cor(...)} of LKJ blocks; original-scale correlations in a
 block with scaled columns) are \code{NA} on draws where the correlation is
 undefined, i.e. where one of the SDs of its pair is zero; a correlation
@@ -285,7 +310,8 @@ coordinates under the fitted prior, whose \code{multiply_by} scales enter only
 the linear predictor; structural levels are point masses at their fixed
 value), one-to-one transformations, Dirichlet allocation marginals, and
 allocation-derived component SDs. Variance proportions are conditional on
-positive allocation variance. A shared parent inclusion gate cancels from
+an active allocation. They describe the relative gated weights and hence
+can remain defined at a zero external scale. A shared parent inclusion gate cancels from
 that conditional law, leaving the Dirichlet marginal
 \code{Beta(alpha_i, sum(alpha) - alpha_i)}. Independently gated components keep the mixed measure
 over the realized active set: atoms at 0 and 1, and a Beta mixture over
