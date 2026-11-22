@@ -20,6 +20,10 @@ bayestools_certification_cases <- function() {
       description = "Expensive reference sweeps of prior densities, ordinates, region grids, and quantile estimators moved out of the unit lane.",
       native      = FALSE
     ),
+    `finite-readout` = list(
+      description = "Finite indicator traces against stock JAGS chains and analytic probabilities at the actual sampler update.",
+      native      = TRUE
+    ),
     `fit-assertions` = list(
       description = "Live-fit assertions of the post-fit interface, run when the code they reach changes.",
       native      = TRUE,
@@ -37,6 +41,10 @@ bayestools_certification_cases <- function() {
       description = "Model probabilities, inclusion Bayes factors, and averaged posteriors against exact enumeration.",
       native      = TRUE
     ),
+    `nested-weights` = list(
+      description = "Shared cumulative selection weights and all finite label odds against analytic checks.",
+      native      = TRUE
+    ),
     predictions = list(
       description = "Fixed, conditional, and marginal predictions of JAGS_predict_formula() against the exact Gaussian posterior.",
       native      = TRUE
@@ -45,6 +53,10 @@ bayestools_certification_cases <- function() {
       description = "Shrinkage posteriors, log marginal likelihoods and Bayes factors against Stan and an exact Gaussian ridge reference.",
       native      = TRUE,
       references  = "scenarios/stan"
+    ),
+    `R2-budget-priors` = list(
+      description = "Bridge-sampling Bayes factors of R-squared budget priors in balanced designs against independent quadrature, node parity, predictions, and model averaging.",
+      native      = TRUE
     ),
     `savage-dickey-ordinates` = list(
       description = "Savage-Dickey Bayes factors at nulls away from the posterior mode against exact conjugate ordinates.",

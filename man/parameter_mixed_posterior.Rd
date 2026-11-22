@@ -140,7 +140,12 @@ gives the constant.}
 \item{\code{undefined_draws}}{for quantities that are undefined on some
 fitted draws (the catalog \code{definedness}, e.g. variance proportions when
 no allocation component is active), the reason; those draws are omitted,
-and the prior density and atom masses are conditional on definedness.}
+and the prior density and atom masses are conditional on definedness.
+For an R-squared term share the reason is \code{term_included} and
+\code{omitted_undefined_draws} gives the number of closed draws.
+If no fitted draw defines the selected posterior or satisfies its
+requested inclusion condition, the function signals
+\code{BayesTools_no_defined_posterior_draws}.}
 \item{\code{condition}}{the conditioning of the draws: unconditional
 (\code{averaged = TRUE}), or the inclusion event of the quantity.}
 \item{\code{quantities}}{the catalog quantity of the draws: its id and label

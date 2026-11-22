@@ -241,7 +241,11 @@ continuous, non-point leaves of a publication-bias mixture branch whose nodes th
 text uses only in the branch's own statements and, multiplied by the branch's
 activity test, in the composition (otherwise the branch is declined with its
 reason). Branches, leaves, node names and activity tests come from the
-emitters' node specifications, never from name patterns. A closed gate draws
+emitters' node specifications, never from name patterns. For a bound nested
+selection pair the shared weight leaves are active under either label, and
+the fine-only leaf is active under the fine label. Shared declaration rows
+have a missing single branch ID and retain the full activity expression.
+A closed gate draws
 its node from the node's own distribution and keeps the previous value when a
 deterministic descendant would not be finite. That restore is exact for the
 gates `JAGS_fit()` writes: there a non-finite descendant makes the composed
@@ -250,7 +254,9 @@ node with a descendant that can be non-finite while the likelihood stays
 defined would restrict that node's prior to the finite region. Blocks expand prior names to
 scalar leaves; `sampler_blocks` may be a function of the combined prior list,
 called once in the declaration step, so callers can select formula priors by
-their final names and attributes. A block of fewer than two leaves is declined
+their final names and attributes. `JAGS_sampler_sources()` reports these same
+block leaves or their reasons for decline from the bound prior list before
+compilation. A block of fewer than two leaves is declined
 (recorded, not an error). A random-effect prior joins a block only as a simple
 continuous scalar prior (a direct random-effect SD or a scalar structured
 correlation, a leaf under its own name), a plain allocation SD, or Dirichlet
@@ -259,7 +265,10 @@ inclusion, and other random-effect priors (factor SDs, summary priors) are
 refused with `BayesTools_sampler_declaration_error`. A fit with a marker requires the
 BayesTools module and package (workers included), and
 `attr(fit, "sampler_declarations")` records the declared and declined items,
-which `JAGS_extend()` keeps. Both samplers report incomplete adaptation until
+which `JAGS_extend()` keeps. Its `gate_claims` table reconciles each gate
+with the actual JAGS assignment when the declared name or a direct copy
+from the weight emitter identifies exactly one member. Ambiguous matches
+and missing assignments are unresolved. Both samplers report incomplete adaptation until
 their first update in adaptive mode and draw only from the chain's JAGS
 generator. The factor slice sampler sums the full conditional itself and, like
 the stock slice sampler, stops with a node error when the density is NaN or +Inf
@@ -267,6 +276,57 @@ at a proposal or the current state (a NaN is no evidence of zero density, so a
 rejection could silently truncate the target). With the defaults
 the model text and data handed to rjags are those of a fit without
 declarations.
+
+The block source rules share the bound prior metadata and naming helpers
+with the prior emitters, including factor dimensions and the Dirichlet
+auxiliary names. `JAGS_mixture_sources()` reads the mixture and selection
+node specifications used by the emitters for branch components and global
+selection bins. The prior-root map in `R/JAGS-prior-roots.R` serves
+ordered and regularized name-collision checks and includes deterministic
+names and array shapes. After sampling, `R/JAGS-parameter-coordinates.R`
+combines retained columns with bound priors and formula metadata. The
+catalog builds semantic quantities and extraction keys using those
+coordinates. In the fitted coordinates, `monitor_status = "sampled"` means
+draws were retained, including when the compiler evaluates a deterministic
+R-squared coefficient from its sampled source. The native sampler table
+records actual assignment and may name a coordinate by an equivalent
+compiled alias.
+
+Package sampler callbacks receive the bound priors, finalized formula designs,
+and combined input data once. Their typed declarations add fresh observed
+zero markers or terminal deterministic tags after the legacy gate scan.
+Tags use the lowercase prefix of a declared provider module with a fixed
+finite value at every admitted parent value. Reserve each tag function for
+annotations and register it without aliases. JAGS can reuse a compiled
+logical node for identical calls, so the scientific model cannot call the
+same tag function. Tags have no observed data
+entry, cannot be read by the model or any other declaration, and are excluded
+from scientific monitors. The internal finite readout functions are reserved
+for the recorder. An observed marker uses the BayesTools block marker
+or a distribution prefixed with `d<lowercased-module>_`. Only the scientific
+gate scanner emits `dbt_gate` in this API.
+Its gates take priority over `dbt_block`. Declare BayesTools FactorSlice
+blocks through one fitting argument to avoid ID and compiled alias collisions.
+Marker references must come from model relations or inputs. Each extra
+data key must appear in a marker reference.
+Providers must implement a normalized point mass at zero
+for every admitted parent value. Store the validated declaration plus the final
+model text and data. Compiled sampler ownership comes from the rjags
+assignment table. Gate claims resolve against emitted aliases. Parallel
+fits preserve each worker's table and chain IDs if the tables disagree.
+Gate ownership is summarized across workers, with a mixed status when
+the ownership differs. Recorded indicators must agree across workers
+on readout availability and column labels.
+
+Explicit finite-indicator requests add terminal tags after gate analysis.
+Before compilation, place the recorder immediately before the active stock
+`base::Finite` factory so all earlier owners, including joint updates, keep
+their claims. The virtual monitor resolves the compiled marker's target by
+identity. Aliases of one indicator share its recorder, and other owners give
+a named null entry. Open the virtual monitors in the same `coda.samples()`
+call as the scientific monitors. The sidecar follows the scientific samples'
+retained chain order and iteration labels through extension. Its columns stay
+outside convergence diagnostics and parameter coordinates.
 
 The factor slice algorithm itself is the installed header-only kernel
 `inst/include/BayesTools/factor_slice_kernel.h` (namespace
@@ -686,6 +746,34 @@ a second transformation path.
 
 ## Parameter Map
 
+Map schema 23 includes the directed relationships between public quantities,
+declared scalar or row sources, formula-scoped allocations and their components.
+Use `parameter_relationships()` to traverse source and consumer identities,
+including the exact parent component, ownership and normalization. Use the
+stored numeric recipe for draws and prior densities. A containment/reporting
+edge alone does not define an equality between random variables. Register a
+model builder's additional declared inputs with
+`register_parameter_relationships()`; keep those rows when extending catalogs,
+requesting the fitted predictor scale, or serializing a fit.
+
+For an ordinary public model coordinate, the native `prior_owns` edge identifies
+its fitted prior-list entry, including the base entry of an indexed coordinate.
+A provider may use that quantity as a source. Additional provider inputs belong
+to model-defined coordinates and the provider's own derived quantities.
+
+For a saved pre-R² map 22 with complete fitted declarations, the fit accessors
+preserve its coordinate, quantity and alias tables and derive the new relationship
+table from the stored model metadata. The read view is memoized by its inputs.
+Older maps, experimental R² map 22 recipes and incomplete bindings require refitting.
+
+An R² budget owns its total, term shares, realized inclusion events, rate and
+coefficient members. Closed terms have undefined shares even while another
+term is open. Conditions and share summaries consume the same effective-open
+sources as the catalog. A partial draw view needs every source used by the
+requested result. Use `parameter_plot_samples()` for a selected scalar's
+posterior plot input. The residual SD multiplies predictor contributions,
+and an allocation share remains unitless.
+
 For a log-intercept formula, `exp(intercept)` aliases the fitted coefficient
 quantity; selection alone does not unscale it. Downstream display scale, such
 as RoBMA's `standardized_coefficients`, is selected independently.
@@ -1000,7 +1088,7 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   tables re-runs validation. The fit contract stores one
   `parameter_map_version`; there are no separate registry/catalog versions or
   fit attributes. Bump `.bt_parameter_map_version` whenever selectors or map
-  semantics change; fits with another version must be refitted.
+  semantics change. The verified pre-R² map 22 read path is the compatibility exception.
   Version 17 corrects the persisted pure-rescaling classification of named
   random-effect fallback maps; older maps must not be relabelled in place.
   Version 18 gives the spike-and-slab and mixture nodes of a structured

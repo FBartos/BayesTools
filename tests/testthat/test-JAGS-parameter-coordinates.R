@@ -495,10 +495,11 @@ test_that("parameter-map accessors reject missing and malformed fitted objects",
   expect_null(attr(fit, "parameter_registry", exact = TRUE))
   expect_null(attr(fit, "parameter_catalog", exact = TRUE))
   expect_identical(names(map), c(
-    "schema_version", "coordinates", "quantities", "aliases"
+    "schema_version", "coordinates", "quantities", "aliases", "relationships"
   ))
   expect_identical(map$coordinates, coordinates)
   expect_identical(map$quantities, catalog$quantities)
+  expect_identical(map$relationships, catalog$relationships)
   expect_identical(map$aliases, catalog$aliases)
   expect_identical(JAGS_fit_contract(fit)$parameter_map_version,
                    map$schema_version)
@@ -1053,4 +1054,115 @@ test_that("the auxiliary coordinates of a coefficient take the fitted scale of t
   unscaled <- grep("^mu_(z|g)", names(scaled), value = TRUE)
   expect_true(any(grepl("_variable", unscaled, fixed = TRUE)))
   expect_true(all(scaled[unscaled] == "fitted_original"))
+})
+
+test_that("complete pre-R2 map 22 fits have a coherent metadata-only read view", {
+
+  priors <- list(tau = prior("gamma", list(2, 3)), sigma = prior("gamma", list(3, 4)))
+  map <- .bt_build_parameter_map(c(names(priors), "derived_sd"), prior_list = priors)
+  saved <- .bt_attach_fit_contract(structure(list(), class = "BayesTools_fit"))
+  attr(saved, "prior_list") <- priors
+  map$relationships <- NULL
+  map$schema_version <- 22L
+  attr(saved, "parameter_map") <- map
+  attr(saved, "fit_contract")$parameter_map_version <- 22L
+
+  view <- parameter_map(saved)
+  expect_identical(view$schema_version, 23L)
+  for(field in c("coordinates", "quantities", "aliases")) expect_identical(view[[field]], map[[field]])
+  owners <- parameter_relationships(saved)
+  expect_identical(owners$relation, rep("prior_owns", 2L))
+  expect_identical(owners$source_type, rep("prior", 2L))
+  expect_identical(owners$source_id, names(priors))
+  expect_identical(parameter_map(saved), view)
+  expect_identical(JAGS_fit_contract(saved)$parameter_map_version, 23L)
+  expect_identical(JAGS_validate_fit_contract(saved, "parameter_map")$parameter_map_version, 23L)
+  expect_identical(attr(saved, "parameter_map"), map)
+  expect_identical(attr(saved, "fit_contract")$parameter_map_version, 22L)
+
+  ids <- stats::setNames(view$quantities$quantity_id, view$quantities$canonical_name)
+  expect_identical(owners$consumer_id, unname(ids[names(priors)]))
+  expect_error(register_parameter_relationships(saved,
+    data.frame(source_id = unname(ids["tau"]), consumer_id = unname(ids["sigma"]), relation = "model_input"),
+    "RoBMA"), "fitted prior", class = "BayesTools_parameter_relationship_error")
+  updated <- register_parameter_relationships(saved,
+    data.frame(source_id = unname(ids["tau"]), consumer_id = unname(ids["derived_sd"]), relation = "model_input"),
+    "RoBMA")
+  expect_identical(parameter_relationships(updated)$provider, c(owners$provider, "RoBMA"))
+  expect_identical(attr(updated, "parameter_map")$schema_version, 23L)
+  expect_identical(attr(updated, "fit_contract")$parameter_map_version, 23L)
+  expect_identical(parameter_relationships(unserialize(serialize(updated, NULL))), parameter_relationships(updated))
+  expect_identical(parameter_relationships(saved), owners)
+  expect_identical(JAGS_fit_contract(.bt_parameter_fitted_fit(saved))$parameter_map_version, 23L)
+
+  unsupported <- paste0("Parameter-map metadata are missing, malformed, or unsupported. ",
+                        "Refit the model with the current BayesTools version.")
+  for(map_version in c(22L, 23L)){
+    mismatched <- updated
+    attr(mismatched, "parameter_map")$schema_version <- map_version
+    attr(mismatched, "fit_contract")$parameter_map_version <- if(map_version == 22L) 23L else 22L
+    expect_error(parameter_map(mismatched), unsupported, fixed = TRUE, class = "BayesTools_refit_required")
+    expect_error(JAGS_fit_contract(mismatched), unsupported, fixed = TRUE, class = "BayesTools_refit_required")
+  }
+
+  refuses <- function(x){
+    expect_error(parameter_map(x), class = "BayesTools_refit_required")
+    expect_error(JAGS_validate_fit_contract(x, "parameter_map"), class = "BayesTools_refit_required")
+  }
+  bad <- saved
+  attr(bad, "parameter_map")$relationships <- .bt_empty_relationships()
+  refuses(bad)
+  bad <- saved
+  attr(bad, "parameter_map")$schema_version <- 21L
+  attr(bad, "fit_contract")$parameter_map_version <- 21L
+  refuses(bad)
+  bad <- saved
+  attr(bad, "parameter_map")$coordinates$coordinate_name[1L] <- ""
+  refuses(bad)
+  bad <- saved
+  attr(bad, "prior_list") <- NULL
+  refuses(bad)
+  bad <- saved
+  attr(bad, "prior_list")$candidate <- prior_R2()
+  refuses(bad)
+  bad <- saved
+  attr(bad, "parameter_map")$quantities$extraction_key[[1L]] <- list(
+    type = "R2_open", total = "tau", term = "sigma", dependencies = "tau")
+  refuses(bad)
+})
+
+test_that("map 22 recovers nested random allocations from their recorded bindings", {
+
+  dat <- data.frame(a = factor(rep(1:3, each = 8)), b = factor(rep(1:4, 6)),
+                    c = factor(rep(1:2, 12)), y = rep(c(-1, 0, 1), 8))
+  split <- prior_random(
+    random_variance_allocation("pool", terms = c(branch = "nested", other = "c"),
+      sd_source = random_sd_source("tau"), weights = prior("dirichlet", list(c(2, 3)))),
+    random_variance_allocation("child", parent = allocation_ref("pool", "branch"),
+      terms = c(one = "a", two = "b"), weights = prior("dirichlet", list(c(1, 2))))
+  )
+  fit <- JAGS_fit(model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i],1) } }",
+    data = list(y = dat$y, N = nrow(dat)), prior_list = list(tau = prior("gamma", list(2, 3))),
+    formula_list = list(mu = ~ 1 + random(1 | a, name = "a", covariance = "diag") +
+      random(1 | b, name = "b", covariance = "diag") + random(1 | c, name = "c", covariance = "diag")),
+    formula_data_list = list(mu = dat), formula_random_prior_list = list(mu = split),
+    formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1)))),
+    chains = 1, adapt = 100, burnin = 100, sample = 100, seed = 22023, silent = TRUE)
+  edges <- parameter_relationships(fit)
+  expect_true(any(edges$relation == "parent_component" & edges$component == "branch"))
+  attr(fit, "parameter_map")$relationships <- NULL
+  attr(fit, "parameter_map")$schema_version <- 22L
+  attr(fit, "fit_contract")$parameter_map_version <- 22L
+  expect_identical(parameter_relationships(fit), edges)
+  continued <- JAGS_extend(fit, autofit_control = list(sample_extend = 10L, max_extend = 1L,
+    monitor = "tau", min_ESS = 1, max_Rhat = NULL, max_error = NULL, max_SD_error = NULL))
+  expect_identical(attr(continued, "parameter_map")$schema_version, 23L)
+  expect_identical(attr(continued, "fit_contract")$parameter_map_version, 23L)
+  expect_identical(parameter_relationships(continued), edges)
+
+  incomplete <- fit
+  attr(incomplete, "formula_design")$mu$random_allocations <- list()
+  expect_error(parameter_relationships(incomplete), class = "BayesTools_refit_required")
+  attr(incomplete, "formula_design") <- NULL
+  expect_error(JAGS_fit_contract(incomplete), class = "BayesTools_refit_required")
 })

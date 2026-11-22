@@ -131,8 +131,10 @@ binary null/alternative decision shows the alternative alone.
 \code{"switching"} shows the fraction of adjacent retained draws in the
 same batch that changed component, including switches within a group.
 The last three statistics need a trace plot without \code{transformations}
-and a sampled indicator: a mixture or spike-and-slab prior with at least two
-components (also as an ordered total) or a random-effect allocation gate.}
+and a monitored indicator. These include a mixture or spike-and-slab prior
+with at least two components (also as an ordered total), a random-effect
+allocation gate, and the realized inclusion of a gated R-squared budget
+term or total. A budget spike closes every term in that draw.}
 
 \item{batch_size}{optional number of retained draws per batch for an indicator
 trace. An explicit width keeps the final partial batch. By default the

@@ -28,14 +28,17 @@
 # (j > 1) of independent weights. Mixture components are read from their own
 # nodes ('eta_component_k[j]', 'omega_ratio_component_k',
 # 'omega_local_component_k[j]', 'log_omega_component_k[j]'), which models
-# monitor only on request.
+# monitor only on request. An opt-in nested layout uses its shared fitted
+# coordinates for two branches and still accepts the original Gamma vectors
+# when a caller supplies those coordinates for replay.
 
 # JAGS syntax of one weight-function component, stochastic auxiliaries
 # included. The model syntax and the initial values must agree on which node
 # is stochastic (see .weightfunction_component_node_names()).
 .bt_dnode_omega_component_syntax <- function(prior, component_id = NULL,
                                              global_cuts = NULL,
-                                             force_one_sided = FALSE){
+                                             force_one_sided = FALSE,
+                                             local_weights = NULL){
 
   node_names <- .weightfunction_component_node_names(
     prior           = prior,
@@ -53,7 +56,10 @@
   omega_local  <- node_names$omega_local
   omega_target <- node_names$omega_target
 
-  if(prior$weights$type == "cumulative"){
+  if(!is.null(local_weights)){
+    syntax <- paste0(omega_local, "[", seq_len(J), "] <- ", local_weights, "\n",
+                     collapse = "")
+  }else if(prior$weights$type == "cumulative"){
     if(J == 2L){
       omega_ratio_name <- node_names$omega_ratio
       beta_parameters <- .weightfunction_alpha_marginal(prior$weights$alpha, 2L)
@@ -281,6 +287,7 @@
   list(
     name = name,
     branches = branches,
+    nested = .bt_nested_weights_plan(priors),
     has_selection = has_selection,
     uses_indicator = length(branches) > 1L,
     global_cuts = global_cuts,
@@ -311,6 +318,11 @@
   spec$local_bins <- vapply(branches, function(branch){
     if(is.null(branch$selection)) 0L else .weightfunction_n_bins(branch$selection)
   }, integer(1))
+  dependencies <- spec$free_names
+  if(!is.null(spec$nested)){
+    dependencies[[spec$nested$coarse]] <- unname(spec$nested$nodes[c("a", "v")])
+    dependencies[[spec$nested$fine]] <- unname(spec$nested$nodes)
+  }
 
   .bt_deterministic_node(
     family = "omega",
@@ -322,7 +334,7 @@
     },
     dependencies = c(
       if(spec$uses_indicator) "bias_indicator",
-      unlist(spec$free_names, use.names = FALSE)
+      unique(unlist(dependencies, use.names = FALSE))
     ),
     parameter = parameter,
     spec = spec
@@ -340,11 +352,18 @@
     if(is.null(selection)){
       return(.bt_dnode_omega_none_component_syntax(component_id = k, n_bins = spec$n_bins))
     }
+    nested <- spec$nested
+    local_weights <- if(!is.null(nested) && k %in% c(nested$coarse, nested$fine)){
+      .bt_nested_weights_local_syntax(nested, k)
+    }else{
+      NULL
+    }
     return(.bt_dnode_omega_component_syntax(
       prior           = selection,
       component_id    = k,
       global_cuts     = spec$global_cuts,
-      force_one_sided = TRUE
+      force_one_sided = TRUE,
+      local_weights   = local_weights
     ))
   }
 
@@ -387,7 +406,8 @@
   }), use.names = FALSE)
   pieces <- sub("[\r\n]+$", "", pieces[nzchar(pieces)])
 
-  c(pieces, .bt_dnode_omega_emit_composition(spec))
+  c(if(!is.null(spec$nested)) .bt_nested_weights_syntax(spec$nested),
+    pieces, .bt_dnode_omega_emit_composition(spec))
 }
 
 .bt_dnode_omega_evaluate <- function(node, lookup){
@@ -397,6 +417,15 @@
     selection <- spec$branches[[k]]$selection
     if(is.null(selection)){
       return(matrix(1, nrow = branch_lookup$n, ncol = spec$n_bins))
+    }
+    nested <- spec$nested
+    if(!is.null(nested) && k %in% c(nested$coarse, nested$fine)){
+      names <- nested$nodes[if(k == nested$fine) c("a", "v", "u") else c("a", "v")]
+      values <- lapply(names, function(name) .bt_deterministic_lookup_value(branch_lookup, name))
+      if(!any(vapply(values, is.null, logical(1)))){
+        local <- .bt_nested_weights_local(nested, k, values$a, values$v, values$u)
+        return(local[, spec$global_index[[k]], drop = FALSE])
+      }
     }
     local <- .bt_dnode_omega_local_values(
       prior = selection,

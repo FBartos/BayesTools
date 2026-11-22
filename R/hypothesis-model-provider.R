@@ -79,7 +79,9 @@
 #'   (\code{"formula_coefficient_group"} for a whole factor term, whose levels
 #'   are its \code{member_quantity_ids}), \code{quantity}, \code{status},
 #'   \code{fixed_value}, \code{aliases} (a list column), and
-#'   \code{member_quantity_ids} (a list column). The alias rows of the catalog
+#'   \code{member_quantity_ids} (a list column). For a fitted R-squared budget
+#'   marginal the native provider records \code{source = "BayesTools::r2_budget"}
+#'   and the catalog's \code{quantity} kind. The alias rows of the catalog
 #'   of the entries carry the component as their \code{namespace} and
 #'   \code{component}.}
 #'   \item{\code{uncovered(resolution, quantity_ids, symbol, metadata)}}{the
@@ -462,6 +464,14 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
     for(row in seq_len(nrow(fixed_rows))){
       map_row <- fixed_rows[row, , drop = FALSE]
       term    <- map_row[["term"]]
+      # the coefficients of a gated R-squared budget term (an atom at zero)
+      # and the levels of an R-squared budget factor (the law of each level)
+      # are tested on their catalog quantities with the R-squared quantities
+      # below
+      R2_term <- prior_list[[map_row[["jags_name"]]]]
+      if(is.prior.R2(R2_term) && (.bt_R2_term_is_gated(R2_term) || is.prior.factor(R2_term))){
+        next
+      }
       coordinate_rows <- which(
         public &
           quantities[["formula_parameter"]] == formula_parameter &
@@ -510,8 +520,9 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
 
   # scalar parameters with a prior of their own (not the indicators and
   # inclusions of mixture priors, and not the components of vector priors)
+  R2_rows <- .bt_R2_quantity_rows(quantities, prior_list)
   scalar <- which(
-    public & quantities[["role"]] == "parameter" &
+    public & !R2_rows & quantities[["role"]] == "parameter" &
       quantities[["status"]] %in% c("sampled", "structural") &
       quantities[["canonical_name"]] %in% names(prior_list)
   )
@@ -528,22 +539,26 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
     )
   }
 
-  # totals and shares of ordered terms: sampled or derived quantities with a
-  # bracket-free root, tested on their own mixed posteriors by the route of the
-  # random-effect quantities
+  # totals and shares of ordered terms and of R-squared budgets: sampled or
+  # derived quantities with a bracket-free root, tested on their own mixed
+  # posteriors by the route of the random-effect quantities
   ordered <- which(
     public & quantities[["status"]] != "unavailable" &
-      .bt_ordered_quantity_rows(quantities, prior_list)
+      (.bt_ordered_quantity_rows(quantities, prior_list) | R2_rows)
   )
   for(row in ordered){
     quantity <- as.list(quantities[row, , drop = FALSE])
-    root     <- .bt_ordered_hypothesis_root(quantities[row, , drop = FALSE])
+    root     <- if(R2_rows[[row]]){
+      .bt_R2_hypothesis_root(quantities[row, , drop = FALSE])
+    }else{
+      .bt_ordered_hypothesis_root(quantities[row, , drop = FALSE])
+    }
     add_entry(
       quantity          = quantity,
       parameter         = root,
       component         = quantity[["namespace"]],
       term              = quantity[["canonical_name"]],
-      source            = "ordered",
+      source            = if(R2_rows[[row]]) "BayesTools::r2_budget" else "ordered",
       formula_parameter = quantity[["formula_parameter"]],
       alias_rows        = rbind(
         data.frame(alias = root, simplified = FALSE, stringsAsFactors = FALSE),
@@ -815,13 +830,25 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
   quantity   <- quantities[match(entry[["quantity_id"]], quantities[["quantity_id"]]), , drop = FALSE]
   prior_list <- attr(fit, "prior_list", exact = TRUE)
   owner      <- .bt_ordered_quantity_owner(quantity, prior_list)
+  # the totals and shares of R-squared budgets have no ordered term
+  if(is.null(owner)){
+    return(NULL)
+  }
 
   prior_list[[owner]][["total"]]
 }
 
 
+# Formula quantities extracted as individual catalog marginals. The source
+# of an R2 budget is qualified so no ordinary formula name can select it.
+.hypothesis_model_formula_marginal <- function(source){
+
+  source %in% c("ordered", "BayesTools::r2_budget")
+}
+
+
 # ---------------------------------------------------------------------------- #
-# The default provider: random-effect quantities
+# The default provider: catalog marginals
 # ---------------------------------------------------------------------------- #
 
 .hypothesis_model_default_random <- function(fit, metadata){
@@ -829,7 +856,7 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
   entry_of <- function(parameter){
     entries <- metadata()[["entries"]]
     entry   <- entries[(entries[["component"]] == "random" |
-                          entries[["source"]] == "ordered") &
+                          .hypothesis_model_formula_marginal(entries[["source"]])) &
                          entries[["parameter"]] == parameter, , drop = FALSE]
     if(nrow(entry) != 1L){
       stop("Random-effect quantity '", parameter, "' is not available.",
@@ -879,7 +906,7 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
           fitted_scale = !transform_scaled
         ),
         spec  = list(
-          label    = if(identical(entry[["source"]], "ordered")){
+          label    = if(isTRUE(.hypothesis_model_formula_marginal(entry[["source"]]))){
             quantity[["display_label"]]
           }else{
             quantity[["canonical_name"]]
@@ -901,18 +928,29 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
       if(is.null(selected)){
         selected <- list(entry = list(selection = selection_of(entry_of(parameter))))
       }
-      values <- parameter_mixed_posterior(
-        fit              = fit,
-        selection        = selected[["entry"]][["selection"]],
-        conditional      = conditional,
-        transform_scaled = transform_scaled
-      )
-      attr(values, "parameter") <- parameter
-      out <- list(values)
+      selection <- selected[["entry"]][["selection"]]
+      if(identical(selection[["quantities"]][["owner_type"]], "r2_budget")){
+        out <- parameter_plot_samples(fit, selection, conditional = conditional,
+                                      transform_scaled = transform_scaled)
+        if(!identical(names(out), parameter)){
+          columns <- .bt_meta_get(out[[1L]], "quantities")
+          columns$column <- parameter
+          out[[1L]] <- .bt_meta_set(out[[1L]], "quantities", columns)
+          densities <- .bt_meta_get(out, "prior_densities")
+          if(!is.null(densities)) out <- .bt_meta_set(out, "prior_densities", stats::setNames(densities, parameter))
+        }
+      }else{
+        values <- parameter_mixed_posterior(fit, selection, conditional = conditional,
+                                            transform_scaled = transform_scaled)
+        out <- list(values)
+        attr(out, "prior_list") <- list(prior_none())
+        class(out) <- c("as_mixed_posteriors", "mixed_posteriors", "list")
+      }
+      # A share's parser-safe root can differ from its catalog name.
+      attr(out[[1L]], "parameter") <- parameter
       names(out) <- parameter
-      attr(out, "prior_list") <- stats::setNames(list(prior_none()), parameter)
+      names(attr(out, "prior_list")) <- parameter
       attr(out, "random_parameter_label") <- parameter
-      class(out) <- c("as_mixed_posteriors", "mixed_posteriors", "list")
 
       out
     },

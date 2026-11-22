@@ -302,9 +302,17 @@
   if(length(prior_list) == 0L){
     return(character())
   }
-  unique(unlist(lapply(prior_list, function(prior){
+  unique(unlist(Map(function(prior, parameter_name){
     if(.bt_has_regularized_term(prior)){
       return(.bt_regularized_auxiliary_names(prior))
+    }
+    if(is.prior.R2(prior)){
+      return(.bt_R2_direction_name(parameter_name))
+    }
+    if(is.prior.R2_budget(prior)){
+      nodes <- .bt_R2_core_nodes(prior)
+      return(c(sub("\\[.*$", "", nodes$eta[[1L]]), nodes$H, nodes$variable,
+               nodes$inclusion, nodes$rate_u))
     }
     if(is.prior.ordered(prior)){
       return(vapply(
@@ -321,7 +329,7 @@
       return(private)
     }
     character()
-  }), use.names = FALSE))
+  }, prior_list, names(prior_list)), use.names = FALSE))
 }
 
 # A point prior whose location is an expression is a deterministic function
@@ -461,6 +469,9 @@
 .bt_parameter_coordinates_prior_role <- function(prior){
 
   if(is.null(prior)){
+    return("parameter")
+  }
+  if(!is.null(attr(prior, "R2_budget", exact = TRUE))){
     return("parameter")
   }
   metadata <- .bt_random_effect_metadata(prior)
@@ -851,7 +862,8 @@
   name_map <- .bt_parameter_coordinates_name_map(formula_design)
   factor_cache <- new.env(parent = emptyenv())
   weight_bins <- .bt_weight_bin_interval_labels(prior_list)
-  ordered_totals <- .bt_ordered_total_label_parts_list(prior_list)
+  ordered_totals <- c(.bt_ordered_total_label_parts_list(prior_list),
+                      .bt_R2_total_label_parts_list(prior_list))
   lapply(seq_len(nrow(coordinates)), function(i){
     coordinate_name <- coordinates$coordinate_name[i]
     base_name <- .bt_parameter_coordinates_base(coordinate_name)
@@ -965,7 +977,8 @@
       }
     }
   }
-  coordinate_names <- unique(c(columns, setdiff(structural, columns)))
+  R2_nodes <- .bt_R2_declared_nodes(prior_list)
+  coordinate_names <- unique(c(columns, structural, R2_nodes$coordinate))
   if(length(coordinate_names) == 0L){
     return(.bt_parameter_coordinates_empty())
   }
@@ -978,9 +991,13 @@
     .bt_parameter_coordinates_random_prior_auxiliary_owners(prior_list)
   )
   weight_bins <- .bt_weight_bin_interval_labels(prior_list)
-  ordered_totals <- .bt_ordered_total_label_parts_list(prior_list)
+  ordered_totals <- c(.bt_ordered_total_label_parts_list(prior_list),
+                      .bt_R2_total_label_parts_list(prior_list))
   coefficient_auxiliaries <-
     .bt_parameter_coordinates_coefficient_auxiliaries(prior_list)
+  # the allocation of an R-squared budget is a backend coordinate: its public
+  # quantities are the shares of its terms (see R/JAGS-R2-catalog.R)
+  R2_allocations <- .bt_R2_allocation_names(prior_list)
   dirichlet_auxiliaries <- c(
     vapply(
       names(prior_list)[vapply(prior_list, is.prior.simplex, logical(1))],
@@ -1030,6 +1047,10 @@
       random_term,
       name_map_row
     )
+    if(!nzchar(formula_parameter)){
+      r2_source <- match(coordinate_name, R2_nodes$coordinate)
+      if(!is.na(r2_source)) formula_parameter <- R2_nodes$formula_parameter[r2_source]
+    }
     coordinate <- .bt_parameter_coordinates_coordinate(
       coordinate_name,
       random_term,
@@ -1055,8 +1076,10 @@
       "structural"
     }else if(coordinate_name %in% columns){
       "sampled"
-    }else{
+    }else if(coordinate_name %in% structural){
       "structural"
+    }else{
+      "unavailable"
     }
     fixed_value <- NA_real_
     if(identical(monitor_status, "structural") && !is.null(prior)){
@@ -1138,6 +1161,7 @@
         "random_sd_variable"
       ) ||
         base_name %in% dirichlet_auxiliaries ||
+        base_name %in% R2_allocations ||
         isTRUE(prior_metadata$allocation),
       NA_character_
     )
@@ -1366,6 +1390,25 @@
   declare <- .bt_convergence_role_declaration
   if(is.null(prior)){
     return(declare(character(), character()))
+  }
+
+  if(is.prior.R2_budget(prior)){
+    nodes <- .bt_R2_core_nodes(prior)
+    # A single gate conditioned on a nonempty slab is open even when the
+    # budget is off. The realized term inclusion is its open flag.
+    gate_role <- if(prior$gates$K == 1L && isTRUE(prior$gates$truncated)) "structural" else "indicator"
+    return(rbind(
+      declare(nodes$total, "sampled"),
+      declare(nodes$gates, gate_role, exact = TRUE),
+      declare(nodes$indicator, "indicator", exact = TRUE),
+      declare(c(nodes$open, nodes$allocation), "derived", exact = TRUE),
+      declare(c(nodes$rate, nodes$rate_u, nodes$inclusion, nodes$variable,
+                nodes$eta, nodes$H), "auxiliary", exact = TRUE)
+    ))
+  }
+  if(identical(attr(prior, "R2_budget", exact = TRUE)$role, "allocation")){
+    # An ungated budget normalizes Gamma coordinates to its Dirichlet weights.
+    return(declare(parameter, "derived"))
   }
 
   if(is.prior.weightfunction(prior)){
@@ -1753,7 +1796,8 @@
   graph <- list(
     stochastic = character(),
     deterministic = list(),
-    data = character()
+    data = character(),
+    calls = character()
   )
   tokens <- .bt_jags_syntax_tokens(model_syntax)
   n <- length(tokens)
@@ -1767,6 +1811,7 @@
     as.integer(tokens %in% c(")", "]"))
   level <- cumsum(delta) - delta
   call_name <- identifier & next_token == "("
+  graph$calls <- unique(tokens[call_name & c("", tokens[-n]) != "~" & tokens != "for"])
   loop_variables <- unique(tokens[
     which(tokens == "for" & next_token == "(") + 2L
   ])
@@ -1849,8 +1894,7 @@
   if(length(model_syntax) == 0L){
     return(character())
   }
-  text <- paste(model_syntax, collapse = "\n")
-  text <- gsub("#[^\n]*", "", text)
+  text <- .JAGS_mask_comments(paste(model_syntax, collapse = "\n"))
   # The two-character operators are single tokens, so only '<-', '~', and a
   # lone '=' are relations ('<=', '>=', '==', and '!=' are comparisons).
   pattern <- paste0(

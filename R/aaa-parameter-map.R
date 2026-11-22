@@ -1,19 +1,22 @@
 # Authoritative fitted parameter map.
 
-.bt_parameter_map_version <- 22L
+.bt_parameter_map_version <- 23L
 
 #' Fitted parameter map and coordinate view
 #'
 #' @description
 #' `parameter_map()` returns the single versioned parameter map stored by
-#' [JAGS_fit()]. It contains three linked tables: concrete fitted
-#' `coordinates`, public semantic `quantities`, and exact `aliases`.
+#' [JAGS_fit()]. It contains concrete fitted `coordinates`, public semantic `quantities`,
+#' exact `aliases` and directed [parameter_relationships()].
+#' A complete pre-R2 version 22 map is read as version 23. Its saved coordinates,
+#' quantities and aliases are preserved, and its relationships are derived from
+#' the fitted model declarations.
 #'
 #' `parameter_coordinates()` returns the coordinate table from that map. Each
 #' row describes one sampled, structural, or unavailable fitted coordinate.
 #' Coordinate names are backend identities, not additional public aliases.
 #'
-#' `parameter_map_schema()` documents all three tables, while
+#' `parameter_map_schema()` documents all four tables, while
 #' `parameter_coordinates_schema()` documents the coordinate view alone.
 #'
 #' @param object a fitted object.
@@ -49,6 +52,10 @@ parameter_map.BayesTools_fit <- function(object, ...){
       "The fitted object does not contain parameter-map metadata. ",
       "Refit the model with the current BayesTools version."
     )
+  }
+  contract <- attr(object, "fit_contract", exact = TRUE)
+  if(.bt_parameter_map_v22_pair(map, contract)){
+    return(.bt_parameter_map_from_v22(object, map, contract))
   }
   cache <- .bt_parameter_map_cache(map)
   if(!.bt_parameter_map_cache_matches(map, cache)){
@@ -120,17 +127,105 @@ parameter_map_schema <- function(){
     schema_version = .bt_parameter_map_version,
     coordinates = parameter_coordinates_schema(),
     quantities = catalog$quantities,
-    aliases = catalog$aliases
+    aliases = catalog$aliases,
+    relationships = catalog$relationships
   )
 }
 
-.bt_parameter_map_new <- function(coordinates, quantities, aliases){
+# Schema 22 stored the same three parameter tables. Its pre-R2 bindings have
+# all the information needed to add relationships. Keep the saved tables and
+# validate that the declarations still describe their native quantities.
+.bt_parameter_map_v22_pair <- function(map, contract){
+
+  (is.list(map) && identical(map[["schema_version"]], 22L)) ||
+    (is.list(contract) && identical(contract[["parameter_map_version"]], 22L))
+}
+
+.bt_parameter_map_from_v22 <- function(fit, map, contract){
+
+  priors <- attr(fit, "prior_list", exact = TRUE)
+  designs <- attr(fit, "formula_design", exact = TRUE)
+  scales <- attr(fit, "formula_scale", exact = TRUE)
+
+  .bt_content_memo("parameter_map_v22", list(map, contract, priors, designs, scales), function(){
+    refuse <- function(){
+      .bt_stop_refit_required("The saved parameter map or its fitted declarations are incomplete or incompatible. ",
+                              "Refit the model with the current BayesTools version.")
+    }
+    .bt_validate_fit_contract_object(contract)
+    # Only a matching pair of version-22 declarations can be upgraded.
+    if(!is.list(map) || !identical(map[["schema_version"]], 22L) ||
+       !identical(contract[["parameter_map_version"]], 22L)){
+      .bt_unsupported_parameter_map()
+    }
+    supported <- .bt_supported_fit_contract()
+    supported$parameter_map <- 22L
+    if(!identical(unname(contract[-1L]), unname(supported)) ||
+       !inherits(map, "BayesTools_parameter_map") ||
+       !identical(names(map), c("schema_version", "coordinates", "quantities", "aliases"))) refuse()
+
+    tryCatch({
+      .bt_validate_parameter_coordinates(map$coordinates)
+      .bt_validate_parameter_catalog_tables(map$quantities, map$aliases)
+      native <- map$quantities[map$quantities$provider == "BayesTools", , drop = FALSE]
+      has_R2 <- function(p){
+        is.R2_budget(p) || is.prior.R2(p) || is.prior.R2_budget(p) ||
+          !is.null(attr(p, "R2_budget", exact = TRUE)) ||
+          (is.prior.mixture(p) && any(vapply(p, has_R2, logical(1))))
+      }
+      if(any(native$owner_type == "r2_budget") ||
+         any(vapply(native$extraction_key, function(key) key$type %in% c("R2_share", "R2_open"), logical(1))) ||
+         any(vapply(priors, has_R2, logical(1)))) refuse()
+      if(length(priors) && (!is.list(priors) || is.null(names(priors)) || anyNA(names(priors)) ||
+         any(!nzchar(names(priors))) || anyDuplicated(names(priors)) || !all(vapply(priors, is.prior, logical(1))))) refuse()
+
+      formulas <- unique(c(native$formula_parameter, map$coordinates$formula_parameter))
+      if(!is.null(designs) && !is.list(designs)) refuse()
+      if(!all(formulas[nzchar(formulas)] %in% names(designs)) || anyDuplicated(names(designs)) ||
+         (length(designs) && (is.null(names(designs)) || anyNA(names(designs)) || any(!nzchar(names(designs)))))) refuse()
+      for(parameter in names(designs)){
+        design <- designs[[parameter]]
+        if(!identical(design$parameter, parameter) ||
+           !is.list(design$prior_list) || !all(names(design$prior_list) %in% names(priors)) ||
+           any(vapply(design$prior_list, has_R2, logical(1))) ||
+           !is.list(design$random_effects) || !is.list(design$random_allocations) ||
+           !identical(design$formula_scale, scales[[parameter]])) refuse()
+        .bt_validate_formula_design_replay_schema(design)
+        for(block in design$random_effects) .bt_check_random_sd_binding(block$sd_binding)
+      }
+
+      catalog <- .bt_build_parameter_catalog(map$coordinates, priors, designs, scales)
+      expected <- catalog$quantities[match(native$quantity_id, catalog$quantities$quantity_id), , drop = FALSE]
+      rownames(native) <- rownames(expected) <- NULL
+      allocation_ids <- native$quantity_id[native$owner_type == "variance_allocation"]
+      reported <- catalog$relationships$consumer_id[catalog$relationships$consumer_type == "quantity"]
+      if(nrow(native) != nrow(catalog$quantities) || !identical(native, expected) ||
+         !all(allocation_ids %in% reported)) refuse()
+      .bt_parameter_map_new(map$coordinates, map$quantities, map$aliases, catalog$relationships)
+    }, BayesTools_refit_required = function(e) stop(e), error = function(e) refuse())
+  })
+}
+
+.bt_fit_with_parameter_map <- function(fit, map){
+
+  contract <- attr(fit, "fit_contract", exact = TRUE)
+  if(identical(contract[["parameter_map_version"]], 22L)){
+    contract$parameter_map_version <- map$schema_version
+    attr(fit, "fit_contract") <- contract
+  }
+  attr(fit, "parameter_map") <- map
+  fit
+}
+
+.bt_parameter_map_new <- function(coordinates, quantities, aliases,
+                                  relationships = .bt_empty_relationships()){
 
   out <- list(
     schema_version = .bt_parameter_map_version,
     coordinates = coordinates,
     quantities = quantities,
-    aliases = aliases
+    aliases = aliases,
+    relationships = relationships
   )
   class(out) <- c("BayesTools_parameter_map", "list")
   .bt_validate_parameter_map(out)
@@ -227,7 +322,8 @@ parameter_map_schema <- function(){
     isTRUE(cache$validated) &&
     identical(cache$coordinates, map$coordinates) &&
     identical(cache$quantities, map$quantities) &&
-    identical(cache$aliases, map$aliases)
+    identical(cache$aliases, map$aliases) &&
+    identical(cache$relationships, map$relationships)
 }
 
 .bt_parameter_map_cache_store <- function(map, cache){
@@ -239,6 +335,7 @@ parameter_map_schema <- function(){
   cache$coordinates <- map$coordinates
   cache$quantities <- map$quantities
   cache$aliases <- map$aliases
+  cache$relationships <- map$relationships
   # Consumer entries were derived from the map that was here before, so they
   # cannot survive it. BayesTools owns this environment and clears it whole.
   cache$providers <- new.env(parent = emptyenv())
@@ -310,7 +407,8 @@ parameter_map_cache <- function(map, provider, key, compute){
   out <- list(
     schema_version = map$schema_version,
     quantities = map$quantities,
-    aliases = map$aliases
+    aliases = map$aliases,
+    relationships = map$relationships
   )
   class(out) <- c("BayesTools_parameter_catalog", "list")
   out
@@ -322,22 +420,26 @@ parameter_map_cache <- function(map, provider, key, compute){
     is.list(map) &&
     identical(
       names(map),
-      c("schema_version", "coordinates", "quantities", "aliases")
+      c("schema_version", "coordinates", "quantities", "aliases", "relationships")
     ) &&
     identical(map$schema_version, .bt_parameter_map_version)
 }
 
+.bt_unsupported_parameter_map <- function(){
+
+  .bt_stop_refit_required(
+    "Parameter-map metadata are missing, malformed, or unsupported. ",
+    "Refit the model with the current BayesTools version."
+  )
+}
+
 .bt_validate_parameter_map <- function(map){
 
-  if(!.bt_parameter_map_header_valid(map)){
-    .bt_stop_refit_required(
-      "Parameter-map metadata are missing, malformed, or unsupported. ",
-      "Refit the model with the current BayesTools version."
-    )
-  }
+  if(!.bt_parameter_map_header_valid(map)) .bt_unsupported_parameter_map()
 
   .bt_validate_parameter_coordinates(map$coordinates)
   .bt_validate_parameter_catalog_tables(map$quantities, map$aliases)
+  .bt_validate_relationships(map$relationships, map$quantities)
 
   native <- map$quantities$provider == "BayesTools"
   dependencies <- unique(unlist(
@@ -385,7 +487,8 @@ parameter_map_cache <- function(map, provider, key, compute){
   .bt_parameter_map_new(
     coordinates = coordinates,
     quantities = catalog$quantities,
-    aliases = catalog$aliases
+    aliases = catalog$aliases,
+    relationships = catalog$relationships
   )
 }
 

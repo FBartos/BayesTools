@@ -102,6 +102,11 @@
       if(is.character(value) && !anyNA(value)) NULL else
         "it must be a character vector naming the undefined quantities"
     },
+    omitted_undefined_draws = function(value){
+      if(is.numeric(value) && length(value) == 1L && is.finite(value) &&
+         value >= 0 && value == floor(value)) NULL else
+        "it must be the number of undefined draws omitted from a scalar marginal"
+    },
     prior_density = function(value){
       if(inherits(value, "prior_density") || is.prior(value)) NULL else
         "it must be a prior density or a prior distribution"
@@ -321,7 +326,7 @@
 
 .bt_meta_field_names <- c(
   "support", "atoms", "components", "component", "component_source",
-  "draw_index", "ordered_total_component", "ordered_source", "undefined_draws", "prior_density",
+  "draw_index", "ordered_total_component", "ordered_source", "undefined_draws", "omitted_undefined_draws", "prior_density",
   "formula_state", "measure_unavailable", "model_probabilities",
   "prior_context", "prior_densities", "posterior_density",
   "posterior_densities", "posterior_ordinate", "posterior_ordinates",
@@ -486,6 +491,12 @@
   attributes_to_keep <- attributes(x)[setdiff(names(attributes(x)), c("names", "dim", "dimnames", .bt_meta_attribute))]
   attributes(out) <- c(attributes(out), attributes_to_keep)
   if(is.null(meta)) return(out)
+  # An arbitrary subset of the defined draws no longer describes how many
+  # undefined input draws were removed from that subset.
+  if(!is.null(meta$omitted_undefined_draws) &&
+     !identical(seq_len(NROW(x))[rows], seq_len(NROW(x)))){
+    meta$omitted_undefined_draws <- NULL
+  }
   for(field in c("component", "draw_index", "ordered_total_component")){
     if(!is.null(meta[[field]])) meta[[field]] <- if(is.null(dim(meta[[field]]))) meta[[field]][rows] else meta[[field]][rows, , drop = FALSE]
   }
@@ -696,7 +707,7 @@
 
 # Fields of the public accessor posterior_metadata().
 .bt_meta_public_fields <- c(
-  "support", "atoms", "undefined_draws", "prior_density", "prior_densities",
+  "support", "atoms", "undefined_draws", "omitted_undefined_draws", "prior_density", "prior_densities",
   "prior_context", "posterior_density", "posterior_densities",
   "posterior_ordinate", "posterior_ordinates", "condition", "linear_weights",
   "quantities", "output_transformations", "measure_unavailable", "linear_weight_space",
@@ -750,7 +761,7 @@
 .bt_formula_measure_diagnostics_valid <- function(value){
 
   if(is.null(value)) return(TRUE)
-  if(inherits(value, "BayesTools_ordered_expression_unavailable")){
+  if(inherits(value, c("BayesTools_ordered_expression_unavailable", "BayesTools_R2_combination_unavailable"))){
     return(inherits(value, "condition") && is.null(conditionCall(value)) &&
       is.character(value$message) && length(value$message) == 1L && !is.na(value$message))
   }
@@ -940,6 +951,9 @@ posterior_measure_check <- function(x, measure, column = NULL){
 #'   \item{\code{"undefined_draws"}}{a character vector naming quantities
 #'   whose draws may be \code{NA} because the quantity is undefined in those
 #'   draws (e.g. \code{"correlation"}), as returned by [parameter_draws()].}
+#'   \item{\code{"omitted_undefined_draws"}}{for the scalar mixed posterior
+#'   of a term share conditional on inclusion in an R-squared budget, the
+#'   number of fitted draws excluded because the term is closed.}
 #'   \item{\code{"prior_density"}}{the prior density of the quantity.}
 #'   \item{\code{"prior_densities"}}{a list of prior densities keyed by
 #'   parameter, attached to the list returned by [as_mixed_posteriors()]

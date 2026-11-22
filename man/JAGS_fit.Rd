@@ -38,6 +38,9 @@ JAGS_fit(
   sampler_gates = FALSE,
   sampler_blocks = NULL,
   runtime_report = NULL,
+  sampler_joint = NULL,
+  sampler_probabilities = NULL,
+  sampler_nested_weights = FALSE,
   ...
 )
 
@@ -302,7 +305,12 @@ declarations are stored in \code{attr(fit, "sampler_declarations")}, which
 \code{JAGS_extend()} keeps: a list of the data frames \code{gates},
 \code{blocks} and \code{declined} (one row per declined gate branch or
 block, with its \code{kind}, \code{prior}, \code{branch} or \code{block},
-\code{nodes} and \code{reason}). A density that cannot be calculated (NaN)
+\code{nodes} and \code{reason}).
+For successful fits with gate declarations, \code{gate_claims} records the
+sampler assignment for each gate when the reported JAGS node can be matched.
+A gate whose assignment status or sampler differs across workers has
+status \code{"mixed"}.
+A density that cannot be calculated (NaN)
 at a point the factor slice sampler evaluates stops the fit with a JAGS
 error, as with the stock samplers.}
 
@@ -334,6 +342,65 @@ Callback packages must be listed in \code{required_packages}. Passing
 
 \item{...}{additional hidden arguments}
 
+\item{sampler_joint}{optional package callback accepting \code{prior_list},
+\code{formula_design} and \code{data}. It receives the combined bound prior list,
+the finalized formula designs and the combined model and formula data,
+once before compilation. Return \code{NULL} to decline, or a list with a
+nonempty \code{markers} list and optional \code{data} list of named finite numeric
+constants that are referenced by the markers. Each marker specifies a fresh
+\code{name}, an ordered \code{arguments} list and one of \code{tag} or \code{distribution}.
+Each argument contains one or more node references
+(bare names or positive integer subscripts or ranges) or finite numeric
+literals. Multiple entries in one argument are combined with \code{c()}.
+References can come from the existing model and data or the callback's
+numeric constants. Marker names are reserved to the declarations.
+A \code{tag} is a registered deterministic JAGS function with a name prefixed
+with \code{<lowercased-module>_} for a provider listed in \code{jags_modules}. It must
+return a fixed finite value for admissible arguments. Use a dedicated
+function without aliases. The model must reserve that function for tags
+to prevent JAGS from reusing a scientific node. The tag creates an
+unmonitored terminal node with no observed likelihood contribution.
+The BayesTools finite readout functions are reserved for \code{sampler_probabilities}.
+A \code{distribution} must be a normalized point mass at zero for every
+admissible parent value. Its marker is observed at zero.
+Use a distribution name prefixed with
+\code{d<lowercased-module>_} for a provider listed in \code{jags_modules}, or use
+the BayesTools block marker \code{dbt_block}. Declare BayesTools blocks through
+one of \code{sampler_joint} or \code{sampler_blocks}. Use \code{sampler_gates} for model-verified
+gates, which take precedence over \code{dbt_block} when both mark a node.
+Supply package and module requirements through \code{required_packages}
+and \code{jags_modules}. The
+validated declaration is stored in the \code{joint} entry of
+\code{attr(fit, "sampler_declarations")}. Extensions reuse the compiled model
+text and data.}
+
+\item{sampler_probabilities}{optional character vector of sampled finite
+indicator node names or scalar indexed references in the compiled model.
+\code{fit$sampler_probabilities} gives one entry per requested indicator.
+The recorder can replace an active JAGS 5 \code{base::Finite} update for a
+full-rank scalar \code{dbern} or \code{dcat} with fixed integer support starting at
+0 or 1, respectively. It preserves competing sampler assignments. Its
+entry is an \code{mcmc.list} with one row per retained draw in the same chain
+and iteration order as the model draws. The columns \code{p[k]} and
+\code{log_p[k]} are conditional probabilities and log probabilities at the
+indicator update in that iteration for support label \code{k}. The columns
+\code{selected} and \code{lower} give the sampled label and the lowest support
+label. Compiled aliases of one node return the same trace. An entry is
+\code{NULL} when no recorder was assigned to that node. A probability trace
+requires the same availability and support labels
+on every worker.
+Extensions append the corresponding rows. By default no probabilities
+are recorded. An incomplete or incompatible recording raises a
+\code{BayesTools_sampler_probabilities_error} backend condition.}
+
+\item{sampler_nested_weights}{logical. Share physical weight coordinates for eligible
+nested cumulative one-sided weights in a publication-bias mixture.
+The scientific priors and public weights are preserved. Unsupported pairs
+and mixtures whose private weight nodes are explicitly used or monitored
+keep their ordinary parameterization. The \code{nested_weights} entry in
+\code{attr(fit, "sampler_declarations")} records the two branch indices when
+sharing was used or the reason it was declined. Defaults to \code{FALSE}.}
+
 \item{fit}{a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 extended. A derived-draw view signals
 \code{BayesTools_draws_view_sampling_unavailable}, also
@@ -349,7 +416,10 @@ they stop with an error of class \code{BayesTools_refit_required} (see
 A successful fit is a \code{BayesTools_fit}. It contains the sampled
 chains, model and data used for compilation, monitored nodes, and final
 per-chain parameter and RNG states. Extract the chains with
-\code{coda::as.mcmc.list(fit)}. A failed initial fit returns its error
+\code{coda::as.mcmc.list(fit)}. The sampler table \code{fit$samplers} is from
+the most recent successful backend run. For parallel fits it is the first
+worker's table. If worker assignments differ, \code{fit$samplers_by_worker}
+gives each worker's \code{chains} and \code{samplers}. A failed initial fit returns its error
 condition.
 
 \code{JAGS_extend()} rebuilds the sampler from the stored states, adapts

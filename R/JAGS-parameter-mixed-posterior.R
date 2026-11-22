@@ -64,7 +64,12 @@
 #'   \item{`undefined_draws`}{for quantities that are undefined on some
 #'   fitted draws (the catalog `definedness`, e.g. variance proportions when
 #'   no allocation component is active), the reason; those draws are omitted,
-#'   and the prior density and atom masses are conditional on definedness.}
+#'   and the prior density and atom masses are conditional on definedness.
+#'   For an R-squared term share the reason is `term_included` and
+#'   `omitted_undefined_draws` gives the number of closed draws.
+#'   If no fitted draw defines the selected posterior or satisfies its
+#'   requested inclusion condition, the function signals
+#'   `BayesTools_no_defined_posterior_draws`.}
 #'   \item{`condition`}{the conditioning of the draws: unconditional
 #'   (`averaged = TRUE`), or the inclusion event of the quantity.}
 #'   \item{`quantities`}{the catalog quantity of the draws: its id and label
@@ -355,12 +360,10 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     keep <- keep & states$event
   }
   if(!any(keep)){
-    stop(
+    stop(errorCondition(paste0(
       "The posterior of '", name, "' is unavailable: no posterior draw ",
-      if(isTRUE(conditional)) "lies in its inclusion event" else
-        "defines the quantity", ".",
-      call. = FALSE
-    )
+      if(isTRUE(conditional)) "lies in its inclusion event" else "defines the quantity", "."
+    ), class = "BayesTools_no_defined_posterior_draws", call = NULL))
   }
 
   prior_density <- .bt_parameter_prior_density_quantity(
@@ -418,8 +421,10 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   if(!is.null(components)) out <- .posterior_components_set(out, components)
   out <- .bt_meta_set(out, "draw_index", which(keep))
   if(!identical(quantity$definedness, "always")){
-    out <- .bt_meta_set(out, "undefined_draws",
-                        stats::setNames(quantity$definedness, name))
+    out <- .bt_meta_set(out, "undefined_draws", stats::setNames(quantity$definedness, name))
+    if(identical(quantity$definedness, "term_included")){
+      out <- .bt_meta_set(out, "omitted_undefined_draws", sum(!keep))
+    }
   }
   if(is.character(quantity$formula_parameter) &&
      !is.na(quantity$formula_parameter) &&
@@ -890,6 +895,10 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   key <- quantity$extraction_key[[1L]]
   ordered <- .bt_ordered_quantity_plan(fit,quantity)
   if(!is.null(ordered)) return(ordered)
+  R2_total <- .bt_R2_total_point_plan(fit, quantity)
+  if(!is.null(R2_total)) return(R2_total)
+  R2_plan <- .bt_R2_gate_plan(fit, quantity)
+  if(!is.null(R2_plan)) return(R2_plan)
   if(identical(key$type, "ordered_allocation")){
     return(.bt_ordered_share_plan(fit, key))
   }
@@ -1033,6 +1042,10 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   if(identical(plan$kind, "ordered_share")){
     if(is.null(model_samples)) model_samples <- as.matrix(.fit_to_posterior(fit))
     return(.bt_ordered_share_states(plan, n, model_samples, with_event))
+  }
+  if(identical(plan$kind, "R2_share")){
+    if(is.null(model_samples)) model_samples <- as.matrix(.fit_to_posterior(fit))
+    return(.bt_R2_share_states(plan, model_samples))
   }
   gate_columns <- unique(c(
     plan$chain_gates, plan$component_gates, plan$parent_gates

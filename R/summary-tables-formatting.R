@@ -328,6 +328,7 @@
   correlation       = "where the correlation is defined, i.e. both SDs are positive",
   multiple_correlation = "where the multiple correlation is defined and evaluable, i.e. the SDs are positive and the correlation matrix of the factor term is not singular at working precision, with the computed value within its support",
   allocation_active = "where the variance share is defined, i.e. an allocation component is active",
+  term_included     = "where the term is included in its R-squared budget",
   ordered_parameterization = "where the model contains this ordered allocation parameterization",
   positive_definite = "where the correlation matrix is positive definite"
 )

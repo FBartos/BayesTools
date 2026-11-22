@@ -110,7 +110,7 @@
   }
 
   parameter_map_cache(
-    map,
+    if(inherits(model, "BayesTools_fit")) parameter_map(model) else map,
     provider = "BayesTools",
     key      = "transformed_prior_densities",
     compute  = function(){

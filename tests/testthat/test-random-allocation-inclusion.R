@@ -535,6 +535,10 @@ test_that("allocation slab auxiliaries remain private coordinates", {
     attr(inference, "parameter_roles"),
     c("random_slab", "random_inclusion")
   )
+  event_id <- parameter_catalog_resolve(catalog, "(mu) component: inclusion(study)")$quantity_id
+  expect_identical(attr(inference, "event_quantity_ids")[[2L]], event_id)
+  expect_identical(.bt_inference_event_id(catalog$quantities, "unregistered_indicator"), "")
+  expect_identical(.bt_inference_event_id(NULL, "unregistered_indicator"), "")
 
   summary_samples <- JAGS_estimates_table(
     fit,

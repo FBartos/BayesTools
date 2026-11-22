@@ -362,6 +362,191 @@ test_that("blocks expand every supported prior to its scalar leaves", {
                    c("log_omega[2]", "mu"))
 })
 
+test_that("sampler sources report emitted nodes and explain priors without eligible leaves", {
+
+  priors <- list(
+    mu = prior("normal", list(0, 1)),
+    fixed = prior_weightfunction("two-sided", c(0.05), wf_fixed(c(1, 0.4))),
+    cumulative = .wf_cumulative3(),
+    point = prior("point", list(0))
+  )
+  sources <- JAGS_sampler_sources(priors, c("cumulative", "fixed", "point", "mu"))
+
+  expect_identical(sources$prior, c(rep("cumulative", 3L), "fixed", "point", "mu"))
+  expect_identical(sources$node, c(paste0("eta[", 1:3, "]"), NA_character_, NA_character_, "mu"))
+  expect_identical(sources$status, c(rep("eligible", 3L), "empty", "declined", "eligible"))
+  expect_identical(sources$reason, c(rep(NA_character_, 3L), "it has no supported scalar stochastic nodes",
+                                    "it is a point prior", NA_character_))
+  expect_identical(JAGS_sampler_sources(list()), sources[0L, ])
+  expect_error(JAGS_sampler_sources(priors, "unknown"), class = "BayesTools_sampler_declaration_error")
+
+  declared <- .declare(priors[c("cumulative", "mu")], sampler_blocks = list(c("cumulative", "mu")))
+  expect_identical(declared$declarations$blocks$node, sources$node[sources$status == "eligible"])
+})
+
+test_that("ordinary mixture sources keep gate order, literal points and raw coefficient shape", {
+
+  slab <- prior("normal", list(0, 1), prior_weights = 3)
+  point <- prior("point", list(1.25), prior_weights = 7)
+  priors <- list(mu = prior_mixture(list(slab = slab, point = point)))
+  sources <- JAGS_mixture_sources(priors, "mu")
+  expect_identical(sources$gate, "mu_indicator")
+  expect_equal(sources$probabilities, c(0.3, 0.7))
+  expect_identical(sources$branches[[1L]]$family, "scalar")
+  expect_identical(sources$branches[[1L]]$source, "mu_component_1")
+  expect_true(sources$branches[[1L]]$stochastic)
+  expect_identical(sources$branches[[2L]]$family, "point")
+  expect_identical(sources$branches[[2L]]$source, "mu_component_2")
+  expect_identical(sources$branches[[2L]]$location, 1.25)
+  expect_false(sources$branches[[2L]]$stochastic)
+
+  rho <- list(rho = prior_mixture(list(prior("beta", list(2, 3)))))
+  rho_sources <- JAGS_mixture_sources(rho, "rho")
+  expect_identical(rho_sources$gate, "rho_indicator")
+  expect_identical(rho_sources$probabilities, 1)
+  expect_false(rho_sources$nested_weights)
+  expect_identical(rho_sources$branches[[1L]]$source, "rho_component_1")
+  expect_true(rho_sources$branches[[1L]]$stochastic)
+  expect_match(JAGS_add_priors("model{ y ~ dnorm(0, 1) }", rho),
+               "rho_component_1 ~ dbeta(", fixed = TRUE)
+
+  group <- data.frame(group = factor(rep(letters[1:4], 2)))
+  factor_slab <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  compiled <- JAGS_formula(~ group, "mu", group, list(
+    intercept = prior("normal", list(0, 1)),
+    group = prior_mixture(list(prior("point", list(0)), factor_slab), is_null = c(TRUE, FALSE))
+  ))
+  factor_sources <- JAGS_mixture_sources(compiled$prior_list, "mu_group")
+  block <- factor_sources$branches[[2L]]
+  expect_identical(factor_sources$gate, "mu_group_indicator")
+  expect_identical(block$family, "vector")
+  expect_identical(block$coordinates, paste0("mu_group_component_2[", 1:3, "]"))
+  expect_true(block$stochastic)
+  syntax <- JAGS_add_priors("model{ y ~ dnorm(0, 1) }", compiled$prior_list)
+  expect_match(syntax, paste0(block$source, " ~ dmnorm("), fixed = TRUE)
+})
+
+test_that("bias mixture sources identify raw slopes and physical weights on the common grid", {
+
+  priors <- list(bias = prior_mixture(list(
+    pet = prior_PET("normal", list(0, 1), prior_weights = 2),
+    wide = prior_weightfunction("one-sided", c(0.025, 0.5), wf_cumulative(c(1, 1, 1)), prior_weights = 3),
+    none = prior_none(prior_weights = 7),
+    peese = prior_PEESE("normal", list(0, 1), prior_weights = 4),
+    coarse = prior_weightfunction("one-sided", 0.025, wf_cumulative(c(1, 1)), prior_weights = 5)
+  )))
+  sources <- JAGS_mixture_sources(priors, "bias")
+  expect_identical(sources$gate, "bias_indicator")
+  expect_false(sources$nested_weights)
+  expect_equal(sources$probabilities, c(2, 3, 7, 4, 5) / 21)
+  expect_identical(vapply(sources$branches, `[[`, character(1), "family"),
+                   c("PET", "selection", "none", "PEESE", "selection"))
+  expect_identical(vapply(sources$branches[c(1L, 4L)], `[[`, character(1), "source"), c("PET_1", "PEESE_1"))
+  expect_true(all(vapply(sources$branches[c(1L, 4L)], `[[`, logical(1), "stochastic")))
+  expect_identical(sources$branches[[3L]]$omega, character())
+  syntax <- JAGS_add_priors("model{ y ~ dnorm(0, 1) }", priors)
+  for(i in c(2L, 5L)){
+    expect_identical(sources$branches[[i]]$omega, paste0("omega_component_", i, "[", 1:3, "]"))
+    for(node in sources$branches[[i]]$omega){
+      expect_match(syntax, paste0(node, " <- "), fixed = TRUE)
+    }
+  }
+  expect_error(JAGS_mixture_sources(list(bias = prior_mixture(list(.wf_cumulative2()))), "bias"),
+               "at least two branches", fixed = TRUE, class = "BayesTools_sampler_declaration_error")
+})
+
+test_that("mixture probabilities use the weights read by the respective emitter", {
+
+  selection <- list(bias = prior_mixture(list(prior_none(), .wf_cumulative2())))
+  selection$bias[[2L]]$prior_weights <- 9
+  expect_equal(JAGS_mixture_sources(selection, "bias")$probabilities, c(0.1, 0.9))
+  expect_match(JAGS_add_priors("model{}", selection), "bias_indicator ~ dcat(c(1, 9))", fixed = TRUE)
+
+  regression <- list(bias = prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1)))))
+  regression$bias[[2L]]$prior_weights <- 9
+  expect_equal(JAGS_mixture_sources(regression, "bias")$probabilities, c(0.5, 0.5))
+  expect_match(JAGS_add_priors("model{}", regression), "bias_indicator ~ dcat(c(1, 1))", fixed = TRUE)
+
+  ordinary <- list(mu = prior_mixture(list(prior("point", list(0)), prior("normal", list(0, 1)))))
+  ordinary$mu[[2L]]$prior_weights <- 9
+  expect_equal(JAGS_mixture_sources(ordinary, "mu")$probabilities, c(0.5, 0.5))
+  expect_match(JAGS_add_priors("model{}", ordinary), "mu_indicator ~ dcat(c(1, 1))", fixed = TRUE)
+})
+
+test_that("nested weight markers follow both active branches and their private dependencies", {
+
+  model <- "model{\n  y ~ dnorm(omega[2], 1)\n}"
+  priors <- list(bias = prior_mixture(list(
+    prior_none(),
+    prior_weightfunction("one-sided", c(0.05, 0.5), wf_cumulative(c(1, 1, 1))),
+    prior_PET("normal", list(0, 1)),
+    prior_weightfunction("one-sided", c(0.025, 0.05, 0.5), wf_cumulative(c(1, 1, 1, 1)))
+  )))
+  bound <- .bt_nested_weights_bind(priors, model, add_parameters = NULL,
+                                   sampler_nested_weights = TRUE)$prior_list
+  plan <- .bt_nested_weights_plan(bound$bias)
+  expect_identical(c(plan$coarse, plan$fine), c(2L, 4L))
+  out <- .declare(bound, model_syntax = model, sampler_gates = TRUE)
+  markers <- out$declarations$gates
+  expect_identical(markers$node, c("PET_1", unname(plan$nodes)))
+  expect_identical(markers$active, c("equals(bias_indicator, 3)",
+    rep("equals(bias_indicator, 2) + equals(bias_indicator, 4)", 2L), "equals(bias_indicator, 4)"))
+  expect_identical(markers$branch, c(3L, NA_integer_, NA_integer_, 4L))
+  expect_identical(nrow(out$declarations$declined), 0L)
+  expect_true(all(vapply(unname(plan$nodes), function(node) {
+    grepl(paste0("dbt_gate(", node, ","), out$model, fixed = TRUE)
+  }, logical(1))))
+
+  bypass <- paste0("model{\n  y ~ dnorm(omega[2] + ", plan$nodes[["a"]], ", 1)\n}")
+  guarded <- .declare(bound, model_syntax = bypass, sampler_gates = TRUE)$declarations
+  expect_identical(guarded$gates$node, "PET_1")
+  expect_identical(nrow(guarded$declined), 2L)
+  expect_true(all(grepl("occurs outside the statements of the mixture", guarded$declined$reason, fixed = TRUE)))
+})
+
+test_that("mixture sources report the realized nested layout and its emitted masses", {
+
+  model <- "model{ y ~ dnorm(omega[2], 1) }"
+  priors <- nested_weight_priors()
+  priors$bias[[4L]]$prior_weights <- 7
+  bound <- .bt_nested_weights_bind(priors, model, add_parameters = NULL, sampler_nested_weights = TRUE)
+  nested <- JAGS_mixture_sources(bound$prior_list, "bias")
+  expect_true(nested$nested_weights)
+  expect_equal(nested$probabilities, c(2, 1, 1, 7) / 11)
+  expect_match(JAGS_add_priors(model, bound$prior_list), "bias_indicator ~ dcat(c(2, 1, 1, 7))", fixed = TRUE)
+
+  veto <- .bt_nested_weights_bind(priors, model, add_parameters = "eta_component_1[1]",
+                                   sampler_nested_weights = TRUE)
+  ordinary <- JAGS_mixture_sources(veto$prior_list, "bias")
+  expect_false(ordinary$nested_weights)
+  expect_identical(ordinary$probabilities, nested$probabilities)
+  expect_identical(ordinary$branches[[1L]]$omega, nested$branches[[1L]]$omega)
+})
+
+test_that("gate claims use only emitted copies to resolve reported JAGS aliases", {
+
+  priors <- list(bias = prior_mixture(list(
+    prior_none(),
+    prior_weightfunction("one-sided", 0.025, wf_cumulative(c(1, 1))),
+    prior_weightfunction("one-sided", c(0.025, 0.5), wf_cumulative(c(1, 1, 1))),
+    prior_PET("normal", list(0, 1))
+  )))
+  gates <- .declare(priors, sampler_gates = TRUE)$declarations$gates
+  samplers <- data.frame(Index.No = 1:4, Sampler = c("BayesTools::GatedSlice", rep("base::RealSlicer", 3L)),
+                        Node = c("omega_component_2[2]", "omega_component_3[2]", "eta_component_3[2]", "PET_1"))
+  claims <- .bt_sampler_gate_claims(gates, priors, samplers)
+  expect_identical(claims$marker, gates$marker)
+  expect_identical(claims$node, gates$node)
+  expect_identical(claims$reported_node, c("omega_component_2[2]", NA_character_, "eta_component_3[2]",
+                                         NA_character_, "PET_1"))
+  expect_identical(claims$assignment, c(1L, NA_integer_, 3L, NA_integer_, 4L))
+  expect_identical(claims$status, c("claimed", "unresolved", "other", "unresolved", "other"))
+
+  ambiguous <- rbind(samplers, data.frame(Index.No = 5L, Sampler = "BayesTools::GatedSlice",
+                                          Node = "omega_local_component_2[2]"))
+  expect_identical(.bt_sampler_gate_claims(gates, priors, ambiguous)$status[[1L]], "unresolved")
+})
+
 test_that("blocks refuse guarded priors with the declaration error class", {
 
   set.seed(1)
