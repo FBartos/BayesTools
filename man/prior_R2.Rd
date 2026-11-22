@@ -66,7 +66,7 @@ prior list under a name that is not a formula term, which names the budget
 (e.g., \code{R2 = prior_R2(...)}); see Details.
 }
 \details{
-R-squared budgets are an experimental BayesTools formula feature. The
+R-squared budgets are a beta feature for BayesTools formulas. The
 residual SD scales each term's contribution to the linear predictor. Its
 fitted coefficients are expressed in residual-SD units.
 

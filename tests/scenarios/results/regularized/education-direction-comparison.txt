@@ -1,3 +1,3 @@
       engine Pr_lower    BF
-1 BayesTools    0.988 82.33
+1 BayesTools    0.987 76.32
 2      RStan    0.985 64.22

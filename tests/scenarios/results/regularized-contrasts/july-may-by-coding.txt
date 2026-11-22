@@ -1,5 +1,5 @@
       source       parameter estimate median    lCI   uCI
-1 BayesTools Mean difference    0.377  0.356 -0.063 0.975
+1 BayesTools Mean difference    0.378  0.360 -0.061 0.971
 2      RStan Mean difference    0.375  0.359 -0.063 0.964
-3 BayesTools     Orthonormal    0.366  0.345 -0.063 0.970
+3 BayesTools     Orthonormal    0.371  0.353 -0.062 0.968
 4      RStan     Orthonormal    0.366  0.344 -0.065 0.968

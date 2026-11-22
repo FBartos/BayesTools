@@ -63,7 +63,7 @@
 #' contrasts).
 #'
 #' @details
-#' R-squared budgets are an experimental BayesTools formula feature. The
+#' R-squared budgets are a beta feature for BayesTools formulas. The
 #' residual SD scales each term's contribution to the linear predictor. Its
 #' fitted coefficients are expressed in residual-SD units.
 #'

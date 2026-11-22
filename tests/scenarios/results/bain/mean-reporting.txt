@@ -1,9 +1,9 @@
 BayesTools
     Alternative:                 Null:    BF error%(BF) prior_density posterior_density prior_prob_alt posterior_prob_alt prior_prob_null posterior_prob_null               method
-          mu = 0         unconstrained 3.969         NA         0.463             1.839             NA                 NA           1.000               1.000  Savage-Dickey (KDE)
-          mu > 0               mu <= 0 0.783      1.425            NA                NA          0.500              0.439           0.500               0.561 prior-posterior odds
- -0.1 < mu < 0.1         unconstrained 3.817      0.957            NA                NA          0.092              0.353           1.000               1.000   encompassing prior
- -0.1 < mu < 0.1 not (-0.1 < mu < 0.1) 5.353      1.480            NA                NA          0.092              0.353           0.908               0.647 prior-posterior odds
+          mu = 0         unconstrained 3.962         NA         0.463             1.836             NA                 NA           1.000               1.000  Savage-Dickey (KDE)
+          mu > 0               mu <= 0 0.778      1.425            NA                NA          0.500              0.438           0.500               0.562 prior-posterior odds
+ -0.1 < mu < 0.1         unconstrained 3.831      0.955            NA                NA          0.092              0.354           1.000               1.000   encompassing prior
+ -0.1 < mu < 0.1 not (-0.1 < mu < 0.1) 5.385      1.478            NA                NA          0.092              0.354           0.908               0.646 prior-posterior odds
 
 bain
 Bayesian informative hypothesis testing for an object of class lm (continuous predictors):

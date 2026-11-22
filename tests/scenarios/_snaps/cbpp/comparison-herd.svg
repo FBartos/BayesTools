@@ -33,44 +33,44 @@
 <rect x='558.40' y='110.68' width='115.20' height='369.05' style='stroke-width: 0.75; stroke: none; fill: #F7F7F7;' />
 <text x='104.00' y='495.36' text-anchor='middle' style='font-size: 7.80px; fill: #666666; font-family: sans;' textLength='13.44px' lengthAdjust='spacingAndGlyphs'>-2.1</text>
 <text x='104.00' y='100.45' text-anchor='middle' style='font-size: 7.80px; fill: #666666; font-family: sans;' textLength='17.78px' lengthAdjust='spacingAndGlyphs'>-0.91</text>
-<polygon points='61.02,263.45 65.60,258.87 70.18,263.45 65.60,268.03 ' style='stroke-width: 1.50; fill: none;' />
-<polygon points='86.62,263.45 91.20,258.87 95.78,263.45 91.20,268.03 ' style='stroke-width: 1.50; stroke: #666666; fill: none;' />
-<line x1='116.80' y1='454.27' x2='116.80' y2='136.44' style='stroke-width: 1.50; stroke: #0072B2;' />
-<circle cx='116.80' cy='289.86' r='3.24' style='stroke-width: 1.50; stroke: #0072B2; fill: #0072B2;' />
-<line x1='142.40' y1='450.81' x2='142.40' y2='136.13' style='stroke-width: 1.50; stroke: #E69F00;' />
-<circle cx='142.40' cy='288.60' r='3.24' style='stroke-width: 1.50; stroke: #E69F00; fill: #E69F00;' />
+<polygon points='61.02,265.98 65.60,261.39 70.18,265.98 65.60,270.56 ' style='stroke-width: 1.50; fill: none;' />
+<polygon points='86.62,265.98 91.20,261.39 95.78,265.98 91.20,270.56 ' style='stroke-width: 1.50; stroke: #666666; fill: none;' />
+<line x1='116.80' y1='453.64' x2='116.80' y2='136.13' style='stroke-width: 1.50; stroke: #0072B2;' />
+<circle cx='116.80' cy='292.83' r='3.24' style='stroke-width: 1.50; stroke: #0072B2; fill: #0072B2;' />
+<line x1='142.40' y1='454.27' x2='142.40' y2='138.02' style='stroke-width: 1.50; stroke: #E69F00;' />
+<circle cx='142.40' cy='291.25' r='3.24' style='stroke-width: 1.50; stroke: #E69F00; fill: #E69F00;' />
 <text x='232.00' y='495.29' text-anchor='middle' style='font-size: 7.80px; fill: #666666; font-family: sans;' textLength='13.44px' lengthAdjust='spacingAndGlyphs'>-1.5</text>
 <text x='232.00' y='100.45' text-anchor='middle' style='font-size: 7.80px; fill: #666666; font-family: sans;' textLength='13.44px' lengthAdjust='spacingAndGlyphs'>-0.2</text>
-<polygon points='189.02,329.95 193.60,325.37 198.18,329.95 193.60,334.53 ' style='stroke-width: 1.50; fill: none;' />
-<polygon points='214.62,329.67 219.20,325.09 223.78,329.67 219.20,334.25 ' style='stroke-width: 1.50; stroke: #666666; fill: none;' />
-<line x1='244.80' y1='453.44' x2='244.80' y2='139.17' style='stroke-width: 1.50; stroke: #0072B2;' />
-<circle cx='244.80' cy='292.57' r='3.24' style='stroke-width: 1.50; stroke: #0072B2; fill: #0072B2;' />
-<line x1='270.40' y1='454.27' x2='270.40' y2='136.13' style='stroke-width: 1.50; stroke: #E69F00;' />
-<circle cx='270.40' cy='293.12' r='3.24' style='stroke-width: 1.50; stroke: #E69F00; fill: #E69F00;' />
+<polygon points='189.02,327.95 193.60,323.36 198.18,327.95 193.60,332.53 ' style='stroke-width: 1.50; fill: none;' />
+<polygon points='214.62,327.67 219.20,323.09 223.78,327.67 219.20,332.25 ' style='stroke-width: 1.50; stroke: #666666; fill: none;' />
+<line x1='244.80' y1='454.27' x2='244.80' y2='138.87' style='stroke-width: 1.50; stroke: #0072B2;' />
+<circle cx='244.80' cy='291.50' r='3.24' style='stroke-width: 1.50; stroke: #0072B2; fill: #0072B2;' />
+<line x1='270.40' y1='450.98' x2='270.40' y2='136.13' style='stroke-width: 1.50; stroke: #E69F00;' />
+<circle cx='270.40' cy='291.50' r='3.24' style='stroke-width: 1.50; stroke: #E69F00; fill: #E69F00;' />
 <text x='360.00' y='495.32' text-anchor='middle' style='font-size: 7.80px; fill: #666666; font-family: sans;' textLength='13.44px' lengthAdjust='spacingAndGlyphs'>-1.7</text>
-<text x='360.00' y='100.45' text-anchor='middle' style='font-size: 7.80px; fill: #666666; font-family: sans;' textLength='17.78px' lengthAdjust='spacingAndGlyphs'>-0.28</text>
-<polygon points='317.02,330.29 321.60,325.71 326.18,330.29 321.60,334.87 ' style='stroke-width: 1.50; fill: none;' />
-<polygon points='342.62,330.03 347.20,325.45 351.78,330.03 347.20,334.61 ' style='stroke-width: 1.50; stroke: #666666; fill: none;' />
-<line x1='372.80' y1='454.27' x2='372.80' y2='136.13' style='stroke-width: 1.50; stroke: #0072B2;' />
-<circle cx='372.80' cy='291.82' r='3.24' style='stroke-width: 1.50; stroke: #0072B2; fill: #0072B2;' />
-<line x1='398.40' y1='451.41' x2='398.40' y2='138.99' style='stroke-width: 1.50; stroke: #E69F00;' />
-<circle cx='398.40' cy='292.08' r='3.24' style='stroke-width: 1.50; stroke: #E69F00; fill: #E69F00;' />
+<text x='360.00' y='100.45' text-anchor='middle' style='font-size: 7.80px; fill: #666666; font-family: sans;' textLength='13.44px' lengthAdjust='spacingAndGlyphs'>-0.3</text>
+<polygon points='317.02,330.29 321.60,325.70 326.18,330.29 321.60,334.87 ' style='stroke-width: 1.50; fill: none;' />
+<polygon points='342.62,330.02 347.20,325.44 351.78,330.02 347.20,334.60 ' style='stroke-width: 1.50; stroke: #666666; fill: none;' />
+<line x1='372.80' y1='454.27' x2='372.80' y2='137.97' style='stroke-width: 1.50; stroke: #0072B2;' />
+<circle cx='372.80' cy='291.77' r='3.24' style='stroke-width: 1.50; stroke: #0072B2; fill: #0072B2;' />
+<line x1='398.40' y1='453.22' x2='398.40' y2='136.13' style='stroke-width: 1.50; stroke: #E69F00;' />
+<circle cx='398.40' cy='291.51' r='3.24' style='stroke-width: 1.50; stroke: #E69F00; fill: #E69F00;' />
 <text x='488.00' y='495.36' text-anchor='middle' style='font-size: 7.80px; fill: #666666; font-family: sans;' textLength='13.44px' lengthAdjust='spacingAndGlyphs'>-2.2</text>
 <text x='488.00' y='100.45' text-anchor='middle' style='font-size: 7.80px; fill: #666666; font-family: sans;' textLength='17.78px' lengthAdjust='spacingAndGlyphs'>-0.51</text>
-<polygon points='445.02,341.56 449.60,336.97 454.18,341.56 449.60,346.14 ' style='stroke-width: 1.50; fill: none;' />
-<polygon points='470.62,341.34 475.20,336.76 479.78,341.34 475.20,345.92 ' style='stroke-width: 1.50; stroke: #666666; fill: none;' />
-<line x1='500.80' y1='452.55' x2='500.80' y2='136.13' style='stroke-width: 1.50; stroke: #0072B2;' />
-<circle cx='500.80' cy='288.21' r='3.24' style='stroke-width: 1.50; stroke: #0072B2; fill: #0072B2;' />
-<line x1='526.40' y1='454.27' x2='526.40' y2='140.65' style='stroke-width: 1.50; stroke: #E69F00;' />
-<circle cx='526.40' cy='289.71' r='3.24' style='stroke-width: 1.50; stroke: #E69F00; fill: #E69F00;' />
+<polygon points='445.02,339.63 449.60,335.05 454.18,339.63 449.60,344.21 ' style='stroke-width: 1.50; fill: none;' />
+<polygon points='470.62,339.42 475.20,334.83 479.78,339.42 475.20,344.00 ' style='stroke-width: 1.50; stroke: #666666; fill: none;' />
+<line x1='500.80' y1='454.27' x2='500.80' y2='136.13' style='stroke-width: 1.50; stroke: #0072B2;' />
+<circle cx='500.80' cy='287.64' r='3.24' style='stroke-width: 1.50; stroke: #0072B2; fill: #0072B2;' />
+<line x1='526.40' y1='451.29' x2='526.40' y2='140.60' style='stroke-width: 1.50; stroke: #E69F00;' />
+<circle cx='526.40' cy='288.27' r='3.24' style='stroke-width: 1.50; stroke: #E69F00; fill: #E69F00;' />
 <text x='616.00' y='495.33' text-anchor='middle' style='font-size: 7.80px; fill: #666666; font-family: sans;' textLength='15.18px' lengthAdjust='spacingAndGlyphs'>0.34</text>
 <text x='616.00' y='100.45' text-anchor='middle' style='font-size: 7.80px; fill: #666666; font-family: sans;' textLength='10.84px' lengthAdjust='spacingAndGlyphs'>1.3</text>
-<polygon points='573.02,362.88 577.60,358.30 582.18,362.88 577.60,367.46 ' style='stroke-width: 1.50; fill: none;' />
-<polygon points='598.62,360.56 603.20,355.98 607.78,360.56 603.20,365.15 ' style='stroke-width: 1.50; stroke: #666666; fill: none;' />
-<line x1='628.80' y1='452.73' x2='628.80' y2='136.13' style='stroke-width: 1.50; stroke: #0072B2;' />
-<circle cx='628.80' cy='320.46' r='3.24' style='stroke-width: 1.50; stroke: #0072B2; fill: #0072B2;' />
-<line x1='654.40' y1='454.27' x2='654.40' y2='144.61' style='stroke-width: 1.50; stroke: #E69F00;' />
-<circle cx='654.40' cy='323.54' r='3.24' style='stroke-width: 1.50; stroke: #E69F00; fill: #E69F00;' />
+<polygon points='573.02,360.43 577.60,355.84 582.18,360.43 577.60,365.01 ' style='stroke-width: 1.50; fill: none;' />
+<polygon points='598.62,358.09 603.20,353.51 607.78,358.09 603.20,362.67 ' style='stroke-width: 1.50; stroke: #666666; fill: none;' />
+<line x1='628.80' y1='454.27' x2='628.80' y2='136.13' style='stroke-width: 1.50; stroke: #0072B2;' />
+<circle cx='628.80' cy='319.54' r='3.24' style='stroke-width: 1.50; stroke: #0072B2; fill: #0072B2;' />
+<line x1='654.40' y1='452.71' x2='654.40' y2='140.02' style='stroke-width: 1.50; stroke: #E69F00;' />
+<circle cx='654.40' cy='320.71' r='3.24' style='stroke-width: 1.50; stroke: #E69F00; fill: #E69F00;' />
 </g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
 <text x='104.00' y='547.42' text-anchor='middle' style='font-size: 9.00px; font-family: sans;' textLength='34.52px' lengthAdjust='spacingAndGlyphs'>intercept</text>

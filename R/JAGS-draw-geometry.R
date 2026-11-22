@@ -268,8 +268,10 @@ as.mcmc.BayesTools_fit <- function(x, ...){
 print.BayesTools_fit <- function(x, ...){
 
   chains <- as.mcmc.list.BayesTools_fit(x)
-  cat("BayesTools JAGS fit with ", length(chains), " chains and ",
-      sum(vapply(chains, NROW, integer(1))), " retained draws.\n", sep = "")
+  n_chains <- length(chains)
+  n_draws <- sum(vapply(chains, NROW, integer(1)))
+  cat("BayesTools JAGS fit with ", n_chains, ngettext(n_chains, " chain and ", " chains and "),
+      n_draws, ngettext(n_draws, " retained draw.\n", " retained draws.\n"), sep = "")
   invisible(x)
 }
 
