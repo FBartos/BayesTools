@@ -18,7 +18,7 @@ a model and samples it using rjags."><meta name="robots" content="noindex"><!-- 
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9014</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9015</span>
       </span>
     </div>
 
@@ -104,6 +104,9 @@ a model and samples it using <span class="pkg">rjags</span>.</p>
 <span>  sampler_gates <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  sampler_blocks <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  runtime_report <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  sampler_joint <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  sampler_probabilities <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  sampler_nested_weights <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -448,7 +451,12 @@ declarations are stored in <code>attr(fit, "sampler_declarations")</code>, which
 <code>JAGS_extend()</code> keeps: a list of the data frames <code>gates</code>,
 <code>blocks</code> and <code>declined</code> (one row per declined gate branch or
 block, with its <code>kind</code>, <code>prior</code>, <code>branch</code> or <code>block</code>,
-<code>nodes</code> and <code>reason</code>). A density that cannot be calculated (NaN)
+<code>nodes</code> and <code>reason</code>).
+For successful fits with gate declarations, <code>gate_claims</code> records the
+sampler assignment for each gate when the reported JAGS node can be matched.
+A gate whose assignment status or sampler differs across workers has
+status <code>"mixed"</code>.
+A density that cannot be calculated (NaN)
 at a point the factor slice sampler evaluates stops the fit with a JAGS
 error, as with the stock samplers.</p></dd>
 
@@ -485,6 +493,71 @@ Callback packages must be listed in <code>required_packages</code>. Passing
 <dd><p>additional hidden arguments</p></dd>
 
 
+<dt id="arg-sampler-joint">sampler_joint<a class="anchor" aria-label="anchor" href="#arg-sampler-joint"></a></dt>
+<dd><p>optional package callback accepting <code>prior_list</code>,
+<code>formula_design</code> and <code>data</code>. It receives the combined bound prior list,
+the finalized formula designs and the combined model and formula data,
+once before compilation. Return <code>NULL</code> to decline, or a list with a
+nonempty <code>markers</code> list and optional <code>data</code> list of named finite numeric
+constants that are referenced by the markers. Each marker specifies a fresh
+<code>name</code>, an ordered <code>arguments</code> list and one of <code>tag</code> or <code>distribution</code>.
+Each argument contains one or more node references
+(bare names or positive integer subscripts or ranges) or finite numeric
+literals. Multiple entries in one argument are combined with <code><a href="https://rdrr.io/r/base/c.html" class="external-link">c()</a></code>.
+References can come from the existing model and data or the callback's
+numeric constants. Marker names are reserved to the declarations.
+A <code>tag</code> is a registered deterministic JAGS function with a name prefixed
+with <code>&lt;lowercased-module&gt;_</code> for a provider listed in <code>jags_modules</code>. It must
+return a fixed finite value for admissible arguments. Use a dedicated
+function without aliases. The model must reserve that function for tags
+to prevent JAGS from reusing a scientific node. The tag creates an
+unmonitored terminal node with no observed likelihood contribution.
+The BayesTools finite readout functions are reserved for <code>sampler_probabilities</code>.
+A <code>distribution</code> must be a normalized point mass at zero for every
+admissible parent value. Its marker is observed at zero.
+Use a distribution name prefixed with
+<code>d&lt;lowercased-module&gt;_</code> for a provider listed in <code>jags_modules</code>, or use
+the BayesTools block marker <code>dbt_block</code>. Declare BayesTools blocks through
+one of <code>sampler_joint</code> or <code>sampler_blocks</code>. Use <code>sampler_gates</code> for model-verified
+gates, which take precedence over <code>dbt_block</code> when both mark a node.
+Supply package and module requirements through <code>required_packages</code>
+and <code>jags_modules</code>. The
+validated declaration is stored in the <code>joint</code> entry of
+<code>attr(fit, "sampler_declarations")</code>. Extensions reuse the compiled model
+text and data.</p></dd>
+
+
+<dt id="arg-sampler-probabilities">sampler_probabilities<a class="anchor" aria-label="anchor" href="#arg-sampler-probabilities"></a></dt>
+<dd><p>optional character vector of sampled finite
+indicator node names or scalar indexed references in the compiled model.
+<code>fit$sampler_probabilities</code> gives one entry per requested indicator.
+The recorder can replace an active JAGS 5 <code>base::Finite</code> update for a
+full-rank scalar <code>dbern</code> or <code>dcat</code> with fixed integer support starting at
+0 or 1, respectively. It preserves competing sampler assignments. Its
+entry is an <code>mcmc.list</code> with one row per retained draw in the same chain
+and iteration order as the model draws. The columns <code>p[k]</code> and
+<code>log_p[k]</code> are conditional probabilities and log probabilities at the
+indicator update in that iteration for support label <code>k</code>. The columns
+<code>selected</code> and <code>lower</code> give the sampled label and the lowest support
+label. Compiled aliases of one node return the same trace. An entry is
+<code>NULL</code> when no recorder was assigned to that node. A probability trace
+requires the same availability and support labels
+on every worker.
+Extensions append the corresponding rows. By default no probabilities
+are recorded. An incomplete or incompatible recording raises a
+<code>BayesTools_sampler_probabilities_error</code> backend condition.</p></dd>
+
+
+<dt id="arg-sampler-nested-weights">sampler_nested_weights<a class="anchor" aria-label="anchor" href="#arg-sampler-nested-weights"></a></dt>
+<dd><p>logical. Share physical weight coordinates for eligible
+nested cumulative one-sided weights in a publication-bias mixture.
+The scientific priors and public weights are preserved. Unsupported pairs
+and mixtures whose private weight nodes are explicitly used or monitored
+keep their ordinary parameterization. The <code>nested_weights</code> entry in
+<code>attr(fit, "sampler_declarations")</code> records the two branch indices when
+sharing was used or the reason it was declined. Defaults to <code>FALSE</code>.</p></dd>
+
+
 <dt id="arg-fit">fit<a class="anchor" aria-label="anchor" href="#arg-fit"></a></dt>
 <dd><p>a 'BayesTools_fit' object (created by <code>JAGS_fit()</code> function) to be
 extended. A derived-draw view signals
@@ -503,7 +576,10 @@ they stop with an error of class <code>BayesTools_refit_required</code> (see
     <p>A successful fit is a <code>BayesTools_fit</code>. It contains the sampled
 chains, model and data used for compilation, monitored nodes, and final
 per-chain parameter and RNG states. Extract the chains with
-<code>coda::as.mcmc.list(fit)</code>. A failed initial fit returns its error
+<code>coda::as.mcmc.list(fit)</code>. The sampler table <code>fit$samplers</code> is from
+the most recent successful backend run. For parallel fits it is the first
+worker's table. If worker assignments differ, <code>fit$samplers_by_worker</code>
+gives each worker's <code>chains</code> and <code>samplers</code>. A failed initial fit returns its error
 condition.</p>
 <p><code>JAGS_extend()</code> rebuilds the sampler from the stored states, adapts
 it for <code>adapt</code> iterations when needed, then appends draws without
