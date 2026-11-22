@@ -362,6 +362,86 @@ test_that("blocks expand every supported prior to its scalar leaves", {
                    c("log_omega[2]", "mu"))
 })
 
+test_that("sampler sources report emitted nodes and explain priors without eligible leaves", {
+
+  priors <- list(
+    mu = prior("normal", list(0, 1)),
+    fixed = prior_weightfunction("two-sided", c(0.05), wf_fixed(c(1, 0.4))),
+    cumulative = .wf_cumulative3(),
+    point = prior("point", list(0))
+  )
+  sources <- JAGS_sampler_sources(priors, c("cumulative", "fixed", "point", "mu"))
+
+  expect_identical(sources$prior, c(rep("cumulative", 3L), "fixed", "point", "mu"))
+  expect_identical(sources$node, c(paste0("eta[", 1:3, "]"), NA_character_, NA_character_, "mu"))
+  expect_identical(sources$status, c(rep("eligible", 3L), "empty", "declined", "eligible"))
+  expect_identical(sources$reason, c(rep(NA_character_, 3L), "it has no supported scalar stochastic nodes",
+                                    "it is a point prior", NA_character_))
+  expect_identical(JAGS_sampler_sources(list()), sources[0L, ])
+  expect_error(JAGS_sampler_sources(priors, "unknown"), class = "BayesTools_sampler_declaration_error")
+
+  declared <- .declare(priors[c("cumulative", "mu")], sampler_blocks = list(c("cumulative", "mu")))
+  expect_identical(declared$declarations$blocks$node, sources$node[sources$status == "eligible"])
+})
+
+test_that("ordinary mixture sources keep gate order, literal points and raw coefficient shape", {
+
+  slab <- prior("normal", list(0, 1), prior_weights = 3)
+  point <- prior("point", list(1.25), prior_weights = 7)
+  priors <- list(mu = prior_mixture(list(slab = slab, point = point)))
+  sources <- JAGS_mixture_sources(priors, "mu")
+  expect_identical(sources$gate, "mu_indicator")
+  expect_equal(sources$probabilities, c(0.3, 0.7))
+  expect_identical(sources$branches[[1L]]$family, "scalar")
+  expect_identical(sources$branches[[1L]]$source, "mu_component_1")
+  expect_true(sources$branches[[1L]]$stochastic)
+  expect_identical(sources$branches[[2L]]$family, "point")
+  expect_identical(sources$branches[[2L]]$source, "mu_component_2")
+  expect_identical(sources$branches[[2L]]$location, 1.25)
+  expect_false(sources$branches[[2L]]$stochastic)
+
+  group <- data.frame(group = factor(rep(letters[1:4], 2)))
+  factor_slab <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  compiled <- JAGS_formula(~ group, "mu", group, list(
+    intercept = prior("normal", list(0, 1)),
+    group = prior_mixture(list(prior("point", list(0)), factor_slab), is_null = c(TRUE, FALSE))
+  ))
+  factor_sources <- JAGS_mixture_sources(compiled$prior_list, "mu_group")
+  block <- factor_sources$branches[[2L]]
+  expect_identical(factor_sources$gate, "mu_group_indicator")
+  expect_identical(block$family, "vector")
+  expect_identical(block$coordinates, paste0("mu_group_component_2[", 1:3, "]"))
+  expect_true(block$stochastic)
+  syntax <- JAGS_add_priors("model{ y ~ dnorm(0, 1) }", compiled$prior_list)
+  expect_match(syntax, paste0(block$source, " ~ dmnorm("), fixed = TRUE)
+})
+
+test_that("bias mixture sources identify raw slopes and physical weights on the common grid", {
+
+  priors <- list(bias = prior_mixture(list(
+    pet = prior_PET("normal", list(0, 1), prior_weights = 2),
+    wide = prior_weightfunction("one-sided", c(0.025, 0.5), wf_cumulative(c(1, 1, 1)), prior_weights = 3),
+    none = prior_none(prior_weights = 7),
+    peese = prior_PEESE("normal", list(0, 1), prior_weights = 4),
+    coarse = prior_weightfunction("one-sided", 0.025, wf_cumulative(c(1, 1)), prior_weights = 5)
+  )))
+  sources <- JAGS_mixture_sources(priors, "bias")
+  expect_identical(sources$gate, "bias_indicator")
+  expect_equal(sources$probabilities, c(2, 3, 7, 4, 5) / 21)
+  expect_identical(vapply(sources$branches, `[[`, character(1), "family"),
+                   c("PET", "selection", "none", "PEESE", "selection"))
+  expect_identical(vapply(sources$branches[c(1L, 4L)], `[[`, character(1), "source"), c("PET_1", "PEESE_1"))
+  expect_true(all(vapply(sources$branches[c(1L, 4L)], `[[`, logical(1), "stochastic")))
+  expect_identical(sources$branches[[3L]]$omega, character())
+  syntax <- JAGS_add_priors("model{ y ~ dnorm(0, 1) }", priors)
+  for(i in c(2L, 5L)){
+    expect_identical(sources$branches[[i]]$omega, paste0("omega_component_", i, "[", 1:3, "]"))
+    for(node in sources$branches[[i]]$omega){
+      expect_match(syntax, paste0(node, " <- "), fixed = TRUE)
+    }
+  }
+})
+
 test_that("blocks refuse guarded priors with the declaration error class", {
 
   set.seed(1)

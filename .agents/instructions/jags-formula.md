@@ -250,7 +250,9 @@ node with a descendant that can be non-finite while the likelihood stays
 defined would restrict that node's prior to the finite region. Blocks expand prior names to
 scalar leaves; `sampler_blocks` may be a function of the combined prior list,
 called once in the declaration step, so callers can select formula priors by
-their final names and attributes. A block of fewer than two leaves is declined
+their final names and attributes. `JAGS_sampler_sources()` reports these same
+block leaves or their reasons for decline from the bound prior list before
+compilation. A block of fewer than two leaves is declined
 (recorded, not an error). A random-effect prior joins a block only as a simple
 continuous scalar prior (a direct random-effect SD or a scalar structured
 correlation, a leaf under its own name), a plain allocation SD, or Dirichlet
