@@ -49,6 +49,7 @@ jobs:
       - name: Install R dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          cache-version: jags-5.0.2
           dependencies: '"hard"'
           extra-packages: |
             any::urlchecker

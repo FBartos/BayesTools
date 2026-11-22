@@ -117,7 +117,11 @@ jobs:
         uses: FBartos/BayesTools/.github/actions/setup-jags@development
 
       - name: Set up JAGS 5
-        if: inputs.jags5
+        if: inputs.jags5 && github.repository == 'FBartos/BayesTools'
+        uses: ./upstream/.github/actions/setup-jags5
+
+      - name: Set up JAGS 5 for an external caller
+        if: inputs.jags5 && github.repository != 'FBartos/BayesTools'
         uses: FBartos/BayesTools/.github/actions/setup-jags5@development
 
       # An upstream package that requires BayesTools development (RoBMA) needs
@@ -134,11 +138,19 @@ jobs:
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           working-directory: dependent
+          # Compiled rjags packages carry the headers and libraries of their JAGS build.
+          cache-version: ${{ inputs.jags5 && 'jags-5.0.2' || '1' }}
           dependencies: '"all"'
           extra-packages: |
             local::../upstream
             any::rcmdcheck
             ${{ steps.bayestools.outputs.pak-spec }}
+
+      - name: Verify JAGS after dependency installation
+        if: inputs.jags5
+        run: |
+          stopifnot(rjags::jags.version() == "5.0.2")
+        shell: Rscript {0}
 
       # The dependents' own packages must pass cleanly; a CRAN release only has
       # to keep checking without errors, since its notes and warnings predate

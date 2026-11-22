@@ -85,7 +85,13 @@ test_that("the core emits the exact sequential gates, the budget indicator and t
   expect_true(is.prior.R2_budget(priors$mu_R2))
   expect_null(priors$mu_R2_allocation)
   syntax <- .JAGS_add_priors.fun(priors)
-  expect_match(syntax, "mu_R2_gate[1] ~ dbern(0.6666666666666666)", fixed = TRUE)
+  # For three gates with a uniform shared inclusion rate, P(first open |
+  # nonempty) = (1/2) / (1 - 1/4). Allow four ULPs at 2/3 for accumulating
+  # the three log probabilities and converting back with expm1 and division.
+  gate_pattern <- "mu_R2_gate\\[1\\] ~ dbern\\(([^()]+)\\)"
+  gate_match <- regmatches(syntax, regexec(gate_pattern, syntax))[[1L]]
+  expect_length(gate_match, 2L)
+  expect_lte(abs(.JAGS_read_number(gate_match[2L]) - 2 / 3), 2 * .Machine$double.eps)
   expect_match(syntax, "mu_R2_gate[3] ~ dbern(ifelse(sum(mu_R2_gate[1:2]) > 0, (1 + sum(mu_R2_gate[1:2])) / 4, 1))", fixed = TRUE)
   expect_match(syntax, "mu_R2_indicator ~ dbern(0.6)", fixed = TRUE)
   expect_match(syntax, "mu_R2 <- mu_R2_variable * step(", fixed = TRUE)
