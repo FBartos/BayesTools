@@ -41,10 +41,17 @@ test_that("compiled nested weights and finite label densities use the declared o
   expect_equal(normalize(log_density), normalize(expected), tolerance = 1e-12)
 
   expect_true(.BayesTools_load_module(quiet = TRUE))
+  compile <- function(syntax){
+    connection <- textConnection(syntax)
+    on.exit(close(connection))
+    rjags::jags.model(connection, data = c(list(y = .9), chart), n.adapt = 0L, quiet = TRUE)
+  }
+  stock <- compile(model)
+  expect_identical(rjags::list.samplers(stock)[["base::Finite"]], "bias_indicator")
+
   markers <- "BayesTools_finite_1 <- bt_finite_tag(bias_indicator)"
-  connection <- textConnection(.bt_sampler_insert_markers(model, markers))
-  on.exit(close(connection))
-  compiled <- rjags::jags.model(connection, data = c(list(y = .9), chart), quiet = TRUE)
+  .bt_rjags_prepare_finite_readout()
+  compiled <- compile(.bt_sampler_insert_markers(model, markers))
   readout <- "BayesTools_finite_readout_1"
   expect_identical(rjags::list.samplers(compiled)[["BayesTools::Finite"]], "bias_indicator")
   recorded <- as.matrix(rjags::coda.samples(compiled, readout, 4L, progress.bar = "none"))
