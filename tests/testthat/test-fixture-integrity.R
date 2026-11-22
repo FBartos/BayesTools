@@ -275,7 +275,7 @@ test_that("cataloged fixture files expose expected monitors and metadata", {
           expect_identical(vapply(samples, nrow, integer(1L)), rep(100L * max(batches), length(samples)))
           passed <- vapply(batches, function(batch){
             prefix <- stats::window(samples, end = stats::start(samples) + (100L * batch - 1L) * coda::thin(samples))
-            if(model_name == "fit_autofit_ess") return(unname(coda::effectiveSize(prefix)) >= 200)
+            if(model_name == "fit_autofit_ess") return(unname(coda::effectiveSize(prefix)) >= 250)
             se <- summary(prefix, quantiles = NULL)$statistics[["Time-series SE"]]
             se <= 0.05
           }, logical(1L))

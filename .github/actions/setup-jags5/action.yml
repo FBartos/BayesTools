@@ -37,7 +37,20 @@ runs:
         cd JAGS-5.0.2
         ./configure --prefix=/usr/local --libdir=/usr/local/lib
         make -j2
-        sudo make install
+        # Register the installed version with dpkg so pak/apt can satisfy a
+        # downstream JAGS requirement without installing the distro's JAGS 4.
+        stage="$RUNNER_TEMP/jags5-package"
+        make install DESTDIR="$stage"
+        mkdir -p "$stage/DEBIAN"
+        cat > "$stage/DEBIAN/control" <<EOF
+        Package: jags
+        Version: 5.0.2
+        Architecture: $(dpkg --print-architecture)
+        Maintainer: BayesTools CI <noreply@github.com>
+        Description: JAGS 5 runtime, modules and development headers for CI
+        EOF
+        dpkg-deb --build --root-owner-group "$stage" "$RUNNER_TEMP/jags5.deb"
+        sudo dpkg -i "$RUNNER_TEMP/jags5.deb"
         sudo ldconfig
         echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
 
