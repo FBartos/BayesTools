@@ -296,9 +296,13 @@ Package sampler callbacks receive the bound priors, finalized formula designs,
 and combined input data once. Their typed declarations add fresh observed
 zero markers or terminal deterministic tags after the legacy gate scan.
 Tags use the lowercase prefix of a declared provider module with a fixed
-finite value at every admitted parent value. Tags have no observed data
+finite value at every admitted parent value. Reserve each tag function for
+annotations and register it without aliases. JAGS can reuse a compiled
+logical node for identical calls, so the scientific model cannot call the
+same tag function. Tags have no observed data
 entry, cannot be read by the model or any other declaration, and are excluded
-from scientific monitors. An observed marker uses the BayesTools block marker
+from scientific monitors. The internal finite readout functions are reserved
+for the recorder. An observed marker uses the BayesTools block marker
 or a distribution prefixed with `d<lowercased-module>_`. Only the scientific
 gate scanner emits `dbt_gate` in this API.
 Its gates take priority over `dbt_block`. Declare BayesTools FactorSlice

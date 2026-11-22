@@ -607,13 +607,13 @@ JAGS_add_priors           <- function(syntax, prior_list){
 }
 
 
-# The syntax with its JAGS comments ('#' to the end of the line and '/* */')
-# replaced by spaces, so that positions are those of the syntax.
+# Mask comments in place, preserving line endings and the offsets needed to
+# insert generated code. JAGS also accepts a trailing block comment at EOF.
 .JAGS_mask_comments <- function(syntax){
 
-  comments <- gregexpr("(?s)/\\*.*?\\*/|#[^\n]*", syntax, perl = TRUE)
+  comments <- gregexpr("(?s)/\\*.*?(?:\\*/|\\z)|#[^\r\n]*", syntax, perl = TRUE)
   regmatches(syntax, comments) <- lapply(regmatches(syntax, comments), function(comment){
-    strrep(" ", nchar(comment))
+    gsub("[^\r\n]", " ", comment, perl = TRUE)
   })
 
   syntax

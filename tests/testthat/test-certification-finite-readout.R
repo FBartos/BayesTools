@@ -329,7 +329,8 @@ test_that("BUGS comments preserve finite and package declarations and the coordi
     "z /* state (binary */ ~ dbern(0.5)",
     "fixed /* 3) Known constant */ <- 2",
     "y ~ dnorm(z + offset + fixed, 1) # ) Unmatched punctuation",
-    "}"
+    "}",
+    "/* Open trailing comment with a brace } and a fictitious node ~ dbern(0.2)"
   ), collapse = "\n")
   declare <- function(node){
     function(prior_list, formula_design, data){
@@ -355,6 +356,45 @@ test_that("BUGS comments preserve finite and package declarations and the coordi
     expect_error(fit(annotated, node, NULL), "unavailable in the model", fixed = TRUE,
       class = "BayesTools_sampler_declaration_error")
     expect_error(fit(annotated, NULL, declare(node)), paste0("unknown node '", node, "'"), fixed = TRUE,
+      class = "BayesTools_sampler_declaration_error")
+  }
+})
+
+test_that("hash comment line endings preserve real gate dependencies and hide no tag references", {
+
+  skip_if_not_installed("rjags")
+  bias <- prior_mixture(list(prior_none(prior_weights = 1),
+    prior_PET("normal", list(0, 1), prior_weights = 199)), is_null = c(TRUE, FALSE))
+  fit <- function(line_end, gates, probabilities){
+    model <- paste0("model {\n# Direct observation", line_end, "y ~ dnorm(PET_1, 100)\n",
+      "# A separate finite indicator", line_end, "z ~ dbern(0.5)\n",
+      "outcome ~ dnorm(z, 1)\n}")
+    JAGS_fit(model, data = list(y = 10, outcome = 0.1), prior_list = list(bias = bias),
+      add_parameters = c("PET_1", "z"), sampler_gates = gates, sampler_probabilities = probabilities,
+      chains = 1L, adapt = 100L, burnin = 50L, sample = 100L, seed = 2421L)
+  }
+  baseline <- fit("\n", FALSE, NULL)
+  expect_s3_class(baseline, "BayesTools_fit")
+  expect_identical(baseline$samplers$Sampler[baseline$samplers$Node == "PET_1"], "bugs::ConjugateNormal")
+  tag <- function(prior_list, formula_design, data){
+    list(markers = list(list(name = "private_terminal", tag = "package_zero", arguments = list("x"))))
+  }
+  for(line_end in c("\n", "\r\n", "\r")){
+    candidate <- fit(line_end, TRUE, "z")
+    expect_s3_class(candidate, "BayesTools_fit")
+    expect_identical(candidate$mcmc, baseline$mcmc)
+    expect_identical(candidate$end_state, baseline$end_state)
+    expect_identical(candidate$samplers$Sampler[candidate$samplers$Node == "PET_1"], "bugs::ConjugateNormal")
+    declarations <- attr(candidate, "sampler_declarations", exact = TRUE)
+    expect_equal(nrow(declarations$gates), 0L)
+    expect_match(declarations$declined$reason, "occurs outside the statements of the mixture", fixed = TRUE)
+    expect_s3_class(candidate$sampler_probabilities$z, "mcmc.list")
+    expect_identical(candidate$sampler_probabilities$z[[1L]][, "selected"], candidate$mcmc[[1L]][, "z"])
+
+    hidden <- paste0("model {\n# Heading", line_end, "y ~ dnorm(x + private_terminal, 1)\n}")
+    expect_error(JAGS_fit(hidden, data = list(y = 0.5), prior_list = list(x = prior("normal", list(0, 1))),
+      sampler_joint = tag, jags_modules = "Package"),
+      "name 'private_terminal' is already used or reserved", fixed = TRUE,
       class = "BayesTools_sampler_declaration_error")
   }
 })

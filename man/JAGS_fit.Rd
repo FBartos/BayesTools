@@ -356,8 +356,11 @@ References can come from the existing model and data or the callback's
 numeric constants. Marker names are reserved to the declarations.
 A \code{tag} is a registered deterministic JAGS function with a name prefixed
 with \code{<lowercased-module>_} for a provider listed in \code{jags_modules}. It must
-return a fixed finite value for admissible arguments. The tag creates an
+return a fixed finite value for admissible arguments. Use a dedicated
+function without aliases. The model must reserve that function for tags
+to prevent JAGS from reusing a scientific node. The tag creates an
 unmonitored terminal node with no observed likelihood contribution.
+The BayesTools finite readout functions are reserved for \code{sampler_probabilities}.
 A \code{distribution} must be a normalized point mass at zero for every
 admissible parent value. Its marker is observed at zero.
 Use a distribution name prefixed with

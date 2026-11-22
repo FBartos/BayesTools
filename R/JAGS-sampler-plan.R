@@ -3,6 +3,7 @@
 .bt_sampler_finite_prefix <- "BayesTools_finite_"
 .bt_sampler_finite_readout_prefix <- "BayesTools_finite_readout_"
 .bt_sampler_node_pattern <- "[A-Za-z][A-Za-z0-9_.]*"
+.bt_sampler_keywords <- c("model", "data", "var", "in", "for")
 
 .bt_sampler_check_plan_arguments <- function(sampler_joint, sampler_probabilities){
 
@@ -35,7 +36,11 @@
   if(!all(grepl(pattern, value, perl = TRUE))){
     return(NULL)
   }
-  unname(gsub("[ \\t]", "", value, perl = TRUE))
+  nodes <- unname(gsub("[ \\t]", "", value, perl = TRUE))
+  if(any(.bt_jags_parameter_base(nodes) %in% .bt_sampler_keywords)){
+    return(NULL)
+  }
+  nodes
 }
 
 .bt_sampler_joint_fields <- function(object, required, optional = character()){
@@ -54,11 +59,13 @@
 .bt_sampler_joint_names <- function(value){
 
   (is.character(value) || is.null(value)) && !anyNA(value) &&
+    !any(value %in% .bt_sampler_keywords) &&
     all(grepl(paste0("\\A", .bt_sampler_node_pattern, "\\z"), value, perl = TRUE))
 }
 
 .bt_sampler_joint_markers <- function(joint, existing, jags_modules, retired = character(),
-                                      model_nodes = existing, ordinary_blocks = FALSE){
+                                      model_nodes = existing, ordinary_blocks = FALSE,
+                                      model_calls = character()){
 
   fail <- function(...){
     .bt_sampler_declaration_stop("The 'sampler_joint' function returned an invalid declaration: ", ..., ".")
@@ -109,8 +116,14 @@
     }
     symbol <- as.vector(marker[[type]])
     if(type == "tag"){
+      if(symbol %in% c("bt_finite_tag", "bt_finite_witness_tag")){
+        fail("tag function '", symbol, "' is reserved by BayesTools")
+      }
       if(!any(startsWith(symbol, tag_prefix))){
         fail("tag '", symbol, "' must use the lowercase prefix of a provider listed in 'jags_modules'")
+      }
+      if(symbol %in% model_calls){
+        fail("tag function '", symbol, "' is already called by the model. Use a dedicated function for terminal tags")
       }
     }else if(symbol == "dbt_gate"){
       fail("distribution 'dbt_gate' is reserved for gates verified from the model. Use 'sampler_gates' to enable those gates")
@@ -209,7 +222,8 @@
     nested <- .bt_nested_weights_plan(bias)
     retired <- if(!is.null(nested)) .bt_nested_weights_retired(bias, nested)
     package_markers <- .bt_sampler_joint_markers(joint, existing, jags_modules, retired,
-      model_nodes = model_nodes, ordinary_blocks = NROW(legacy$declarations$blocks) > 0L)
+      model_nodes = model_nodes, ordinary_blocks = NROW(legacy$declarations$blocks) > 0L,
+      model_calls = graph$calls)
     legacy$model <- .bt_sampler_insert_markers(legacy$model, package_markers$lines)
     if(length(package_markers$data)){
       legacy$data <- c(legacy$data, package_markers$data)

@@ -1796,7 +1796,8 @@
   graph <- list(
     stochastic = character(),
     deterministic = list(),
-    data = character()
+    data = character(),
+    calls = character()
   )
   tokens <- .bt_jags_syntax_tokens(model_syntax)
   n <- length(tokens)
@@ -1810,6 +1811,7 @@
     as.integer(tokens %in% c(")", "]"))
   level <- cumsum(delta) - delta
   call_name <- identifier & next_token == "("
+  graph$calls <- unique(tokens[call_name & c("", tokens[-n]) != "~" & tokens != "for"])
   loop_variables <- unique(tokens[
     which(tokens == "for" & next_token == "(") + 2L
   ])

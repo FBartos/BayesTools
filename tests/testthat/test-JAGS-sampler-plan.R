@@ -211,6 +211,55 @@ test_that("package tags are terminal declarations with no observed marker data",
     "is already used or reserved", fixed = TRUE, class = "BayesTools_sampler_declaration_error")
   expect_error(plan(list(tag), monitor = " package_terminal [1] "),
     "is already used or reserved", fixed = TRUE, class = "BayesTools_sampler_declaration_error")
+
+  for(line_end in c("\n", "\r\n", "\r")){
+    calling <- paste0("model { x ~ dnorm(0, 1)\n# earlier statement", line_end,
+      " y <- package_zero /* bring the argument next */ (x)\n}")
+    expect_error(plan(list(tag), model = calling),
+      "tag function 'package_zero' is already called by the model.", fixed = TRUE,
+      class = "BayesTools_sampler_declaration_error")
+  }
+  separate <- paste(
+    "model { x ~ dnorm(0, 1)",
+    "# package_zero(x)",
+    "/* package_zero(x) */ y <- package_other_zero(x)",
+    "}", "/* package_zero(x) }", sep = "\n"
+  )
+  expect_match(plan(list(tag), model = separate)$model,
+    "package_terminal <- package_zero(x)", fixed = TRUE)
+  for(symbol in c("bt_finite_tag", "bt_finite_witness_tag")){
+    reserved <- tag
+    reserved$tag <- symbol
+    expect_error(.bt_sampler_joint_markers(list(markers = list(reserved)), "x", "bt"),
+      paste0("tag function '", symbol, "' is reserved by BayesTools"), fixed = TRUE,
+      class = "BayesTools_sampler_declaration_error")
+  }
+
+  for(keyword in c("model", "data", "var", "in", "for")){
+    reserved <- tag
+    reserved$name <- keyword
+    expect_error(plan(list(reserved)), class = "BayesTools_sampler_declaration_error")
+    expect_error(plan(list(tag), payload = stats::setNames(list(0), keyword)),
+      class = "BayesTools_sampler_declaration_error")
+    expect_error(.bt_sampler_check_plan_arguments(NULL, paste0(keyword, "[1]")),
+      class = "BayesTools_sampler_declaration_error")
+  }
+})
+
+test_that("comment masking preserves native line breaks and source offsets", {
+
+  heading <- "# comment with a closing token }"
+  for(line_end in c("\n", "\r\n", "\r")){
+    suffix <- paste0(line_end, "z ~ dbern(0.5)")
+    expect_identical(.JAGS_mask_comments(paste0(heading, suffix)),
+      paste0(strrep(" ", nchar(heading)), suffix))
+    model <- "model { z ~ dbern(0.5) }"
+    trailing <- paste0("/* Neither this brace } nor", line_end, "ghost ~ dbern(0.5) is code")
+    expect_identical(.JAGS_mask_comments(paste0(model, trailing)),
+      paste0(model, strrep(" ", nchar("/* Neither this brace } nor")), line_end,
+        strrep(" ", nchar("ghost ~ dbern(0.5) is code"))))
+    expect_identical(.bt_jags_syntax_graph(paste0(model, trailing))$stochastic, "z")
+  }
 })
 
 test_that("parallel merge checks probability schema by indicator and reports mixed gate ownership", {
