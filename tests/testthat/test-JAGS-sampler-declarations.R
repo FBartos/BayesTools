@@ -404,6 +404,7 @@ test_that("ordinary mixture sources keep gate order, literal points and raw coef
   rho_sources <- JAGS_mixture_sources(rho, "rho")
   expect_identical(rho_sources$gate, "rho_indicator")
   expect_identical(rho_sources$probabilities, 1)
+  expect_false(rho_sources$nested_weights)
   expect_identical(rho_sources$branches[[1L]]$source, "rho_component_1")
   expect_true(rho_sources$branches[[1L]]$stochastic)
   expect_match(JAGS_add_priors("model{ y ~ dnorm(0, 1) }", rho),
@@ -436,6 +437,7 @@ test_that("bias mixture sources identify raw slopes and physical weights on the 
   )))
   sources <- JAGS_mixture_sources(priors, "bias")
   expect_identical(sources$gate, "bias_indicator")
+  expect_false(sources$nested_weights)
   expect_equal(sources$probabilities, c(2, 3, 7, 4, 5) / 21)
   expect_identical(vapply(sources$branches, `[[`, character(1), "family"),
                    c("PET", "selection", "none", "PEESE", "selection"))
@@ -451,6 +453,24 @@ test_that("bias mixture sources identify raw slopes and physical weights on the 
   }
   expect_error(JAGS_mixture_sources(list(bias = prior_mixture(list(.wf_cumulative2()))), "bias"),
                "at least two branches", fixed = TRUE, class = "BayesTools_sampler_declaration_error")
+})
+
+test_that("mixture probabilities use the weights read by the respective emitter", {
+
+  selection <- list(bias = prior_mixture(list(prior_none(), .wf_cumulative2())))
+  selection$bias[[2L]]$prior_weights <- 9
+  expect_equal(JAGS_mixture_sources(selection, "bias")$probabilities, c(0.1, 0.9))
+  expect_match(JAGS_add_priors("model{}", selection), "bias_indicator ~ dcat(c(1, 9))", fixed = TRUE)
+
+  regression <- list(bias = prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1)))))
+  regression$bias[[2L]]$prior_weights <- 9
+  expect_equal(JAGS_mixture_sources(regression, "bias")$probabilities, c(0.5, 0.5))
+  expect_match(JAGS_add_priors("model{}", regression), "bias_indicator ~ dcat(c(1, 1))", fixed = TRUE)
+
+  ordinary <- list(mu = prior_mixture(list(prior("point", list(0)), prior("normal", list(0, 1)))))
+  ordinary$mu[[2L]]$prior_weights <- 9
+  expect_equal(JAGS_mixture_sources(ordinary, "mu")$probabilities, c(0.5, 0.5))
+  expect_match(JAGS_add_priors("model{}", ordinary), "mu_indicator ~ dcat(c(1, 1))", fixed = TRUE)
 })
 
 test_that("nested weight markers follow both active branches and their private dependencies", {
@@ -482,6 +502,25 @@ test_that("nested weight markers follow both active branches and their private d
   expect_identical(guarded$gates$node, "PET_1")
   expect_identical(nrow(guarded$declined), 2L)
   expect_true(all(grepl("occurs outside the statements of the mixture", guarded$declined$reason, fixed = TRUE)))
+})
+
+test_that("mixture sources report the realized nested layout and its emitted masses", {
+
+  model <- "model{ y ~ dnorm(omega[2], 1) }"
+  priors <- nested_weight_priors()
+  priors$bias[[4L]]$prior_weights <- 7
+  bound <- .bt_nested_weights_bind(priors, model, add_parameters = NULL, sampler_nested_weights = TRUE)
+  nested <- JAGS_mixture_sources(bound$prior_list, "bias")
+  expect_true(nested$nested_weights)
+  expect_equal(nested$probabilities, c(2, 1, 1, 7) / 11)
+  expect_match(JAGS_add_priors(model, bound$prior_list), "bias_indicator ~ dcat(c(2, 1, 1, 7))", fixed = TRUE)
+
+  veto <- .bt_nested_weights_bind(priors, model, add_parameters = "eta_component_1[1]",
+                                   sampler_nested_weights = TRUE)
+  ordinary <- JAGS_mixture_sources(veto$prior_list, "bias")
+  expect_false(ordinary$nested_weights)
+  expect_identical(ordinary$probabilities, nested$probabilities)
+  expect_identical(ordinary$branches[[1L]]$omega, nested$branches[[1L]]$omega)
 })
 
 test_that("gate claims use only emitted copies to resolve reported JAGS aliases", {

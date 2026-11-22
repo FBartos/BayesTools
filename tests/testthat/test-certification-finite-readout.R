@@ -4,6 +4,7 @@ skip_if_not_test_profile("certification")
 
   file <- textConnection(syntax)
   on.exit(close(file))
+  .bt_rjags_prepare_finite_readout()
   model <- rjags::jags.model(file, data = data, inits = inits, n.chains = length(inits),
     n.threads = threads, n.adapt = 0L, quiet = TRUE)
   rjags::adapt(model, n.iter = 25L, end.adaptation = TRUE, progress.bar = "none")
@@ -129,10 +130,133 @@ test_that("finite readout keeps underflowed log masses and refuses ineligible ow
   expect_lt(max(abs(recorded[, 5L] + 1600)), 3e-12)
   expect_true(all(recorded[, 6L] == -Inf))
   expect_true(all(recorded[, 7L] == draws[, "label"]))
-  expect_warning(
-    rjags::coda.samples(model, c("label", "BayesTools_finite_readout_2"), 2L, progress.bar = "none"),
-    "No available BayesTools::Finite sampler owns the marker", fixed = TRUE
+  unavailable <- rjags::coda.samples(model, c("label", "BayesTools_finite_readout_2"),
+    2L, progress.bar = "none")
+  expect_true(all(unavailable[[1]][, "BayesTools_finite_readout_2"] == -1))
+})
+
+test_that("recording preserves competing stock joint updates and the physical RNG", {
+
+  skip_if_not_installed("rjags")
+  model <- paste(c(
+    "model {", "x ~ dbern(0.5)", "w ~ dbern(0.5)", "total ~ dsum(x, w)",
+    "recorded ~ dbern(0.4)", "ordinary ~ dcat(c(0.3, 0.7))",
+    "y ~ dnorm(recorded + ordinary + offset, 1)", "unused ~ dbern(0.5)", "}"
+  ), collapse = "\n")
+  args <- list(model, data = list(total = 1L, y = 1),
+    prior_list = list(offset = prior("normal", list(0, 1))),
+    add_parameters = c("x", "w", "recorded", "ordinary"),
+    chains = 2L, adapt = 500L, burnin = 50L, sample = 100L, thin = 3L, seed = 71123L)
+  stock <- do.call(JAGS_fit, args)
+  fit <- do.call(JAGS_fit, c(args, list(sampler_probabilities = c("x", "recorded", "unused"))))
+  expect_s3_class(fit, "BayesTools_fit")
+  expect_identical(fit$mcmc, stock$mcmc)
+  expect_identical(fit$end_state, stock$end_state)
+  roster <- stock$samplers
+  expect_setequal(roster$Node[roster$Sampler == "bugs::DiscreteDSum"], c("x", "w"))
+  roster$Sampler[roster$Node == "recorded"] <- "BayesTools::Finite"
+  expect_identical(fit$samplers, roster)
+  expect_null(fit$sampler_probabilities$x)
+  expect_null(fit$sampler_probabilities$unused)
+  expect_s3_class(fit$sampler_probabilities$recorded, "mcmc.list")
+  for(chain in fit$mcmc){
+    expect_setequal(chain[, "x"], 0:1)
+    expect_true(all(chain[, "x"] + chain[, "w"] == 1))
+  }
+})
+
+test_that("a JAGS module loaded after registration keeps priority over the recorder", {
+
+  skip_if_not_installed("rjags")
+  expect_true(.BayesTools_load_module(quiet = TRUE))
+  .bt_rjags_prepare_finite_readout()
+  rjags::load.module("mix", quiet = TRUE)
+  factories <- rjags::list.factories("sampler")$factory
+  expect_lt(match("mix::LDA", factories), match("BayesTools::Finite", factories))
+  expect_equal(match("BayesTools::Finite", factories) + 1L, match("base::Finite", factories))
+  body <- c(
+    "topic_prob[1:2] ~ ddirch(alpha[])",
+    "for(j in 1:3) {", "topic[j] ~ dcat(topic_prob[])",
+    "word[j] ~ dcat(word_prob[topic[j],])", "}",
+    "for(k in 1:2) { word_prob[k,1:3] ~ ddirch(beta[]) }"
   )
+  data <- list(alpha = c(1, 1), beta = c(1, 1, 1), word = c(1, 2, 3))
+  inits <- list(list(.RNG.name = "base::Super-Duper", .RNG.seed = 19343L))
+  stock <- .finite_readout_model(c("model {", body, "}"), data, inits)
+  fit <- .finite_readout_model(c("model {", body, "BayesTools_finite_1 <- bt_finite_tag(topic[1])", "}"),
+    data, inits)
+  roster <- rjags::list.samplers(stock)
+  expect_true("topic[1]" %in% roster[["mix::LDA"]])
+  expect_identical(rjags::list.samplers(fit), roster)
+  readout <- "BayesTools_finite_readout_1"
+  expected <- rjags::coda.samples(stock, "topic", 40L, thin = 2L, progress.bar = "none")
+  recorded <- rjags::coda.samples(fit, c("topic", readout), 40L, thin = 2L, progress.bar = "none")
+  expect_identical(as.matrix(recorded[[1L]])[, colnames(expected[[1L]])], as.matrix(expected[[1L]]))
+  expect_true(all(recorded[[1L]][, readout] == -1))
+  expect_identical(fit$state(internal = TRUE), stock$state(internal = TRUE))
+})
+
+test_that("wide categorical indicators are recorded only with active stock Finite", {
+
+  skip_if_not_installed("rjags")
+  expect_true(.BayesTools_load_module(quiet = TRUE))
+  body <- c("z ~ dcat(weights[])", "y ~ dnorm(z / 100, 2)")
+  tagged <- c("model {", body, "BayesTools_finite_1 <- bt_finite_tag(z)", "}")
+  weights <- seq_len(101L)
+  data <- list(y = 0.23, weights = weights)
+  inits <- list(list(z = 30L, .RNG.name = "base::Super-Duper", .RNG.seed = 12234L))
+  stock <- .finite_readout_model(c("model {", body, "}"), data, inits)
+  candidate <- .finite_readout_model(tagged, data, inits)
+  expect_identical(names(rjags::list.samplers(stock)), "base::Finite")
+  expect_identical(names(rjags::list.samplers(candidate)), "BayesTools::Finite")
+  virtual <- "BayesTools_finite_readout_1"
+  expected <- rjags::coda.samples(stock, "z", 6L, progress.bar = "none")
+  retained <- rjags::coda.samples(candidate, c("z", virtual), 6L, progress.bar = "none")
+  values <- retained[[1L]][, .finite_readout_columns(1L, 204L)]
+  exact <- weights * stats::dnorm(data$y, seq_along(weights) / 100, sqrt(0.5))
+  expect_lt(max(abs(sweep(values[, seq_along(weights)], 2L, exact / sum(exact)))), 1e-14)
+  expect_identical(retained[[1L]][, "z"], expected[[1L]][, "z"])
+  expect_identical(candidate$state(internal = TRUE), stock$state(internal = TRUE))
+
+  rjags::set.factory("base::Finite", "sampler", FALSE)
+  withr::defer(rjags::set.factory("base::Finite", "sampler", TRUE))
+  stock <- .finite_readout_model(c("model {", body, "}"), data, inits)
+  candidate <- .finite_readout_model(tagged, data, inits)
+  expect_false("BayesTools::Finite" %in% names(rjags::list.samplers(candidate)))
+  expect_identical(rjags::list.samplers(candidate), rjags::list.samplers(stock))
+  expected <- rjags::coda.samples(stock, "z", 6L, progress.bar = "none")
+  retained <- rjags::coda.samples(candidate, c("z", virtual), 6L, progress.bar = "none")
+  expect_true(all(retained[[1L]][, virtual] == -1))
+  expect_identical(retained[[1L]][, "z"], expected[[1L]][, "z"])
+  expect_identical(candidate$state(internal = TRUE), stock$state(internal = TRUE))
+})
+
+test_that("compiled aliases share finite readouts and real scientific names remain usable", {
+
+  skip_if_not_installed("rjags")
+  model <- paste(c(
+    "model {", "z ~ dbern(0.5)", "a <- z", "g[1] ~ dbern(0.5)",
+    "y ~ dnorm(z + g[1] + offset, 1)", "}"
+  ), collapse = "\n")
+  args <- list(model, data = list(y = 1), prior_list = list(offset = prior("normal", list(0, 1))),
+    add_parameters = c("z", "g"), chains = 1L, adapt = 50L, burnin = 50L, sample = 100L, seed = 3109L)
+  stock <- do.call(JAGS_fit, args)
+  fit <- do.call(JAGS_fit, c(args, list(sampler_probabilities = c("z", "a", "g", "g[1]"))))
+  expect_s3_class(fit, "BayesTools_fit")
+  expect_identical(fit$mcmc, stock$mcmc)
+  expect_identical(fit$end_state, stock$end_state)
+  expect_s3_class(fit$sampler_probabilities$z, "mcmc.list")
+  expect_s3_class(fit$sampler_probabilities$g, "mcmc.list")
+  expect_identical(fit$sampler_probabilities$z, fit$sampler_probabilities$a)
+  expect_identical(fit$sampler_probabilities$g, fit$sampler_probabilities[["g[1]"]])
+
+  scientific <- c("BayesTools_finite_readout_user", "BayesTools_finite_readout_1")
+  syntax <- paste0("model { ", scientific[1], " ~ dbern(0.5) ", scientific[2], " ~ dbern(0.5)",
+    " y ~ dnorm(", scientific[1], " + ", scientific[2], " + offset, 1) }")
+  ordinary <- JAGS_fit(syntax, data = list(y = 1), prior_list = args$prior_list,
+    add_parameters = scientific, chains = 1L, adapt = 50L, burnin = 50L, sample = 100L, seed = 3109L)
+  expect_s3_class(ordinary, "BayesTools_fit")
+  expect_true(all(scientific %in% colnames(ordinary$mcmc[[1L]])))
 })
 
 test_that("public finite readouts follow scientific draws and survive parallel saved-fit extension", {

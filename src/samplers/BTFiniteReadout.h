@@ -17,6 +17,7 @@ namespace jags {
     public:
       explicit FiniteReadout(Module &module);
       ~FiniteReadout();
+      void prepare();
     };
   }
 }

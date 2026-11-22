@@ -482,6 +482,10 @@
 #' @details Sources are resolved before model compilation using the same
 #'   rules as `sampler_blocks`. A source name is the emitted node name. The
 #'   compiled graph determines the actual sampler and its reported node name.
+#'   [parameter_coordinates()] describes retained backend coordinates and
+#'   [parameter_catalog()] gives their scientific quantities and selectors
+#'   after fitting. For example, a fitted R-squared coefficient can have
+#'   retained draws although its emitted value is derived.
 #' @export
 JAGS_sampler_sources <- function(prior_list, priors = names(prior_list), kind = "block"){
 
@@ -528,18 +532,22 @@ JAGS_sampler_sources <- function(prior_list, priors = names(prior_list), kind = 
 #' @param name Name of an ordinary mixture or a publication-bias mixture of
 #'   at least two branches in `prior_list`.
 #' @return A list with the emitted `gate` node name, the branch
-#'   `probabilities`, and `branches` in the order indexed by the gate.
+#'   `probabilities`, `branches` in the order indexed by the gate, and
+#'   `nested_weights`, which is true when the emitted bias mixture shares
+#'   nested weight coordinates.
 #'   Each branch contains its `prior`, `family`, `source`, `coordinates`,
 #'   `stochastic`, `location`, and `omega`.
 #' @details For ordinary mixtures the family identifies a `"point"`,
 #'   `"scalar"`, `"vector"`, `"scalar_array"` (separately sampled factor
-#'   coefficients), or `"unsupported"` source. For publication-bias mixtures
+#'   coefficients), `"derived"` (such as a bound R-squared coefficient),
+#'   or `"unsupported"` source. For publication-bias mixtures
 #'   it identifies `"none"`, `"selection"`, `"PET"`, `"PEESE"`, `"phack"`,
 #'   or `"combined"`. The `source` and ordered `coordinates` refer to the
 #'   emitted component before applying the mixture gate. The source name is
 #'   missing for bias branches without a raw slope. The `stochastic` field
 #'   is true when the source is emitted as a single stochastic node, false
-#'   for constant and aggregate sources, and missing for unsupported sources.
+#'   for constant, aggregate and derived sources, and missing for unsupported
+#'   sources.
 #'   A literal point value appears in `location`; a prior expression has
 #'   no literal location. For selection branches, `omega` gives the exact
 #'   physical weight references in the order of the global bins from
@@ -555,18 +563,30 @@ JAGS_mixture_sources <- function(prior_list, name){
   if(!is.prior.mixture(prior) || is.prior.spike_and_slab(prior)){
     .bt_sampler_declaration_stop("Prior '", name, "' must be an ordinary or publication-bias mixture.")
   }
-  if(inherits(prior, "prior.bias_mixture") && length(prior) < 2L){
+  is_bias <- inherits(prior, "prior.bias_mixture")
+  if(is_bias && length(prior) < 2L){
     .bt_sampler_declaration_stop("Publication-bias mixture '", name, "' must have at least two branches.")
   }
+  if(is_bias && name != "bias"){
+    .bt_sampler_declaration_stop("A publication-bias mixture must be named 'bias' in the prior list.")
+  }
 
-  weights <- unname(attr(prior, "prior_weights", exact = TRUE))
+  omega_spec <- if(is_bias) .bt_dnode_omega_spec(prior)
+  # The selection backend takes the branch objects' current weights. The
+  # direct categorical emitter for ordinary and non-selection bias mixtures
+  # uses the weights stored on the mixture object.
+  uses_selection_backend <- is_bias && any(vapply(omega_spec$branches, function(branch){
+    !is.null(branch$selection) || !is.null(branch$phacking)
+  }, logical(1)))
+  weights <- if(uses_selection_backend){
+    .selection_backend_prior_weights(.selection_normalize_priors(prior))
+  }else{
+    attr(prior, "prior_weights", exact = TRUE)
+  }
+  weights <- unname(weights)
   weights <- weights / max(weights)
   probabilities <- weights / sum(weights)
-  if(inherits(prior, "prior.bias_mixture")){
-    if(name != "bias"){
-      .bt_sampler_declaration_stop("A publication-bias mixture must be named 'bias' in the prior list.")
-    }
-    omega_spec <- .bt_dnode_omega_spec(prior)
+  if(is_bias){
     branches <- lapply(seq_along(prior), function(k){
       component <- prior[[k]]
       info <- omega_spec$branches[[k]]
@@ -598,7 +618,8 @@ JAGS_mixture_sources <- function(prior_list, name){
            stochastic = stochastic, location = location, omega = omega)
     })
     # The bias emitter uses one fixed categorical node for all bias families.
-    return(list(gate = "bias_indicator", probabilities = probabilities, branches = branches))
+    return(list(gate = "bias_indicator", probabilities = probabilities, branches = branches,
+                nested_weights = !is.null(omega_spec$nested)))
   }
 
   spec <- .bt_dnode_prior_mixture(name, prior)$spec
@@ -613,11 +634,16 @@ JAGS_mixture_sources <- function(prior_list, name){
          coordinates = component$coordinates, stochastic = stochastic,
          location = component$location, omega = character())
   })
-  list(gate = spec$indicator, probabilities = probabilities, branches = branches)
+  list(gate = spec$indicator, probabilities = probabilities, branches = branches,
+       nested_weights = FALSE)
 }
 
 .bt_sampler_mixture_family <- function(prior){
 
+  if(is.prior.R2(prior)){
+    return(if(isTRUE(prior$bound)) "derived" else "unsupported")
+  }
+  if(is.prior.ordered(prior) || is.prior.spike_and_slab(prior)) return("derived")
   if(is.prior.point(prior)) return("point")
   if(is.prior.factor(prior) && (is.prior.treatment(prior) || is.prior.independent(prior))){
     return("scalar_array")

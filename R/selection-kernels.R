@@ -320,6 +320,11 @@ phack_backend_constants <- function(form, source, destination, target = .025){
   ))
 }
 
+.selection_backend_prior_weights <- function(branches){
+
+  vapply(branches, function(branch) branch$prior_weights, numeric(1))
+}
+
 #' @title Compile selection priors for backend consumers
 #'
 #' @description \code{selection_backend_spec()} compiles step-selection and
@@ -401,7 +406,7 @@ selection_backend_spec <- function(priors,
   breaks <- omega_spec$global_cuts
   n_bins <- omega_spec$n_bins
 
-  prior_weights <- vapply(branches, function(x) x$prior_weights, numeric(1))
+  prior_weights <- .selection_backend_prior_weights(branches)
   uses_indicator <- length(branches) > 1L
 
   prior_code <- character()

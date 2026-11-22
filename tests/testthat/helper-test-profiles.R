@@ -80,6 +80,7 @@ bayestools_test_profile_contexts <- list(
     "JAGS-fit-settings",
     "JAGS-sampler-declarations",
     "JAGS-sampler-plan",
+    "JAGS-nested-weights",
     "JAGS-formula-coefficient-density",
     "JAGS-formula-coefficient-arithmetic",
     "JAGS-formula-contrasts",

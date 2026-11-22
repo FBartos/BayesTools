@@ -30,4 +30,8 @@ Resolve prior sources for JAGS sampler declarations.
 Sources are resolved before model compilation using the same
 rules as \code{sampler_blocks}. A source name is the emitted node name. The
 compiled graph determines the actual sampler and its reported node name.
+\code{\link[=parameter_coordinates]{parameter_coordinates()}} describes retained backend coordinates and
+\code{\link[=parameter_catalog]{parameter_catalog()}} gives their scientific quantities and selectors
+after fitting. For example, a fitted R-squared coefficient can have
+retained draws although its emitted value is derived.
 }

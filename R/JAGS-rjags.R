@@ -12,6 +12,7 @@
     if(any(uses_lecuyer)){
       rjags::load.module("lecuyer", quiet = TRUE)
     }
+    if(!is.null(probability_plan)) .bt_rjags_prepare_finite_readout()
     connection <- textConnection(model)
     on.exit(close(connection))
     live_model <- rjags::jags.model(connection, data = data, inits = inits,
@@ -36,31 +37,22 @@
   )
 
   readouts <- if(!is.null(probability_plan)){
-    .bt_rjags_finite_readouts(probability_plan, samplers)
+    stats::setNames(probability_plan$readout, probability_plan$node)
   }
   draws <- .bt_rjags_samples(live_model, monitor, sample, thin, progress, readouts)
   out <- list(mcmc = draws, end_state = live_model$state(internal = TRUE), samplers = samplers,
     live_model = if(keep_live) live_model)
   if(!is.null(probability_plan)){
-    probabilities <- stats::setNames(vector("list", nrow(probability_plan)), probability_plan$node)
-    if(length(readouts)){
-      probabilities[names(readouts)] <- attr(draws, "sampler_probabilities", exact = TRUE)
-    }
+    out$sampler_probabilities <- attr(draws, "sampler_probabilities", exact = TRUE)
     attr(out$mcmc, "sampler_probabilities") <- NULL
-    out$sampler_probabilities <- probabilities
   }
   out
 }
 
-# JAGS reports a length-one array by its bare name, even when the supplied
-# reference selects its only cell explicitly. The monitor factory checks
-# the actual marker and sampler identity when it opens the trace.
-.bt_rjags_finite_readouts <- function(plan, samplers){
+# Put the recorder at the stock finite factory's priority before compilation.
+.bt_rjags_prepare_finite_readout <- function(){
 
-  assigned <- samplers$Node[samplers$Sampler == "BayesTools::Finite"]
-  scalar <- sub("\\[1(?:,1)*\\]$", "", plan$node, perl = TRUE)
-  owned <- plan$node %in% assigned | scalar %in% assigned
-  stats::setNames(plan$readout[owned], plan$node[owned])
+  invisible(.Call("BayesTools_prepare_finite_readout", PACKAGE = "BayesTools"))
 }
 
 .bt_rjags_probability_stop <- function(...){
@@ -75,6 +67,12 @@
   stats::setNames(lapply(seq_along(readouts), function(i){
     indices <- by_name[[readouts[[i]]]]
     width <- length(indices)
+    # Ownership is determined from the compiled marker by the monitor factory.
+    # An unowned marker returns one sentinel column on the same schedule.
+    if(width == 1L && identical(columns[indices], readouts[[i]]) &&
+       all(vapply(draws, function(chain) isTRUE(all(chain[, indices] == -1)), logical(1)))){
+      return(NULL)
+    }
     if(width < 4L || width %% 2L != 0L ||
        !identical(columns[indices], paste0(readouts[[i]], "[", seq_len(width), "]"))){
       .bt_rjags_probability_stop("The compiled finite sampler returned an incomplete probability trace for '",
@@ -205,24 +203,41 @@
     if(inherits(result$value, "error")) stop(result$value)
   }
   out <- lapply(results, "[[", "value")
+  .bt_rjags_merge_workers(out, groups, thin, probability_plan)
+}
+
+.bt_rjags_merge_workers <- function(out, groups, thin, probability_plan){
+
   chain_order <- order(unlist(groups, use.names = FALSE))
-  mcmc <- unlist(lapply(out, function(group) unclass(group$mcmc)),
-    recursive = FALSE, use.names = FALSE)
-  end_state <- unlist(lapply(out, "[[", "end_state"), recursive = FALSE, use.names = FALSE)
-  merged <- list(mcmc = coda::mcmc.list(mcmc[chain_order]), end_state = end_state[chain_order],
-    samplers = out[[1L]]$samplers, live_model = NULL)
-  if(!is.null(probability_plan)){
-    if(!all(vapply(out, function(worker) identical(worker$samplers, merged$samplers), logical(1)))){
-      .bt_rjags_probability_stop("Parallel JAGS workers selected different sampler assignments for the probability trace.")
+  merge_draws <- function(draws){
+    chains <- unlist(lapply(draws, unclass), recursive = FALSE, use.names = FALSE)
+    chains <- chains[chain_order]
+    # Workers can spend different numbers of iterations in adaptation.
+    # Merge by retained draw order, as the public fit indexes these rows.
+    if(length(unique(vapply(chains, stats::start, numeric(1)))) > 1L){
+      chains <- lapply(chains, function(chain) coda::mcmc(as.matrix(chain), start = 1, thin = thin))
     }
+    coda::mcmc.list(chains)
+  }
+  end_state <- unlist(lapply(out, "[[", "end_state"), recursive = FALSE, use.names = FALSE)
+  merged <- list(mcmc = merge_draws(lapply(out, "[[", "mcmc")), end_state = end_state[chain_order],
+    samplers = out[[1L]]$samplers, live_model = NULL)
+  if(!all(vapply(out, function(worker) identical(worker$samplers, merged$samplers), logical(1)))){
+    merged$samplers_by_worker <- Map(function(chains, worker){
+      list(chains = chains, samplers = worker$samplers)
+    }, groups, out)
+  }
+  if(!is.null(probability_plan)){
     merged$sampler_probabilities <- stats::setNames(lapply(probability_plan$node, function(node){
       values <- lapply(out, function(worker) worker$sampler_probabilities[[node]])
       if(all(vapply(values, is.null, logical(1)))) return(NULL)
-      if(any(vapply(values, is.null, logical(1)))){
+      columns <- colnames(values[[1L]][[1L]])
+      if(!all(vapply(values, function(draws){
+        !is.null(draws) && identical(colnames(draws[[1L]]), columns)
+      }, logical(1)))){
         .bt_rjags_probability_stop("Parallel JAGS workers returned incompatible probability traces for '", node, "'.")
       }
-      chains <- unlist(lapply(values, unclass), recursive = FALSE, use.names = FALSE)
-      coda::mcmc.list(chains[chain_order])
+      merge_draws(values)
     }), probability_plan$node)
   }
   merged
@@ -328,6 +343,7 @@
   fit$sample <- as.double(fit$sample) + sample
   fit$end_state <- out$end_state
   fit$samplers <- out$samplers
+  fit$samplers_by_worker <- out[["samplers_by_worker"]]
   fit$live_model <- out$live_model
   fit
 }

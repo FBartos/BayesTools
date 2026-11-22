@@ -57,7 +57,8 @@
     all(grepl(paste0("\\A", .bt_sampler_node_pattern, "\\z"), value, perl = TRUE))
 }
 
-.bt_sampler_joint_markers <- function(joint, existing, jags_modules, retired = character()){
+.bt_sampler_joint_markers <- function(joint, existing, jags_modules, retired = character(),
+                                      model_nodes = existing, ordinary_blocks = FALSE){
 
   fail <- function(...){
     .bt_sampler_declaration_stop("The 'sampler_joint' function returned an invalid declaration: ", ..., ".")
@@ -77,7 +78,6 @@
   })
 
   reserved <- c(.bt_sampler_gate_prefix, .bt_sampler_block_prefix, .bt_sampler_finite_prefix)
-  distributions <- c("dbt_gate", "dbt_block")
   provider_prefix <- paste0("d", tolower(jags_modules), "_", recycle0 = TRUE)
   marked <- names(payload)
   check_nested <- function(nodes){
@@ -96,7 +96,7 @@
     }
   }
   check_fresh(marked)
-  known <- c(existing, marked)
+  known <- c(model_nodes, marked)
   markers <- lapply(unname(joint[["markers"]]), function(marker){
     if(!.bt_sampler_joint_fields(marker, c("name", "distribution", "arguments")) ||
        length(marker$name) != 1L || !.bt_sampler_joint_names(marker$name) ||
@@ -104,7 +104,13 @@
        !is.list(marker$arguments) || is.object(marker$arguments)){
       fail("each marker must have a JAGS 'name', a 'distribution' name and an ordered 'arguments' list")
     }
-    if(!marker$distribution %in% distributions && !any(startsWith(marker$distribution, provider_prefix))){
+    if(identical(as.vector(marker$distribution), "dbt_gate")){
+      fail("distribution 'dbt_gate' is reserved for gates verified from the model. Use 'sampler_gates' to enable those gates")
+    }
+    if(marker$distribution == "dbt_block" && ordinary_blocks){
+      fail("callback 'dbt_block' markers cannot be combined with blocks from 'sampler_blocks'. Declare BayesTools blocks through one argument")
+    }
+    if(marker$distribution != "dbt_block" && !any(startsWith(marker$distribution, provider_prefix))){
       fail("distribution '", marker$distribution,
         "' must be a BayesTools marker or use the prefix of a provider listed in 'jags_modules'")
     }
@@ -131,6 +137,12 @@
     })
     list(name = as.vector(marker$name), distribution = as.vector(marker$distribution), arguments = arguments)
   })
+  arguments <- unlist(lapply(markers, "[[", "arguments"), recursive = FALSE, use.names = FALSE)
+  references <- unlist(Filter(is.character, arguments), use.names = FALSE)
+  unused <- setdiff(names(payload), .bt_jags_parameter_base(references))
+  if(length(unused)){
+    fail("data '", unused[[1L]], "' is not referenced by any marker")
+  }
   lines <- vapply(markers, function(marker){
     args <- vapply(marker$arguments, function(value){
       if(is.numeric(value)) value <- trimws(formatC(value, digits = 17L, format = "g", decimal.mark = "."))
@@ -143,22 +155,50 @@
     declaration = list(markers = markers, data = names(payload)))
 }
 
+.bt_sampler_fit_gate_claims <- function(gates, prior_list, fit){
+
+  workers <- fit[["samplers_by_worker"]]
+  if(is.null(workers)){
+    return(.bt_sampler_gate_claims(gates, prior_list, fit$samplers))
+  }
+  claims <- lapply(workers, function(worker){
+    .bt_sampler_gate_claims(gates, prior_list, worker$samplers)
+  })
+  result <- claims[[1L]]
+  mixed <- rep(FALSE, nrow(result))
+  for(field in c("reported_node", "sampler", "assignment", "status")){
+    values <- do.call(cbind, lapply(claims, "[[", field))
+    differs <- apply(values, 1L, function(value) length(unique(value)) > 1L)
+    if(field %in% c("sampler", "status")){
+      mixed <- mixed | differs
+    }
+    if(field != "status"){
+      result[[field]][differs] <- NA
+    }
+  }
+  result$status[mixed] <- "mixed"
+  result
+}
+
 .bt_sampler_apply_plan <- function(legacy, model_names, prior_list, formula_design, data,
                                    sampler_joint, sampler_probabilities, jags_modules = NULL){
 
-  if(is.null(sampler_joint) && !length(sampler_probabilities)){
+  joint <- if(!is.null(sampler_joint)){
+    sampler_joint(prior_list = prior_list, formula_design = formula_design, data = data)
+  }
+  if(is.null(joint) && !length(sampler_probabilities)){
     return(legacy)
   }
   existing <- unique(c(.bt_sampler_tokens(legacy$model), names(legacy$data),
     names(prior_list), .bt_jags_parameter_base(model_names)))
-  joint <- if(!is.null(sampler_joint)){
-    sampler_joint(prior_list = prior_list, formula_design = formula_design, data = data)
-  }
+  graph <- .bt_jags_syntax_graph(legacy$model)
+  model_nodes <- unique(c(graph$stochastic, names(graph$deterministic), graph$data, names(legacy$data)))
   if(!is.null(joint)){
     bias <- prior_list[["bias"]]
     nested <- .bt_nested_weights_plan(bias)
     retired <- if(!is.null(nested)) .bt_nested_weights_retired(bias, nested)
-    package_markers <- .bt_sampler_joint_markers(joint, existing, jags_modules, retired)
+    package_markers <- .bt_sampler_joint_markers(joint, existing, jags_modules, retired,
+      model_nodes = model_nodes, ordinary_blocks = NROW(legacy$declarations$blocks) > 0L)
     legacy$model <- .bt_sampler_insert_markers(legacy$model, package_markers$lines)
     legacy$data <- c(legacy$data, package_markers$data)
     legacy$declarations$joint <- package_markers$declaration
@@ -170,7 +210,7 @@
     if(length(reserved)){
       .bt_sampler_declaration_stop("The model uses reserved BayesTools sampler node name '", reserved[[1L]], "'.")
     }
-    unknown <- setdiff(.bt_jags_parameter_base(sampler_probabilities), existing)
+    unknown <- setdiff(.bt_jags_parameter_base(sampler_probabilities), model_nodes)
     if(length(unknown)){
       .bt_sampler_declaration_stop("Node '", unknown[[1L]], "' in 'sampler_probabilities' is unavailable in the model.")
     }

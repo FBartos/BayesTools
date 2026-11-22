@@ -14,7 +14,9 @@ at least two branches in \code{prior_list}.}
 }
 \value{
 A list with the emitted \code{gate} node name, the branch
-\code{probabilities}, and \code{branches} in the order indexed by the gate.
+\code{probabilities}, \code{branches} in the order indexed by the gate, and
+\code{nested_weights}, which is true when the emitted bias mixture shares
+nested weight coordinates.
 Each branch contains its \code{prior}, \code{family}, \code{source}, \code{coordinates},
 \code{stochastic}, \code{location}, and \code{omega}.
 }
@@ -24,13 +26,15 @@ Resolve the emitted sources of a JAGS mixture.
 \details{
 For ordinary mixtures the family identifies a \code{"point"},
 \code{"scalar"}, \code{"vector"}, \code{"scalar_array"} (separately sampled factor
-coefficients), or \code{"unsupported"} source. For publication-bias mixtures
+coefficients), \code{"derived"} (such as a bound R-squared coefficient),
+or \code{"unsupported"} source. For publication-bias mixtures
 it identifies \code{"none"}, \code{"selection"}, \code{"PET"}, \code{"PEESE"}, \code{"phack"},
 or \code{"combined"}. The \code{source} and ordered \code{coordinates} refer to the
 emitted component before applying the mixture gate. The source name is
 missing for bias branches without a raw slope. The \code{stochastic} field
 is true when the source is emitted as a single stochastic node, false
-for constant and aggregate sources, and missing for unsupported sources.
+for constant, aggregate and derived sources, and missing for unsupported
+sources.
 A literal point value appears in \code{location}; a prior expression has
 no literal location. For selection branches, \code{omega} gives the exact
 physical weight references in the order of the global bins from

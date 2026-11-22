@@ -158,6 +158,8 @@
 #'   \code{nodes} and \code{reason}).
 #'   For successful fits with gate declarations, \code{gate_claims} records the
 #'   sampler assignment for each gate when the reported JAGS node can be matched.
+#'   A gate whose assignment status or sampler differs across workers has
+#'   status \code{"mixed"}.
 #'   A density that cannot be calculated (NaN)
 #'   at a point the factor slice sampler evaluates stops the fit with a JAGS
 #'   error, as with the stock samplers.
@@ -166,7 +168,7 @@
 #'   the finalized formula designs and the combined model and formula data,
 #'   once before compilation. Return `NULL` to decline, or a list with a
 #'   nonempty `markers` list and optional `data` list of named finite numeric
-#'   constants. Each marker specifies a fresh `name`, a registered JAGS
+#'   constants that are referenced by the markers. Each marker specifies a fresh `name`, a registered JAGS
 #'   `distribution` that is a normalized point mass at zero for every
 #'   admissible parent value, and an ordered
 #'   `arguments` list. Each argument contains one or more node references
@@ -174,22 +176,29 @@
 #'   literals. Multiple entries in one argument are combined with `c()`.
 #'   Markers are observed at zero. Use a distribution name prefixed with
 #'   `d<lowercased-module>_` for a provider listed in `jags_modules`, or use
-#'   the BayesTools markers `dbt_gate` and `dbt_block`. Supply package and module
-#'   requirements through `required_packages` and `jags_modules`. The
+#'   the BayesTools block marker `dbt_block`. Declare BayesTools blocks through
+#'   one of `sampler_joint` or `sampler_blocks`. Use `sampler_gates` for model-verified
+#'   gates, which take precedence over `dbt_block` when both mark a node.
+#'   Supply package and module requirements through `required_packages`
+#'   and `jags_modules`. The
 #'   validated declaration is stored in the `joint` entry of
-#'   `attr(fit, "sampler_declarations")`. See `fit$samplers` for the actual
-#'   sampler assignments. Extensions reuse the compiled model text and data.
+#'   `attr(fit, "sampler_declarations")`. Extensions reuse the compiled model
+#'   text and data.
 #' @param sampler_probabilities optional character vector of sampled finite
 #'   indicator node names or scalar indexed references in the compiled model.
 #'   `fit$sampler_probabilities` gives one entry per requested indicator.
-#'   When the compiled `BayesTools::Finite` sampler owns the indicator, the
+#'   The recorder can replace an active JAGS 5 `base::Finite` update for a
+#'   full-rank scalar `dbern` or `dcat` with fixed integer support starting at
+#'   0 or 1, respectively. It preserves competing sampler assignments. Its
 #'   entry is an `mcmc.list` with one row per retained draw in the same chain
 #'   and iteration order as the model draws. The columns `p[k]` and
 #'   `log_p[k]` are conditional probabilities and log probabilities at the
 #'   indicator update in that iteration for support label `k`. The columns
 #'   `selected` and `lower` give the sampled label and the lowest support
-#'   label. An entry is `NULL` when the requested sampler did not claim that
-#'   node. Use `fit$samplers` to see which nodes each sampler claimed.
+#'   label. Compiled aliases of one node return the same trace. An entry is
+#'   `NULL` when no recorder was assigned to that node. A probability trace
+#'   requires the same availability and support labels
+#'   on every worker.
 #'   Extensions append the corresponding rows. By default no probabilities
 #'   are recorded. An incomplete or incompatible recording raises a
 #'   `BayesTools_sampler_probabilities_error` backend condition.
@@ -328,7 +337,10 @@
 #' @return A successful fit is a \code{BayesTools_fit}. It contains the sampled
 #' chains, model and data used for compilation, monitored nodes, and final
 #' per-chain parameter and RNG states. Extract the chains with
-#' \code{coda::as.mcmc.list(fit)}. A failed initial fit returns its error
+#' \code{coda::as.mcmc.list(fit)}. The sampler table \code{fit$samplers} is from
+#' the most recent successful backend run. For parallel fits it is the first
+#' worker's table. If worker assignments differ, \code{fit$samplers_by_worker}
+#' gives each worker's \code{chains} and \code{samplers}. A failed initial fit returns its error
 #' condition.
 #'
 #' \code{JAGS_extend()} rebuilds the sampler from the stored states, adapts
@@ -648,8 +660,10 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   if(is.null(formula_list)){
     prior_list <- .complete_factor_metadata_prior_list(prior_list)
   }
-  nested_weights <- .bt_nested_weights_bind(prior_list, model_syntax, add_parameters,
-    sampler_nested_weights, data = data)
+  nested_weights <- .bt_nested_weights_bind(
+    prior_list, model_syntax, c(add_parameters, .bt_jags_parameter_base(sampler_probabilities)),
+    sampler_nested_weights, data = data
+  )
   prior_list <- nested_weights$prior_list
   .bt_validate_jags_add_parameters(add_parameters, prior_list)
 
@@ -966,8 +980,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   attr(fit, "backend_anchor") <- backend_anchor
   if(!inherits(fit, "error") && !is.null(fit$samplers) &&
      NROW(sampler_declarations$declarations$gates) > 0L){
-    sampler_declarations$declarations$gate_claims <- .bt_sampler_gate_claims(
-      sampler_declarations$declarations$gates, prior_list, fit$samplers)
+    sampler_declarations$declarations$gate_claims <- .bt_sampler_fit_gate_claims(
+      sampler_declarations$declarations$gates, prior_list, fit)
   }
   attr(fit, "sampler_declarations") <- sampler_declarations$declarations
   if(!inherits(fit, "error")){
@@ -1422,8 +1436,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   attr(fit, "runtime_setup") <- runtime_setup
   attr(fit, "backend_anchor") <- backend_anchor
   if(!is.null(fit$samplers) && NROW(sampler_declarations$gates) > 0L){
-    sampler_declarations$gate_claims <- .bt_sampler_gate_claims(
-      sampler_declarations$gates, prior_list, fit$samplers)
+    sampler_declarations$gate_claims <- .bt_sampler_fit_gate_claims(
+      sampler_declarations$gates, prior_list, fit)
   }
   attr(fit, "sampler_declarations") <- sampler_declarations
   if(!is.null(formula_scale)){

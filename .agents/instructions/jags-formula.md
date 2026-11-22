@@ -277,22 +277,48 @@ rejection could silently truncate the target). With the defaults
 the model text and data handed to rjags are those of a fit without
 declarations.
 
+The block source rules share the bound prior metadata and naming helpers
+with the prior emitters, including factor dimensions and the Dirichlet
+auxiliary names. `JAGS_mixture_sources()` reads the mixture and selection
+node specifications used by the emitters for branch components and global
+selection bins. The prior-root map in `R/JAGS-prior-roots.R` serves
+ordered and regularized name-collision checks and includes deterministic
+names and array shapes. After sampling, `R/JAGS-parameter-coordinates.R`
+combines retained columns with bound priors and formula metadata. The
+catalog builds semantic quantities and extraction keys using those
+coordinates. In the fitted coordinates, `monitor_status = "sampled"` means
+draws were retained, including when the compiler evaluates a deterministic
+R-squared coefficient from its sampled source. The native sampler table
+records actual assignment and may name a coordinate by an equivalent
+compiled alias.
+
 Package sampler callbacks receive the bound priors, finalized formula designs,
 and combined input data once. Their typed declarations add fresh observed
 zero markers and finite data constants after the legacy gate scan. A marker
-uses a BayesTools marker distribution or the name prefix of a declared
-provider module. Providers must implement a normalized point mass at zero
+uses the BayesTools block marker or the name prefix of a declared provider
+module. Only the scientific gate scanner emits `dbt_gate` in this API.
+Its gates take priority over `dbt_block`. Declare BayesTools FactorSlice
+blocks through one fitting argument to avoid ID and compiled alias collisions.
+Marker references must come from model relations or inputs. Each extra
+data key must appear in a marker reference.
+Providers must implement a normalized point mass at zero
 for every admitted parent value. Store the validated declaration plus the final
 model text and data. Compiled sampler ownership comes from the rjags
-assignment table. Gate claims resolve against emitted aliases.
+assignment table. Gate claims resolve against emitted aliases. Parallel
+fits preserve each worker's table and chain IDs if the tables disagree.
+Gate ownership is summarized across workers, with a mixed status when
+the ownership differs. Recorded indicators must agree across workers
+on readout availability and column labels.
 
 Explicit finite-indicator requests add terminal tags after gate analysis.
-Open each virtual probability trace only for an indicator owned by
-`BayesTools::Finite`, using the same call to `coda.samples()` as the scientific
-monitors. The named probability sidecar follows the scientific samples'
-retained chain order and iteration labels. Preserve it on extension without
-adding its columns to convergence diagnostics or parameter coordinates.
-An unclaimed node has a named null entry.
+Before compilation, place the recorder immediately before the active stock
+`base::Finite` factory so all earlier owners, including joint updates, keep
+their claims. The virtual monitor resolves the compiled marker's target by
+identity. Aliases of one indicator share its recorder, and other owners give
+a named null entry. Open the virtual monitors in the same `coda.samples()`
+call as the scientific monitors. The sidecar follows the scientific samples'
+retained chain order and iteration labels through extension. Its columns stay
+outside convergence diagnostics and parameter coordinates.
 
 The factor slice algorithm itself is the installed header-only kernel
 `inst/include/BayesTools/factor_slice_kernel.h` (namespace

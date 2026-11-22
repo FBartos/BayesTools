@@ -65,10 +65,11 @@ test_that("nested fits reconstruct from saved state and retain the original raw-
   priors$bias <- prior_mixture(c(as.list(priors$bias), list(prior_PET("normal", list(0, 1)))))
   priors$mu <- prior("normal", list(0, 1))
   syntax <- "model{ y ~ dnorm(mu + PET + omega[2] + omega[4], 4) }"
-  run <- function(nested, add = NULL){
+  run <- function(nested, add = NULL, probabilities = NULL){
     JAGS_fit(
       syntax, data = list(y = .9), prior_list = priors, add_parameters = add,
       sampler_gates = TRUE, sampler_nested_weights = nested,
+      sampler_probabilities = probabilities,
       chains = 2, adapt = 100, burnin = 50, sample = 100, seed = 381
     )
   }
@@ -107,4 +108,21 @@ test_that("nested fits reconstruct from saved state and retain the original raw-
   expect_identical(fallback$model, ordinary$model)
   expect_identical(fallback$mcmc, ordinary$mcmc)
   expect_true(all(paste0("eta_component_1[", 1:4, "]") %in% colnames(as.matrix(fallback$mcmc))))
+
+  # Readout requests also refer to the original graph, even if the requested
+  # continuous node cannot be claimed by the finite sampler.
+  request <- "eta_component_1 [ 2 ]"
+  ordinary_readout <- run(FALSE, probabilities = request)
+  fallback_readout <- run(TRUE, probabilities = request)
+  declined <- attr(fallback_readout, "sampler_declarations")$nested_weights
+  expect_false(declined$realized)
+  expect_match(declined$reason, "eta_component_1")
+  expect_length(fallback_readout$end_state[[1L]]$eta_component_1, 4L)
+  expect_identical(fallback_readout$model, ordinary_readout$model)
+  expect_identical(fallback_readout$mcmc, ordinary_readout$mcmc)
+  expect_identical(fallback_readout$sampler_probabilities, list("eta_component_1[2]" = NULL))
+
+  bias_readout <- run(TRUE, probabilities = "bias_indicator")
+  expect_true(attr(bias_readout, "sampler_declarations")$nested_weights$realized)
+  expect_s3_class(bias_readout$sampler_probabilities$bias_indicator, "mcmc.list")
 })

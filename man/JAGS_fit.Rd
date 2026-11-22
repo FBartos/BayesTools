@@ -308,6 +308,8 @@ block, with its \code{kind}, \code{prior}, \code{branch} or \code{block},
 \code{nodes} and \code{reason}).
 For successful fits with gate declarations, \code{gate_claims} records the
 sampler assignment for each gate when the reported JAGS node can be matched.
+A gate whose assignment status or sampler differs across workers has
+status \code{"mixed"}.
 A density that cannot be calculated (NaN)
 at a point the factor slice sampler evaluates stops the fit with a JAGS
 error, as with the stock samplers.}
@@ -345,7 +347,7 @@ Callback packages must be listed in \code{required_packages}. Passing
 the finalized formula designs and the combined model and formula data,
 once before compilation. Return \code{NULL} to decline, or a list with a
 nonempty \code{markers} list and optional \code{data} list of named finite numeric
-constants. Each marker specifies a fresh \code{name}, a registered JAGS
+constants that are referenced by the markers. Each marker specifies a fresh \code{name}, a registered JAGS
 \code{distribution} that is a normalized point mass at zero for every
 admissible parent value, and an ordered
 \code{arguments} list. Each argument contains one or more node references
@@ -353,23 +355,30 @@ admissible parent value, and an ordered
 literals. Multiple entries in one argument are combined with \code{c()}.
 Markers are observed at zero. Use a distribution name prefixed with
 \code{d<lowercased-module>_} for a provider listed in \code{jags_modules}, or use
-the BayesTools markers \code{dbt_gate} and \code{dbt_block}. Supply package and module
-requirements through \code{required_packages} and \code{jags_modules}. The
+the BayesTools block marker \code{dbt_block}. Declare BayesTools blocks through
+one of \code{sampler_joint} or \code{sampler_blocks}. Use \code{sampler_gates} for model-verified
+gates, which take precedence over \code{dbt_block} when both mark a node.
+Supply package and module requirements through \code{required_packages}
+and \code{jags_modules}. The
 validated declaration is stored in the \code{joint} entry of
-\code{attr(fit, "sampler_declarations")}. See \code{fit$samplers} for the actual
-sampler assignments. Extensions reuse the compiled model text and data.}
+\code{attr(fit, "sampler_declarations")}. Extensions reuse the compiled model
+text and data.}
 
 \item{sampler_probabilities}{optional character vector of sampled finite
 indicator node names or scalar indexed references in the compiled model.
 \code{fit$sampler_probabilities} gives one entry per requested indicator.
-When the compiled \code{BayesTools::Finite} sampler owns the indicator, the
+The recorder can replace an active JAGS 5 \code{base::Finite} update for a
+full-rank scalar \code{dbern} or \code{dcat} with fixed integer support starting at
+0 or 1, respectively. It preserves competing sampler assignments. Its
 entry is an \code{mcmc.list} with one row per retained draw in the same chain
 and iteration order as the model draws. The columns \code{p[k]} and
 \code{log_p[k]} are conditional probabilities and log probabilities at the
 indicator update in that iteration for support label \code{k}. The columns
 \code{selected} and \code{lower} give the sampled label and the lowest support
-label. An entry is \code{NULL} when the requested sampler did not claim that
-node. Use \code{fit$samplers} to see which nodes each sampler claimed.
+label. Compiled aliases of one node return the same trace. An entry is
+\code{NULL} when no recorder was assigned to that node. A probability trace
+requires the same availability and support labels
+on every worker.
 Extensions append the corresponding rows. By default no probabilities
 are recorded. An incomplete or incompatible recording raises a
 \code{BayesTools_sampler_probabilities_error} backend condition.}
@@ -397,7 +406,10 @@ they stop with an error of class \code{BayesTools_refit_required} (see
 A successful fit is a \code{BayesTools_fit}. It contains the sampled
 chains, model and data used for compilation, monitored nodes, and final
 per-chain parameter and RNG states. Extract the chains with
-\code{coda::as.mcmc.list(fit)}. A failed initial fit returns its error
+\code{coda::as.mcmc.list(fit)}. The sampler table \code{fit$samplers} is from
+the most recent successful backend run. For parallel fits it is the first
+worker's table. If worker assignments differ, \code{fit$samplers_by_worker}
+gives each worker's \code{chains} and \code{samplers}. A failed initial fit returns its error
 condition.
 
 \code{JAGS_extend()} rebuilds the sampler from the stored states, adapts
