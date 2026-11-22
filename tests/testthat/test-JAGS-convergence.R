@@ -1490,6 +1490,10 @@ test_that("the JAGS syntax graph reads whole statements", {
     c(theta = "sampled", flag = "structural")
   )
   expect_identical(
+    roles("/* 1) Fixed term */\n  flag /* ( */ <- x[1] == 2 # fake ~ dnorm(0, 1)", data_names = "x"),
+    c(theta = "sampled", flag = "structural")
+  )
+  expect_identical(
     roles("flag <- x[1] == theta", data_names = "x", extra = "  xm <- 2 * x[1]\n"),
     c(theta = "sampled", flag = "sampled", xm = "structural")
   )

@@ -1892,8 +1892,7 @@
   if(length(model_syntax) == 0L){
     return(character())
   }
-  text <- paste(model_syntax, collapse = "\n")
-  text <- gsub("#[^\n]*", "", text)
+  text <- .JAGS_mask_comments(paste(model_syntax, collapse = "\n"))
   # The two-character operators are single tokens, so only '<-', '~', and a
   # lone '=' are relations ('<=', '>=', '==', and '!=' are comparisons).
   pattern <- paste0(

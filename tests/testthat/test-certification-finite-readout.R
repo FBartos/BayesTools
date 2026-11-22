@@ -316,6 +316,49 @@ test_that("public finite readouts follow scientific draws and survive parallel s
   }), lapply(fit$sampler_probabilities$label, as.matrix))
 })
 
+test_that("BUGS comments preserve finite and package declarations and the coordinate map", {
+
+  skip_if_not_installed("rjags")
+  scientific <- c("z ~ dbern(0.5)", "fixed <- 2", "y ~ dnorm(z + offset + fixed, 1)")
+  plain <- paste(c("model {", scientific, "}"), collapse = "\n")
+  annotated <- paste(c(
+    "# model { hash_ghost ~ dbern(0.4)",
+    "model /* section 1) */ {",
+    "/* 2) Latent states",
+    "   block_ghost ~ dbern(0.6) } */",
+    "z /* state (binary */ ~ dbern(0.5)",
+    "fixed /* 3) Known constant */ <- 2",
+    "y ~ dnorm(z + offset + fixed, 1) # ) Unmatched punctuation",
+    "}"
+  ), collapse = "\n")
+  declare <- function(node){
+    function(prior_list, formula_design, data){
+      list(markers = list(list(name = "package_block", distribution = "dbt_block",
+        arguments = list(node, 1))))
+    }
+  }
+  fit <- function(model, probabilities, joint){
+    JAGS_fit(model, data = list(y = 0.3), prior_list = list(offset = prior("normal", list(0, 1))),
+      add_parameters = c("z", "fixed"), sampler_probabilities = probabilities, sampler_joint = joint,
+      chains = 1L, adapt = 50L, burnin = 50L, sample = 100L, seed = 1386L)
+  }
+  baseline <- fit(plain, "z", declare("z"))
+  actual <- fit(annotated, "z", declare("z"))
+  expect_s3_class(actual, "BayesTools_fit")
+  expect_s3_class(actual$sampler_probabilities$z, "mcmc.list")
+  expect_identical(actual$sampler_probabilities$z, baseline$sampler_probabilities$z)
+  expect_identical(actual$mcmc, baseline$mcmc)
+  expect_identical(actual$end_state, baseline$end_state)
+  expect_identical(parameter_coordinates(actual), parameter_coordinates(baseline))
+  expect_match(actual$model, "package_block ~ dbt_block(z, 1)", fixed = TRUE)
+  for(node in c("hash_ghost", "block_ghost")){
+    expect_error(fit(annotated, node, NULL), "unavailable in the model", fixed = TRUE,
+      class = "BayesTools_sampler_declaration_error")
+    expect_error(fit(annotated, NULL, declare(node)), paste0("unknown node '", node, "'"), fixed = TRUE,
+      class = "BayesTools_sampler_declaration_error")
+  }
+})
+
 test_that("validated package declarations survive recompilation without replaying the callback", {
 
   skip_if_not_installed("rjags")
