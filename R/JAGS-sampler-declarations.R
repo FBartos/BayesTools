@@ -234,9 +234,12 @@
     list(branch = k, leaves = character(), names = character(), own = character(), active = NULL)
   })
   composition <- character()
+  nested <- NULL
 
   if(any(has_selection) || any(has_phacking)){
     omega_spec <- .bt_dnode_omega_spec(prior)
+    nested <- omega_spec$nested
+    nested_branches <- if(!is.null(nested)) c(nested$coarse, nested$fine) else integer()
     phacking_spec <- .bt_dnode_phacking_spec(omega_spec$branches)
     composition <- c(
       .bt_dnode_phacking_emit_vector_rule(phacking_spec),
@@ -259,7 +262,9 @@
         branch$names <- c(branch$names, unlist(node_names[c(
           "omega_local", "omega_target", "log_omega", "omega_ratio", "eta", "std_eta"
         )], use.names = FALSE))
-        branch$leaves <- c(branch$leaves, .bt_sampler_weightfunction_leaves(selection, k, omega_spec$global_cuts))
+        if(!k %in% nested_branches){
+          branch$leaves <- c(branch$leaves, .bt_sampler_weightfunction_leaves(selection, k, omega_spec$global_cuts))
+        }
       }
       phacking <- branch_info[[k]]$phacking
       if(!is.null(phacking)){
@@ -293,7 +298,19 @@
     branches[[k]] <- branch
   }
 
-  list(branches = branches, composition = .bt_sampler_lines(composition))
+  shared <- NULL
+  if(!is.null(nested)){
+    activity <- .bt_nested_weights_activity(nested)
+    names <- unique(c(nested$nodes,
+      unlist(lapply(branches[nested_branches], `[[`, "names"), use.names = FALSE)))
+    shared <- list(
+      list(branch = NA_integer_, leaves = unname(nested$nodes[c("a", "v")]), names = names,
+           active = paste(activity, collapse = " + "), nested = TRUE),
+      list(branch = nested$fine, leaves = unname(nested$nodes[["u"]]), names = names,
+           active = activity[["fine"]], nested = TRUE)
+    )
+  }
+  list(branches = branches, shared = shared, composition = .bt_sampler_lines(composition))
 }
 
 # Whether every composition statement that names a node of the branch uses it
@@ -339,7 +356,7 @@
       next
     }
     structure <- .bt_sampler_bias_branches(prior, name)
-    candidates <- Filter(function(branch) length(branch$leaves) > 0L, structure$branches)
+    candidates <- c(Filter(function(branch) length(branch$leaves) > 0L, structure$branches), structure$shared)
     if(length(candidates) == 0L){
       next
     }
@@ -366,21 +383,26 @@
         decline(name, branch, paste0("node '", outside[1L], "' occurs outside the statements of the mixture"))
         next
       }
-      own <- .bt_sampler_lines(branch$own)
-      gated <- TRUE
-      for(line in piece_lines){
-        if(!any(.bt_sampler_tokens(line) %in% branch$names) || line %in% own){
+      # A bound nested pair emits its private chart in the verified compiler
+      # piece. Its two projected branches go through their respective masks.
+      # The shared leaves have no route through any other branch in that piece.
+      if(!isTRUE(branch$nested)){
+        own <- .bt_sampler_lines(branch$own)
+        gated <- TRUE
+        for(line in piece_lines){
+          if(!any(.bt_sampler_tokens(line) %in% branch$names) || line %in% own){
+            next
+          }
+          if(!(line %in% structure$composition &&
+               .bt_sampler_composition_gated(line, branch$names, branch$active))){
+            gated <- FALSE
+            decline(name, branch, paste0("statement '", line, "' uses the branch outside its gated composition term"))
+            break
+          }
+        }
+        if(!gated){
           next
         }
-        if(!(line %in% structure$composition &&
-             .bt_sampler_composition_gated(line, branch$names, branch$active))){
-          gated <- FALSE
-          decline(name, branch, paste0("statement '", line, "' uses the branch outside its gated composition term"))
-          break
-        }
-      }
-      if(!gated){
-        next
       }
       for(leaf in branch$leaves){
         declared[nrow(declared) + 1L, ] <- list(leaf, branch$active, name, as.integer(branch$branch))
@@ -389,6 +411,56 @@
   }
 
   list(declared = declared, declined = declined)
+}
+
+# Direct copies of a branch leaf can become the name JAGS reports for its
+# sampler. These identities follow the same local and global bin mapping used
+# to emit the weights. Transformed weights never identify their source node.
+.bt_sampler_weight_aliases <- function(node, spec, branch){
+
+  prior <- spec$branches[[branch]]$selection
+  if(is.null(prior)){
+    return(node)
+  }
+  names <- .weightfunction_component_node_names(
+    prior, component_id = branch, global_cuts = spec$global_cuts, force_one_sided = TRUE
+  )
+  local <- paste0(names$omega_local, "[", seq_len(names$n_bins), "]")
+  index <- if(prior$weights$type == "cumulative" && names$n_bins == 2L && node == names$omega_ratio){
+    2L
+  }else if(prior$weights$type == "independent" && identical(prior$weights$scale, "omega")){
+    match(node, local)
+  }else{
+    NA_integer_
+  }
+  if(is.na(index)){
+    return(node)
+  }
+
+  bin <- which(spec$global_index[[branch]] == index)
+  unique(c(node, local[[index]], paste0(names$omega_target, "[", bin, "]", recycle0 = TRUE)))
+}
+
+.bt_sampler_gate_claims <- function(gates, prior_list, samplers){
+
+  is_bias_branch <- gates$prior == "bias" & !is.na(gates$branch)
+  omega_spec <- if(any(is_bias_branch)) .bt_dnode_omega_spec(prior_list[["bias"]])
+  assignment <- vapply(seq_len(nrow(gates)), function(i){
+    aliases <- gates$node[[i]]
+    if(is_bias_branch[[i]]){
+      aliases <- .bt_sampler_weight_aliases(aliases, omega_spec, gates$branch[[i]])
+    }
+    matches <- which(samplers$Node %in% aliases)
+    if(length(matches) == 1L) matches else NA_integer_
+  }, integer(1))
+  sampler <- samplers$Sampler[assignment]
+
+  data.frame(
+    marker = gates$marker, node = gates$node, reported_node = samplers$Node[assignment],
+    sampler = sampler, assignment = samplers$Index.No[assignment],
+    status = ifelse(is.na(assignment), "unresolved", ifelse(sampler == "BayesTools::GatedSlice", "claimed", "other")),
+    stringsAsFactors = FALSE
+  )
 }
 
 
@@ -453,7 +525,8 @@ JAGS_sampler_sources <- function(prior_list, priors = names(prior_list), kind = 
 #' Resolve the emitted sources of a JAGS mixture
 #'
 #' @param prior_list Named list of priors with formula priors already bound.
-#' @param name Name of an ordinary or publication-bias mixture in `prior_list`.
+#' @param name Name of an ordinary mixture or a publication-bias mixture of
+#'   at least two branches in `prior_list`.
 #' @return A list with the emitted `gate` node name, the branch
 #'   `probabilities`, and `branches` in the order indexed by the gate.
 #'   Each branch contains its `prior`, `family`, `source`, `coordinates`,
@@ -479,8 +552,11 @@ JAGS_mixture_sources <- function(prior_list, name){
     .bt_sampler_declaration_stop("'name' must identify a prior in 'prior_list'.")
   }
   prior <- prior_list[[name]]
-  if(!is.prior.mixture(prior) || is.prior.spike_and_slab(prior) || length(prior) < 2L){
-    .bt_sampler_declaration_stop("Prior '", name, "' must be an ordinary or publication-bias mixture of at least two branches.")
+  if(!is.prior.mixture(prior) || is.prior.spike_and_slab(prior)){
+    .bt_sampler_declaration_stop("Prior '", name, "' must be an ordinary or publication-bias mixture.")
+  }
+  if(inherits(prior, "prior.bias_mixture") && length(prior) < 2L){
+    .bt_sampler_declaration_stop("Publication-bias mixture '", name, "' must have at least two branches.")
   }
 
   weights <- unname(attr(prior, "prior_weights", exact = TRUE))

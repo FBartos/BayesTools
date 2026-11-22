@@ -9,7 +9,8 @@ JAGS_mixture_sources(prior_list, name)
 \arguments{
 \item{prior_list}{Named list of priors with formula priors already bound.}
 
-\item{name}{Name of an ordinary or publication-bias mixture in \code{prior_list}.}
+\item{name}{Name of an ordinary mixture or a publication-bias mixture of
+at least two branches in \code{prior_list}.}
 }
 \value{
 A list with the emitted \code{gate} node name, the branch

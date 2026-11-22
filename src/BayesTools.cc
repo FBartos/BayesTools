@@ -11,18 +11,20 @@ static_assert(JAGS_MAJOR >= 5, "BayesTools requires JAGS 5.0.0 or later");
 #include "distributions/DBTSamplerMarker.h"
 #include "samplers/BTGatedSlice.h"
 #include "samplers/BTFactorSlice.h"
+#include "samplers/BTFiniteReadout.h"
 
 namespace jags {
   namespace BayesTools {
 
     class BayesToolsModule : public Module
     {
+      FiniteReadout _finite_readout;
     public:
       BayesToolsModule();
       ~BayesToolsModule();
     };
 
-    BayesToolsModule::BayesToolsModule() : Module("BayesTools")
+    BayesToolsModule::BayesToolsModule() : Module("BayesTools"), _finite_readout(*this)
     {
       insert(new DBTLKJCPC);
       insert(new DBTInvGamma);

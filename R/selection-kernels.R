@@ -369,7 +369,7 @@ selection_backend_spec <- function(priors,
   # The weights 'omega' are the registered 'omega' node: its specification
   # defines the branches, the global break grid, and the weight syntax.
   branches <- .selection_normalize_priors(priors)
-  omega_spec <- .bt_dnode_omega_spec(branches, global_breaks = global_breaks, name = names$omega)
+  omega_spec <- .bt_dnode_omega_spec(priors, global_breaks = global_breaks, name = names$omega)
   branch_info <- omega_spec$branches
 
   has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
@@ -410,6 +410,9 @@ selection_backend_spec <- function(priors,
 
   if(uses_indicator){
     prior_code <- c(prior_code, paste0("bias_indicator ~ dcat(c(", paste0(.JAGS_prior_number(prior_weights), collapse = ", "), "))"))
+  }
+  if(!is.null(omega_spec$nested)){
+    prior_code <- c(prior_code, .bt_nested_weights_syntax(omega_spec$nested))
   }
 
   for(i in seq_along(branches)){
@@ -459,7 +462,11 @@ selection_backend_spec <- function(priors,
   phacking <- .selection_backend_phacking_info(phacking_priors, names)
 
   init <- if(include_init){
-    .selection_backend_init(branch_info, prior_weights, uses_indicator, global_cuts = breaks, names = names)
+    init <- .selection_backend_init(branch_info, prior_weights, uses_indicator, global_cuts = breaks, names = names)
+    if(!is.null(omega_spec$nested)){
+      init <- .bt_nested_weights_init(omega_spec$nested, init, branch_info)
+    }
+    init
   }else{
     NULL
   }

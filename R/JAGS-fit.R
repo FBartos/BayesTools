@@ -155,9 +155,51 @@
 #'   \code{JAGS_extend()} keeps: a list of the data frames \code{gates},
 #'   \code{blocks} and \code{declined} (one row per declined gate branch or
 #'   block, with its \code{kind}, \code{prior}, \code{branch} or \code{block},
-#'   \code{nodes} and \code{reason}). A density that cannot be calculated (NaN)
+#'   \code{nodes} and \code{reason}).
+#'   For successful fits with gate declarations, \code{gate_claims} records the
+#'   sampler assignment for each gate when the reported JAGS node can be matched.
+#'   A density that cannot be calculated (NaN)
 #'   at a point the factor slice sampler evaluates stops the fit with a JAGS
 #'   error, as with the stock samplers.
+#' @param sampler_joint optional package callback accepting `prior_list`,
+#'   `formula_design` and `data`. It receives the combined bound prior list,
+#'   the finalized formula designs and the combined model and formula data,
+#'   once before compilation. Return `NULL` to decline, or a list with a
+#'   nonempty `markers` list and optional `data` list of named finite numeric
+#'   constants. Each marker specifies a fresh `name`, a registered JAGS
+#'   `distribution` that is a normalized point mass at zero for every
+#'   admissible parent value, and an ordered
+#'   `arguments` list. Each argument contains one or more node references
+#'   (bare names or positive integer subscripts or ranges) or finite numeric
+#'   literals. Multiple entries in one argument are combined with `c()`.
+#'   Markers are observed at zero. Use a distribution name prefixed with
+#'   `d<lowercased-module>_` for a provider listed in `jags_modules`, or use
+#'   the BayesTools markers `dbt_gate` and `dbt_block`. Supply package and module
+#'   requirements through `required_packages` and `jags_modules`. The
+#'   validated declaration is stored in the `joint` entry of
+#'   `attr(fit, "sampler_declarations")`. See `fit$samplers` for the actual
+#'   sampler assignments. Extensions reuse the compiled model text and data.
+#' @param sampler_probabilities optional character vector of sampled finite
+#'   indicator node names or scalar indexed references in the compiled model.
+#'   `fit$sampler_probabilities` gives one entry per requested indicator.
+#'   When the compiled `BayesTools::Finite` sampler owns the indicator, the
+#'   entry is an `mcmc.list` with one row per retained draw in the same chain
+#'   and iteration order as the model draws. The columns `p[k]` and
+#'   `log_p[k]` are conditional probabilities and log probabilities at the
+#'   indicator update in that iteration for support label `k`. The columns
+#'   `selected` and `lower` give the sampled label and the lowest support
+#'   label. An entry is `NULL` when the requested sampler did not claim that
+#'   node. Use `fit$samplers` to see which nodes each sampler claimed.
+#'   Extensions append the corresponding rows. By default no probabilities
+#'   are recorded. An incomplete or incompatible recording raises a
+#'   `BayesTools_sampler_probabilities_error` backend condition.
+#' @param sampler_nested_weights logical. Share physical weight coordinates for eligible
+#'   nested cumulative one-sided weights in a publication-bias mixture.
+#'   The scientific priors and public weights are preserved. Unsupported pairs
+#'   and mixtures whose private weight nodes are explicitly used or monitored
+#'   keep their ordinary parameterization. The `nested_weights` entry in
+#'   `attr(fit, "sampler_declarations")` records the two branch indices when
+#'   sharing was used or the reason it was declined. Defaults to `FALSE`.
 #' @param add_parameters vector of additional parameter names that should be
 #' monitored but were not specified in the \code{prior_list}. Automatic fitting
 #' checks their convergence like that of the other parameters. Fully observed
@@ -422,7 +464,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
                      add_parameters = NULL, required_packages = NULL,
                      formula_random_prior_list = NULL, formula_random_effects_compile_list = NULL,
                      jags_modules = NULL, runtime_setup = NULL, runtime_cache = NULL, worker_output = NULL,
-                     sampler_gates = FALSE, sampler_blocks = NULL, runtime_report = NULL, ...){
+                     sampler_gates = FALSE, sampler_blocks = NULL, runtime_report = NULL,
+                     sampler_joint = NULL, sampler_probabilities = NULL, sampler_nested_weights = FALSE, ...){
 
   # A seeded fit leaves the caller's random-number state as it found it.
   if(!is.null(seed)){
@@ -443,6 +486,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   .JAGS_validate_runtime_cache(runtime_cache)
   .JAGS_validate_runtime_report(runtime_report)
   .bt_check_sampler_declaration_arguments(sampler_gates, sampler_blocks)
+  sampler_probabilities <- .bt_sampler_check_plan_arguments(sampler_joint, sampler_probabilities)
+  check_bool(sampler_nested_weights, "sampler_nested_weights", allow_NA = FALSE)
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
   check_list(formula_data_list, "formula_data_list", allow_NULL = is.null(formula_list))
   check_list(formula_prior_list, "formula_prior_list", allow_NULL = is.null(formula_list))
@@ -603,6 +648,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   if(is.null(formula_list)){
     prior_list <- .complete_factor_metadata_prior_list(prior_list)
   }
+  nested_weights <- .bt_nested_weights_bind(prior_list, model_syntax, add_parameters,
+    sampler_nested_weights, data = data)
+  prior_list <- nested_weights$prior_list
   .bt_validate_jags_add_parameters(add_parameters, prior_list)
 
   backend_monitor <- .bt_add_backend_anchor(
@@ -632,6 +680,13 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     sampler_gates = sampler_gates,
     sampler_blocks = sampler_blocks
   )
+  # Package and readout markers are terminal. Gate analysis above concerns
+  # dependencies in the scientific model.
+  sampler_declarations <- .bt_sampler_apply_plan(sampler_declarations, backend_monitor$monitor,
+    prior_list, formula_design_info, data, sampler_joint, sampler_probabilities, jags_modules)
+  if(!is.null(nested_weights$status)){
+    sampler_declarations$declarations$nested_weights <- nested_weights$status
+  }
   if(sampler_declarations$uses_module){
     jags_modules <- unique(c(jags_modules, "BayesTools"))
     required_packages <- unique(c(required_packages, "BayesTools"))
@@ -649,6 +704,10 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     thin      = thin,
     silent    = silent
   )
+  probability_plan <- sampler_declarations$declarations$probabilities
+  if(length(probability_plan)){
+    model_call$probability_plan <- probability_plan
+  }
 
   # Configure the actual backend topology, including automatic extensions.
   cl <- NULL
@@ -742,7 +801,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         fit <- run_initial(model_call)
         if(!inherits(fit, "error")){
           break
-        }else if(inherits(fit, "BayesTools_JAGS_worker_connection_error")){
+        }else if(inherits(fit, c("BayesTools_JAGS_worker_connection_error",
+                                "BayesTools_sampler_probabilities_error"))){
           break
         }else if(i < autofit_control[["restarts"]]){
           restart_warnings <- c(
@@ -904,6 +964,11 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   attr(fit, "jags_modules") <- jags_modules
   attr(fit, "runtime_setup") <- runtime_setup
   attr(fit, "backend_anchor") <- backend_anchor
+  if(!inherits(fit, "error") && !is.null(fit$samplers) &&
+     NROW(sampler_declarations$declarations$gates) > 0L){
+    sampler_declarations$declarations$gate_claims <- .bt_sampler_gate_claims(
+      sampler_declarations$declarations$gates, prior_list, fit$samplers)
+  }
   attr(fit, "sampler_declarations") <- sampler_declarations$declarations
   if(!inherits(fit, "error")){
     attr(fit, "adaptation") <- adaptation
@@ -1356,6 +1421,10 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   attr(fit, "jags_modules") <- jags_modules
   attr(fit, "runtime_setup") <- runtime_setup
   attr(fit, "backend_anchor") <- backend_anchor
+  if(!is.null(fit$samplers) && NROW(sampler_declarations$gates) > 0L){
+    sampler_declarations$gate_claims <- .bt_sampler_gate_claims(
+      sampler_declarations$gates, prior_list, fit$samplers)
+  }
   attr(fit, "sampler_declarations") <- sampler_declarations
   if(!is.null(formula_scale)){
     attr(fit, "formula_scale") <- formula_scale

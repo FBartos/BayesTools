@@ -38,6 +38,9 @@ JAGS_fit(
   sampler_gates = FALSE,
   sampler_blocks = NULL,
   runtime_report = NULL,
+  sampler_joint = NULL,
+  sampler_probabilities = NULL,
+  sampler_nested_weights = FALSE,
   ...
 )
 
@@ -302,7 +305,10 @@ declarations are stored in \code{attr(fit, "sampler_declarations")}, which
 \code{JAGS_extend()} keeps: a list of the data frames \code{gates},
 \code{blocks} and \code{declined} (one row per declined gate branch or
 block, with its \code{kind}, \code{prior}, \code{branch} or \code{block},
-\code{nodes} and \code{reason}). A density that cannot be calculated (NaN)
+\code{nodes} and \code{reason}).
+For successful fits with gate declarations, \code{gate_claims} records the
+sampler assignment for each gate when the reported JAGS node can be matched.
+A density that cannot be calculated (NaN)
 at a point the factor slice sampler evaluates stops the fit with a JAGS
 error, as with the stock samplers.}
 
@@ -333,6 +339,48 @@ Callback packages must be listed in \code{required_packages}. Passing
 \code{NULL} disables the report.}
 
 \item{...}{additional hidden arguments}
+
+\item{sampler_joint}{optional package callback accepting \code{prior_list},
+\code{formula_design} and \code{data}. It receives the combined bound prior list,
+the finalized formula designs and the combined model and formula data,
+once before compilation. Return \code{NULL} to decline, or a list with a
+nonempty \code{markers} list and optional \code{data} list of named finite numeric
+constants. Each marker specifies a fresh \code{name}, a registered JAGS
+\code{distribution} that is a normalized point mass at zero for every
+admissible parent value, and an ordered
+\code{arguments} list. Each argument contains one or more node references
+(bare names or positive integer subscripts or ranges) or finite numeric
+literals. Multiple entries in one argument are combined with \code{c()}.
+Markers are observed at zero. Use a distribution name prefixed with
+\code{d<lowercased-module>_} for a provider listed in \code{jags_modules}, or use
+the BayesTools markers \code{dbt_gate} and \code{dbt_block}. Supply package and module
+requirements through \code{required_packages} and \code{jags_modules}. The
+validated declaration is stored in the \code{joint} entry of
+\code{attr(fit, "sampler_declarations")}. See \code{fit$samplers} for the actual
+sampler assignments. Extensions reuse the compiled model text and data.}
+
+\item{sampler_probabilities}{optional character vector of sampled finite
+indicator node names or scalar indexed references in the compiled model.
+\code{fit$sampler_probabilities} gives one entry per requested indicator.
+When the compiled \code{BayesTools::Finite} sampler owns the indicator, the
+entry is an \code{mcmc.list} with one row per retained draw in the same chain
+and iteration order as the model draws. The columns \code{p[k]} and
+\code{log_p[k]} are conditional probabilities and log probabilities at the
+indicator update in that iteration for support label \code{k}. The columns
+\code{selected} and \code{lower} give the sampled label and the lowest support
+label. An entry is \code{NULL} when the requested sampler did not claim that
+node. Use \code{fit$samplers} to see which nodes each sampler claimed.
+Extensions append the corresponding rows. By default no probabilities
+are recorded. An incomplete or incompatible recording raises a
+\code{BayesTools_sampler_probabilities_error} backend condition.}
+
+\item{sampler_nested_weights}{logical. Share physical weight coordinates for eligible
+nested cumulative one-sided weights in a publication-bias mixture.
+The scientific priors and public weights are preserved. Unsupported pairs
+and mixtures whose private weight nodes are explicitly used or monitored
+keep their ordinary parameterization. The \code{nested_weights} entry in
+\code{attr(fit, "sampler_declarations")} records the two branch indices when
+sharing was used or the reason it was declined. Defaults to \code{FALSE}.}
 
 \item{fit}{a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 extended. A derived-draw view signals

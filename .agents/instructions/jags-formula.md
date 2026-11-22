@@ -241,7 +241,11 @@ continuous, non-point leaves of a publication-bias mixture branch whose nodes th
 text uses only in the branch's own statements and, multiplied by the branch's
 activity test, in the composition (otherwise the branch is declined with its
 reason). Branches, leaves, node names and activity tests come from the
-emitters' node specifications, never from name patterns. A closed gate draws
+emitters' node specifications, never from name patterns. For a bound nested
+selection pair the shared weight leaves are active under either label, and
+the fine-only leaf is active under the fine label. Shared declaration rows
+have a missing single branch ID and retain the full activity expression.
+A closed gate draws
 its node from the node's own distribution and keeps the previous value when a
 deterministic descendant would not be finite. That restore is exact for the
 gates `JAGS_fit()` writes: there a non-finite descendant makes the composed
@@ -261,7 +265,10 @@ inclusion, and other random-effect priors (factor SDs, summary priors) are
 refused with `BayesTools_sampler_declaration_error`. A fit with a marker requires the
 BayesTools module and package (workers included), and
 `attr(fit, "sampler_declarations")` records the declared and declined items,
-which `JAGS_extend()` keeps. Both samplers report incomplete adaptation until
+which `JAGS_extend()` keeps. Its `gate_claims` table reconciles each gate
+with the actual JAGS assignment when the declared name or a direct copy
+from the weight emitter identifies exactly one member. Ambiguous matches
+and missing assignments are unresolved. Both samplers report incomplete adaptation until
 their first update in adaptive mode and draw only from the chain's JAGS
 generator. The factor slice sampler sums the full conditional itself and, like
 the stock slice sampler, stops with a node error when the density is NaN or +Inf
@@ -269,6 +276,23 @@ at a proposal or the current state (a NaN is no evidence of zero density, so a
 rejection could silently truncate the target). With the defaults
 the model text and data handed to rjags are those of a fit without
 declarations.
+
+Package sampler callbacks receive the bound priors, finalized formula designs,
+and combined input data once. Their typed declarations add fresh observed
+zero markers and finite data constants after the legacy gate scan. A marker
+uses a BayesTools marker distribution or the name prefix of a declared
+provider module. Providers must implement a normalized point mass at zero
+for every admitted parent value. Store the validated declaration plus the final
+model text and data. Compiled sampler ownership comes from the rjags
+assignment table. Gate claims resolve against emitted aliases.
+
+Explicit finite-indicator requests add terminal tags after gate analysis.
+Open each virtual probability trace only for an indicator owned by
+`BayesTools::Finite`, using the same call to `coda.samples()` as the scientific
+monitors. The named probability sidecar follows the scientific samples'
+retained chain order and iteration labels. Preserve it on extension without
+adding its columns to convergence diagnostics or parameter coordinates.
+An unclaimed node has a named null entry.
 
 The factor slice algorithm itself is the installed header-only kernel
 `inst/include/BayesTools/factor_slice_kernel.h` (namespace

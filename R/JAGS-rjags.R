@@ -2,7 +2,7 @@
 # setup and reporting. Keep JAGS to one thread per process for both serial
 # fits and PSOCK workers, including workers that own multiple chains.
 .bt_rjags_group <- function(inits, model, data, monitor, adapt, burnin, sample,
-                            thin, silent, keep_live, live_model = NULL){
+                            thin, silent, keep_live, live_model = NULL, probability_plan = NULL){
 
   progress <- if(silent) "none" else "text"
   if(is.null(live_model)){
@@ -28,7 +28,6 @@
   if(burnin > 0){
     stats::update(live_model, n.iter = burnin, progress.bar = progress)
   }
-  draws <- .bt_rjags_samples(live_model, monitor, sample, thin, progress)
   assignments <- rjags::list.samplers(live_model)
   samplers <- data.frame(
     Index.No = rep(seq_along(assignments), lengths(assignments)),
@@ -36,22 +35,85 @@
     Node = as.character(unlist(assignments, use.names = FALSE))
   )
 
-  list(mcmc = draws, end_state = live_model$state(internal = TRUE), samplers = samplers,
+  readouts <- if(!is.null(probability_plan)){
+    .bt_rjags_finite_readouts(probability_plan, samplers)
+  }
+  draws <- .bt_rjags_samples(live_model, monitor, sample, thin, progress, readouts)
+  out <- list(mcmc = draws, end_state = live_model$state(internal = TRUE), samplers = samplers,
     live_model = if(keep_live) live_model)
+  if(!is.null(probability_plan)){
+    probabilities <- stats::setNames(vector("list", nrow(probability_plan)), probability_plan$node)
+    if(length(readouts)){
+      probabilities[names(readouts)] <- attr(draws, "sampler_probabilities", exact = TRUE)
+    }
+    attr(out$mcmc, "sampler_probabilities") <- NULL
+    out$sampler_probabilities <- probabilities
+  }
+  out
+}
+
+# JAGS reports a length-one array by its bare name, even when the supplied
+# reference selects its only cell explicitly. The monitor factory checks
+# the actual marker and sampler identity when it opens the trace.
+.bt_rjags_finite_readouts <- function(plan, samplers){
+
+  assigned <- samplers$Node[samplers$Sampler == "BayesTools::Finite"]
+  scalar <- sub("\\[1(?:,1)*\\]$", "", plan$node, perl = TRUE)
+  owned <- plan$node %in% assigned | scalar %in% assigned
+  stats::setNames(plan$readout[owned], plan$node[owned])
+}
+
+.bt_rjags_probability_stop <- function(...){
+
+  stop(errorCondition(paste0(...), class = "BayesTools_sampler_probabilities_error"))
+}
+
+.bt_rjags_probability_draws <- function(draws, readouts){
+
+  columns <- colnames(draws[[1L]])
+  by_name <- split(seq_along(columns), .bt_jags_parameter_base(columns))
+  stats::setNames(lapply(seq_along(readouts), function(i){
+    indices <- by_name[[readouts[[i]]]]
+    width <- length(indices)
+    if(width < 4L || width %% 2L != 0L ||
+       !identical(columns[indices], paste0(readouts[[i]], "[", seq_len(width), "]"))){
+      .bt_rjags_probability_stop("The compiled finite sampler returned an incomplete probability trace for '",
+        names(readouts)[[i]], "'.")
+    }
+    lower <- draws[[1L]][1L, indices[[width]]]
+    if(!is.finite(lower) || lower != floor(lower) ||
+       any(vapply(draws, function(chain){
+         support <- chain[, indices[[width]]]
+         anyNA(support) || any(support != lower)
+       }, logical(1)))){
+      .bt_rjags_probability_stop("The compiled finite sampler returned inconsistent support labels for '",
+        names(readouts)[[i]], "'.")
+    }
+    labels <- lower + seq_len((width - 2L) / 2L) - 1L
+    coda::mcmc.list(lapply(draws, function(chain){
+      values <- chain[, indices, drop = FALSE]
+      if(anyNA(values) || !all(values[, width - 1L] %in% labels)){
+        .bt_rjags_probability_stop("The compiled finite sampler returned invalid probability trace rows for '",
+          names(readouts)[[i]], "'.")
+      }
+      colnames(values) <- c(paste0("p[", labels, "]"), paste0("log_p[", labels, "]"), "selected", "lower")
+      values
+    }))
+  }), names(readouts))
 }
 
 # rjags 5-5 treats names containing an internal "_word_" like its reserved
 # monitors and passes their subscript to JAGS as part of the variable name.
 # Read those arrays by name, retaining just the coordinates the user requested.
 # Other indexed requests can still read a small slice of a large array.
-.bt_rjags_samples <- function(model, monitor, sample, thin, progress){
+.bt_rjags_samples <- function(model, monitor, sample, thin, progress, readouts = NULL){
 
   monitor <- unname(trimws(monitor))
   base <- trimws(.bt_jags_parameter_base(monitor))
   indexed <- base != monitor
   whole <- unique(c(base[!indexed], base[indexed & grepl("_[A-Za-z][A-Za-z0-9]*_", base)]))
   native <- ifelse(base %in% whole, base, monitor)
-  draws <- rjags::coda.samples(model, variable.names = unique(unname(native)),
+  draws <- rjags::coda.samples(model, variable.names = unique(c(unname(native), unname(readouts))),
     n.iter = as.double(sample) * thin, thin = thin, na.rm = FALSE, progress.bar = progress)
 
   # JAGS returns variables in name order, and each array in column-major order.
@@ -98,12 +160,16 @@
   }
   selection <- unlist(selection, use.names = TRUE)
   selection <- selection[!duplicated(selection)]
-  if(identical(names(selection), columns)) return(draws)
-  coda::mcmc.list(lapply(draws, function(chain){
+  if(!length(readouts) && identical(names(selection), columns)) return(draws)
+  scientific <- coda::mcmc.list(lapply(draws, function(chain){
     chain <- chain[, unname(selection), drop = FALSE]
     colnames(chain) <- names(selection)
     chain
   }))
+  if(length(readouts)){
+    attr(scientific, "sampler_probabilities") <- .bt_rjags_probability_draws(draws, readouts)
+  }
+  scientific
 }
 
 # Warnings emitted on a worker must reach the calling fit, including the
@@ -121,11 +187,11 @@
 }
 
 .bt_rjags_run <- function(model, data, inits, monitor, adapt, burnin, sample,
-                          thin, cl, silent, live_model = NULL){
+                          thin, cl, silent, live_model = NULL, probability_plan = NULL){
 
   if(is.null(cl)){
     return(.bt_rjags_group(inits, model, data, monitor, adapt, burnin, sample,
-      thin, silent, keep_live = TRUE, live_model = live_model))
+      thin, silent, keep_live = TRUE, live_model = live_model, probability_plan = probability_plan))
   }
 
   # The runtime callbacks use the same round-robin chain assignment. Restore
@@ -133,7 +199,7 @@
   groups <- split(seq_along(inits), rep_len(seq_along(cl), length(inits)))
   results <- parallel::clusterApply(cl, lapply(groups, function(ids) inits[ids]),
     .bt_rjags_worker, model = model, data = data, monitor = monitor, adapt = adapt,
-    burnin = burnin, sample = sample, thin = thin, silent = silent)
+    burnin = burnin, sample = sample, thin = thin, silent = silent, probability_plan = probability_plan)
   for(result in results){
     for(w in result$warnings) warning(w)
     if(inherits(result$value, "error")) stop(result$value)
@@ -143,19 +209,42 @@
   mcmc <- unlist(lapply(out, function(group) unclass(group$mcmc)),
     recursive = FALSE, use.names = FALSE)
   end_state <- unlist(lapply(out, "[[", "end_state"), recursive = FALSE, use.names = FALSE)
-  list(mcmc = coda::mcmc.list(mcmc[chain_order]), end_state = end_state[chain_order],
+  merged <- list(mcmc = coda::mcmc.list(mcmc[chain_order]), end_state = end_state[chain_order],
     samplers = out[[1L]]$samplers, live_model = NULL)
+  if(!is.null(probability_plan)){
+    if(!all(vapply(out, function(worker) identical(worker$samplers, merged$samplers), logical(1)))){
+      .bt_rjags_probability_stop("Parallel JAGS workers selected different sampler assignments for the probability trace.")
+    }
+    merged$sampler_probabilities <- stats::setNames(lapply(probability_plan$node, function(node){
+      values <- lapply(out, function(worker) worker$sampler_probabilities[[node]])
+      if(all(vapply(values, is.null, logical(1)))) return(NULL)
+      if(any(vapply(values, is.null, logical(1)))){
+        .bt_rjags_probability_stop("Parallel JAGS workers returned incompatible probability traces for '", node, "'.")
+      }
+      chains <- unlist(lapply(values, unclass), recursive = FALSE, use.names = FALSE)
+      coda::mcmc.list(chains[chain_order])
+    }), probability_plan$node)
+  }
+  merged
 }
 
 .bt_rjags_fit <- function(model, data, inits, monitor, adapt, burnin, sample, thin,
-                          cl = NULL, silent = TRUE){
+                          cl = NULL, silent = TRUE, probability_plan = NULL){
 
-  out <- .bt_rjags_run(model, data, inits, monitor, adapt, burnin, sample, thin, cl, silent)
+  out <- .bt_rjags_run(model, data, inits, monitor, adapt, burnin, sample, thin, cl, silent,
+    probability_plan = probability_plan)
   # Public chain indices count the requested adaptation and burn-in, even
   # when JAGS selects only samplers that never require adaptation.
-  out$mcmc <- coda::mcmc.list(lapply(out$mcmc, function(chain){
+  public_iteration <- function(draws) coda::mcmc.list(lapply(draws, function(chain){
     coda::mcmc(as.matrix(chain), start = as.double(adapt) + burnin + 1, thin = thin)
   }))
+  out$mcmc <- public_iteration(out$mcmc)
+  if(!is.null(probability_plan)){
+    attr(out, "sampler_declarations") <- list(probabilities = probability_plan)
+    out$sampler_probabilities <- lapply(out$sampler_probabilities, function(draws){
+      if(!is.null(draws)) public_iteration(draws)
+    })
+  }
   out$model <- model
   out["data"] <- list(data)
   out$monitor <- monitor
@@ -212,15 +301,30 @@
 
 .bt_rjags_extend <- function(fit, sample, adapt, cl = NULL, silent = TRUE){
 
+  probability_plan <- attr(fit, "sampler_declarations", exact = TRUE)[["probabilities"]]
   out <- .bt_rjags_run(fit$model, fit$data, fit$end_state, fit$monitor, adapt,
-    0L, sample, fit$thin, cl, silent, live_model = fit$live_model)
-  fit$mcmc <- coda::mcmc.list(Map(function(previous, additional){
-    if(!identical(colnames(previous), colnames(additional))){
-      stop("The rebuilt model returned different monitored coordinates.", call. = FALSE)
-    }
-    coda::mcmc(rbind(as.matrix(previous), as.matrix(additional)),
-      start = stats::start(previous), thin = fit$thin)
-  }, fit$mcmc, out$mcmc))
+    0L, sample, fit$thin, cl, silent, live_model = fit$live_model, probability_plan = probability_plan)
+  append_draws <- function(previous, additional, mismatch){
+    coda::mcmc.list(Map(function(kept, fresh){
+      if(!identical(colnames(kept), colnames(fresh))) mismatch()
+      coda::mcmc(rbind(as.matrix(kept), as.matrix(fresh)), start = stats::start(kept), thin = fit$thin)
+    }, previous, additional))
+  }
+  fit$mcmc <- append_draws(fit$mcmc, out$mcmc, function(){
+    stop("The rebuilt model returned different monitored coordinates.", call. = FALSE)
+  })
+  if(!is.null(probability_plan)){
+    fit$sampler_probabilities <- stats::setNames(lapply(probability_plan$node, function(node){
+      kept <- fit$sampler_probabilities[[node]]
+      fresh <- out$sampler_probabilities[[node]]
+      mismatch <- function(){
+        .bt_rjags_probability_stop("The rebuilt JAGS model returned an incompatible probability trace for '", node, "'.")
+      }
+      if(is.null(kept) != is.null(fresh)) mismatch()
+      if(is.null(kept)) return(NULL)
+      append_draws(kept, fresh, mismatch)
+    }), probability_plan$node)
+  }
   fit$sample <- as.double(fit$sample) + sample
   fit$end_state <- out$end_state
   fit$samplers <- out$samplers

@@ -20,6 +20,10 @@ bayestools_certification_cases <- function() {
       description = "Expensive reference sweeps of prior densities, ordinates, region grids, and quantile estimators moved out of the unit lane.",
       native      = FALSE
     ),
+    `finite-readout` = list(
+      description = "Finite indicator traces against stock JAGS chains and analytic probabilities at the actual sampler update.",
+      native      = TRUE
+    ),
     `fit-assertions` = list(
       description = "Live-fit assertions of the post-fit interface, run when the code they reach changes.",
       native      = TRUE,
@@ -35,6 +39,10 @@ bayestools_certification_cases <- function() {
     ),
     `model-averaging` = list(
       description = "Model probabilities, inclusion Bayes factors, and averaged posteriors against exact enumeration.",
+      native      = TRUE
+    ),
+    `nested-weights` = list(
+      description = "Shared cumulative selection weights and all finite label odds against analytic checks.",
       native      = TRUE
     ),
     predictions = list(

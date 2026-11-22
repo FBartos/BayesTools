@@ -1,0 +1,191 @@
+# Package-supplied declarations enter the graph only as observed markers and
+# numeric data. The provider owns the marker distribution's constant density.
+.bt_sampler_finite_prefix <- "BayesTools_finite_"
+.bt_sampler_finite_readout_prefix <- "BayesTools_finite_readout_"
+.bt_sampler_node_pattern <- "[A-Za-z][A-Za-z0-9_.]*"
+
+.bt_sampler_check_plan_arguments <- function(sampler_joint, sampler_probabilities){
+
+  if(!is.null(sampler_joint) && !is.function(sampler_joint)){
+    .bt_sampler_declaration_stop("The 'sampler_joint' argument must be NULL or a function.")
+  }
+  if(is.null(sampler_probabilities)){
+    return(character())
+  }
+  nodes <- .bt_sampler_node_references(sampler_probabilities, ranges = FALSE)
+  if(is.null(nodes) || anyDuplicated(nodes)){
+    .bt_sampler_declaration_stop(
+      "The 'sampler_probabilities' argument must contain distinct JAGS node names or scalar indexed references."
+    )
+  }
+  nodes
+}
+
+.bt_sampler_node_references <- function(value, ranges = TRUE){
+
+  if(!is.character(value) || !is.null(dim(value)) || anyNA(value)){
+    return(NULL)
+  }
+  # Spaces around the brackets and separators are valid. Spaces within a
+  # symbol or index are invalid rather than silently joined together.
+  index <- if(ranges) "[1-9][0-9]*(?:[ \\t]*:[ \\t]*[1-9][0-9]*)?" else "[1-9][0-9]*"
+  pattern <- paste0("\\A[ \\t]*", .bt_sampler_node_pattern,
+    "(?:[ \\t]*\\[[ \\t]*", index, "(?:[ \\t]*,[ \\t]*", index,
+    ")*[ \\t]*\\])?[ \\t]*\\z")
+  if(!all(grepl(pattern, value, perl = TRUE))){
+    return(NULL)
+  }
+  unname(gsub("[ \\t]", "", value, perl = TRUE))
+}
+
+.bt_sampler_joint_fields <- function(object, required, optional = character()){
+
+  is.list(object) && !is.object(object) &&
+    length(names(object)) == length(object) && !anyDuplicated(names(object)) &&
+    all(required %in% names(object)) && all(names(object) %in% c(required, optional))
+}
+
+.bt_sampler_joint_numeric <- function(value){
+
+  typeof(value) %in% c("double", "integer") && !is.object(value) &&
+    length(value) > 0L && all(is.finite(value))
+}
+
+.bt_sampler_joint_names <- function(value){
+
+  (is.character(value) || is.null(value)) && !anyNA(value) &&
+    all(grepl(paste0("\\A", .bt_sampler_node_pattern, "\\z"), value, perl = TRUE))
+}
+
+.bt_sampler_joint_markers <- function(joint, existing, jags_modules, retired = character()){
+
+  fail <- function(...){
+    .bt_sampler_declaration_stop("The 'sampler_joint' function returned an invalid declaration: ", ..., ".")
+  }
+  if(!.bt_sampler_joint_fields(joint, "markers", "data") ||
+     !is.list(joint[["markers"]]) || is.object(joint[["markers"]]) || !length(joint[["markers"]])){
+    fail("expected a nonempty 'markers' list and optional 'data'")
+  }
+  payload <- joint[["data"]]
+  if(!is.null(payload) && (!is.list(payload) || is.object(payload) ||
+     length(names(payload)) != length(payload) || !.bt_sampler_joint_names(names(payload)) ||
+     anyDuplicated(names(payload)) || !all(vapply(payload, .bt_sampler_joint_numeric, logical(1))))){
+    fail("'data' must be a uniquely named list of finite numeric constants")
+  }
+  payload <- lapply(payload, function(value){
+    if(is.null(dim(value))) as.vector(value) else array(as.vector(value), dim(value))
+  })
+
+  reserved <- c(.bt_sampler_gate_prefix, .bt_sampler_block_prefix, .bt_sampler_finite_prefix)
+  distributions <- c("dbt_gate", "dbt_block")
+  provider_prefix <- paste0("d", tolower(jags_modules), "_", recycle0 = TRUE)
+  marked <- names(payload)
+  check_nested <- function(nodes){
+    conflict <- intersect(nodes, retired)
+    if(length(conflict)){
+      fail("node '", conflict[[1L]],
+        "' was replaced by nested weight sharing; use 'sampler_nested_weights' = FALSE to access this node")
+    }
+  }
+  check_fresh <- function(names){
+    check_nested(names)
+    collision <- names %in% existing |
+      vapply(names, function(name) any(startsWith(name, reserved)), logical(1))
+    if(any(collision)){
+      fail("name '", names[which(collision)[1L]], "' is already used or reserved")
+    }
+  }
+  check_fresh(marked)
+  known <- c(existing, marked)
+  markers <- lapply(unname(joint[["markers"]]), function(marker){
+    if(!.bt_sampler_joint_fields(marker, c("name", "distribution", "arguments")) ||
+       length(marker$name) != 1L || !.bt_sampler_joint_names(marker$name) ||
+       length(marker$distribution) != 1L || !.bt_sampler_joint_names(marker$distribution) ||
+       !is.list(marker$arguments) || is.object(marker$arguments)){
+      fail("each marker must have a JAGS 'name', a 'distribution' name and an ordered 'arguments' list")
+    }
+    if(!marker$distribution %in% distributions && !any(startsWith(marker$distribution, provider_prefix))){
+      fail("distribution '", marker$distribution,
+        "' must be a BayesTools marker or use the prefix of a provider listed in 'jags_modules'")
+    }
+    check_fresh(marker$name)
+    if(marker$name %in% marked){
+      fail("name '", marker$name, "' is used more than once")
+    }
+    marked <<- c(marked, marker$name)
+    arguments <- lapply(unname(marker$arguments), function(value){
+      references <- .bt_sampler_node_references(value)
+      if(length(references)){
+        bases <- .bt_jags_parameter_base(references)
+        check_nested(bases)
+        unknown <- setdiff(bases, known)
+        if(length(unknown)){
+          fail("unknown node '", unknown[[1L]], "' in marker '", marker$name, "'")
+        }
+        return(references)
+      }
+      if(.bt_sampler_joint_numeric(value) && is.null(dim(value))){
+        return(as.vector(value))
+      }
+      fail("each argument must contain JAGS node references or finite numeric literals")
+    })
+    list(name = as.vector(marker$name), distribution = as.vector(marker$distribution), arguments = arguments)
+  })
+  lines <- vapply(markers, function(marker){
+    args <- vapply(marker$arguments, function(value){
+      if(is.numeric(value)) value <- trimws(formatC(value, digits = 17L, format = "g", decimal.mark = "."))
+      if(length(value) == 1L) value else paste0("c(", paste(value, collapse = ", "), ")")
+    }, character(1))
+    paste0(marker$name, " ~ ", marker$distribution, "(", paste(args, collapse = ", "), ")")
+  }, character(1))
+  marker_names <- setdiff(marked, names(payload))
+  list(lines = lines, data = c(payload, stats::setNames(rep(list(0), length(marker_names)), marker_names)),
+    declaration = list(markers = markers, data = names(payload)))
+}
+
+.bt_sampler_apply_plan <- function(legacy, model_names, prior_list, formula_design, data,
+                                   sampler_joint, sampler_probabilities, jags_modules = NULL){
+
+  if(is.null(sampler_joint) && !length(sampler_probabilities)){
+    return(legacy)
+  }
+  existing <- unique(c(.bt_sampler_tokens(legacy$model), names(legacy$data),
+    names(prior_list), .bt_jags_parameter_base(model_names)))
+  joint <- if(!is.null(sampler_joint)){
+    sampler_joint(prior_list = prior_list, formula_design = formula_design, data = data)
+  }
+  if(!is.null(joint)){
+    bias <- prior_list[["bias"]]
+    nested <- .bt_nested_weights_plan(bias)
+    retired <- if(!is.null(nested)) .bt_nested_weights_retired(bias, nested)
+    package_markers <- .bt_sampler_joint_markers(joint, existing, jags_modules, retired)
+    legacy$model <- .bt_sampler_insert_markers(legacy$model, package_markers$lines)
+    legacy$data <- c(legacy$data, package_markers$data)
+    legacy$declarations$joint <- package_markers$declaration
+    legacy$uses_module <- TRUE
+  }
+
+  if(length(sampler_probabilities)){
+    reserved <- existing[startsWith(existing, .bt_sampler_finite_prefix)]
+    if(length(reserved)){
+      .bt_sampler_declaration_stop("The model uses reserved BayesTools sampler node name '", reserved[[1L]], "'.")
+    }
+    unknown <- setdiff(.bt_jags_parameter_base(sampler_probabilities), existing)
+    if(length(unknown)){
+      .bt_sampler_declaration_stop("Node '", unknown[[1L]], "' in 'sampler_probabilities' is unavailable in the model.")
+    }
+    id <- seq_along(sampler_probabilities)
+    plan <- data.frame(
+      node = sampler_probabilities,
+      marker = paste0(.bt_sampler_finite_prefix, id),
+      readout = paste0(.bt_sampler_finite_readout_prefix, id),
+      stringsAsFactors = FALSE
+    )
+    legacy$model <- .bt_sampler_insert_markers(legacy$model,
+      paste0(plan$marker, " <- bt_finite_tag(", plan$node, ")"))
+    legacy$declarations$probabilities <- plan
+    legacy$uses_module <- TRUE
+  }
+
+  legacy
+}

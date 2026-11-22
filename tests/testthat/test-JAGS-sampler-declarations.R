@@ -400,6 +400,15 @@ test_that("ordinary mixture sources keep gate order, literal points and raw coef
   expect_identical(sources$branches[[2L]]$location, 1.25)
   expect_false(sources$branches[[2L]]$stochastic)
 
+  rho <- list(rho = prior_mixture(list(prior("beta", list(2, 3)))))
+  rho_sources <- JAGS_mixture_sources(rho, "rho")
+  expect_identical(rho_sources$gate, "rho_indicator")
+  expect_identical(rho_sources$probabilities, 1)
+  expect_identical(rho_sources$branches[[1L]]$source, "rho_component_1")
+  expect_true(rho_sources$branches[[1L]]$stochastic)
+  expect_match(JAGS_add_priors("model{ y ~ dnorm(0, 1) }", rho),
+               "rho_component_1 ~ dbeta(", fixed = TRUE)
+
   group <- data.frame(group = factor(rep(letters[1:4], 2)))
   factor_slab <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
   compiled <- JAGS_formula(~ group, "mu", group, list(
@@ -440,6 +449,63 @@ test_that("bias mixture sources identify raw slopes and physical weights on the 
       expect_match(syntax, paste0(node, " <- "), fixed = TRUE)
     }
   }
+  expect_error(JAGS_mixture_sources(list(bias = prior_mixture(list(.wf_cumulative2()))), "bias"),
+               "at least two branches", fixed = TRUE, class = "BayesTools_sampler_declaration_error")
+})
+
+test_that("nested weight markers follow both active branches and their private dependencies", {
+
+  model <- "model{\n  y ~ dnorm(omega[2], 1)\n}"
+  priors <- list(bias = prior_mixture(list(
+    prior_none(),
+    prior_weightfunction("one-sided", c(0.05, 0.5), wf_cumulative(c(1, 1, 1))),
+    prior_PET("normal", list(0, 1)),
+    prior_weightfunction("one-sided", c(0.025, 0.05, 0.5), wf_cumulative(c(1, 1, 1, 1)))
+  )))
+  bound <- .bt_nested_weights_bind(priors, model, add_parameters = NULL,
+                                   sampler_nested_weights = TRUE)$prior_list
+  plan <- .bt_nested_weights_plan(bound$bias)
+  expect_identical(c(plan$coarse, plan$fine), c(2L, 4L))
+  out <- .declare(bound, model_syntax = model, sampler_gates = TRUE)
+  markers <- out$declarations$gates
+  expect_identical(markers$node, c("PET_1", unname(plan$nodes)))
+  expect_identical(markers$active, c("equals(bias_indicator, 3)",
+    rep("equals(bias_indicator, 2) + equals(bias_indicator, 4)", 2L), "equals(bias_indicator, 4)"))
+  expect_identical(markers$branch, c(3L, NA_integer_, NA_integer_, 4L))
+  expect_identical(nrow(out$declarations$declined), 0L)
+  expect_true(all(vapply(unname(plan$nodes), function(node) {
+    grepl(paste0("dbt_gate(", node, ","), out$model, fixed = TRUE)
+  }, logical(1))))
+
+  bypass <- paste0("model{\n  y ~ dnorm(omega[2] + ", plan$nodes[["a"]], ", 1)\n}")
+  guarded <- .declare(bound, model_syntax = bypass, sampler_gates = TRUE)$declarations
+  expect_identical(guarded$gates$node, "PET_1")
+  expect_identical(nrow(guarded$declined), 2L)
+  expect_true(all(grepl("occurs outside the statements of the mixture", guarded$declined$reason, fixed = TRUE)))
+})
+
+test_that("gate claims use only emitted copies to resolve reported JAGS aliases", {
+
+  priors <- list(bias = prior_mixture(list(
+    prior_none(),
+    prior_weightfunction("one-sided", 0.025, wf_cumulative(c(1, 1))),
+    prior_weightfunction("one-sided", c(0.025, 0.5), wf_cumulative(c(1, 1, 1))),
+    prior_PET("normal", list(0, 1))
+  )))
+  gates <- .declare(priors, sampler_gates = TRUE)$declarations$gates
+  samplers <- data.frame(Index.No = 1:4, Sampler = c("BayesTools::GatedSlice", rep("base::RealSlicer", 3L)),
+                        Node = c("omega_component_2[2]", "omega_component_3[2]", "eta_component_3[2]", "PET_1"))
+  claims <- .bt_sampler_gate_claims(gates, priors, samplers)
+  expect_identical(claims$marker, gates$marker)
+  expect_identical(claims$node, gates$node)
+  expect_identical(claims$reported_node, c("omega_component_2[2]", NA_character_, "eta_component_3[2]",
+                                         NA_character_, "PET_1"))
+  expect_identical(claims$assignment, c(1L, NA_integer_, 3L, NA_integer_, 4L))
+  expect_identical(claims$status, c("claimed", "unresolved", "other", "unresolved", "other"))
+
+  ambiguous <- rbind(samplers, data.frame(Index.No = 5L, Sampler = "BayesTools::GatedSlice",
+                                          Node = "omega_local_component_2[2]"))
+  expect_identical(.bt_sampler_gate_claims(gates, priors, ambiguous)$status[[1L]], "unresolved")
 })
 
 test_that("blocks refuse guarded priors with the declaration error class", {
