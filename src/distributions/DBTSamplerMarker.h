@@ -22,18 +22,16 @@ namespace jags {
       explicit DBTSamplerMarker(std::string const &name);
       double logDensity(double x, PDFType type,
                         std::vector<double const *> const &parameters,
-                        double const *lower, double const *upper) const;
+                        double const *lower, double const *upper) const override;
       double randomSample(std::vector<double const *> const &parameters,
                           double const *lower, double const *upper,
-                          RNG *rng) const;
-      double typicalValue(std::vector<double const *> const &parameters,
-                          double const *lower, double const *upper) const;
-      bool checkParameterValue(std::vector<double const *> const &parameters) const;
-      bool checkParameterDiscrete(std::vector<bool> const &mask) const;
-      bool isDiscreteValued(std::vector<bool> const &mask) const;
-      bool isSupportFixed(std::vector<bool> const &fixmask) const;
-      double l(std::vector<double const *> const &parameters) const;
-      double u(std::vector<double const *> const &parameters) const;
+                          RNG *rng) const override;
+      bool checkParameterValue(std::vector<double const *> const &parameters) const override;
+      bool checkParameterDiscrete(std::vector<bool> const &mask) const override;
+      bool isDiscreteValued(std::vector<bool> const &mask) const override;
+      bool isSupportFixed(std::vector<bool> const &fixmask) const override;
+      double l(std::vector<double const *> const &parameters) const override;
+      double u(std::vector<double const *> const &parameters) const override;
     };
 
     // Distribution names shared by the module registration and the factories.

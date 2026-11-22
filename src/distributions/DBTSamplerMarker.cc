@@ -27,12 +27,6 @@ namespace jags {
       return 0.0;
     }
 
-    double DBTSamplerMarker::typicalValue(std::vector<double const *> const &parameters,
-                                          double const *lower, double const *upper) const
-    {
-      return 0.0;
-    }
-
     bool DBTSamplerMarker::checkParameterValue(std::vector<double const *> const &parameters) const
     {
       return true;

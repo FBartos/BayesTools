@@ -28,7 +28,7 @@ jobs:
         uses: r-lib/actions/setup-pandoc@v2
 
       - name: Set up JAGS
-        uses: ./.github/actions/setup-jags
+        uses: ./.github/actions/setup-jags5
 
       # Runner variables such as ImageOS are not in the expression env context.
       - name: Read runner image
@@ -40,18 +40,15 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-${{ steps.runner-image.outputs.image }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-${{ hashFiles('**/DESCRIPTION') }}
+          key: ${{ runner.os }}-${{ steps.runner-image.outputs.image }}-r-${{ steps.setup-r.outputs.installed-r-version }}-jags5-cache-v1-${{ hashFiles('**/DESCRIPTION') }}
           restore-keys: |
-            ${{ runner.os }}-${{ steps.runner-image.outputs.image }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
+            ${{ runner.os }}-${{ steps.runner-image.outputs.image }}-r-${{ steps.setup-r.outputs.installed-r-version }}-jags5-cache-v1-
 
       - name: Install the required packages
         run: |
           options(repos = c(CRAN = "https://cloud.r-project.org"))
 
-          # Check installation without loading namespaces: loading RoBMA would
-          # load a cached BayesTools DLL that the installation step cannot
-          # replace on Windows while this process holds it.
-          required_packages <- c('devtools', 'rcmdcheck', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'knitr', 'rmarkdown', 'lme4')
+          required_packages <- c('devtools', 'rcmdcheck', 'BayesFactor', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'knitr', 'rmarkdown', 'lme4')
           is_installed <- nzchar(vapply(required_packages, function(package) system.file(package = package), character(1)))
           missing_packages <- required_packages[!is_installed]
 

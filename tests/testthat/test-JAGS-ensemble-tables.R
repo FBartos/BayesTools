@@ -613,7 +613,6 @@ test_that("Simplified interpret2 function", {
 test_that("as_mixed_posteriors works with ensemble tables", {
 
   skip_if_no_fits()
-  skip_if_not_installed("RoBMA")
   skip_if_missing_fits(c("fit_complex_mixed", "fit_simple_formula_mixed"))
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")

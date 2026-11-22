@@ -45,8 +45,7 @@ test_that("local unscale joint assembly retains fresh scalar laws and scoped ref
 }
 
 .mock_marginal_fit <- function(posterior, prior_list) {
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   attach_test_parameter_map(fit)
 }
@@ -560,8 +559,7 @@ test_that("conditional spike-and-slab prior densities use the slab", {
     mu_x           = c(rep(0, 50), seq(0.5, 1.5, length.out = 50)),
     mu_x_indicator = c(rep(0, 50), rep(1, 50))
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -704,8 +702,7 @@ test_that("marginal inference conditions formula levels by active weights", {
     ),
     indicators
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- prior_list
   fit <- attach_test_parameter_map(fit)
 
@@ -800,8 +797,7 @@ test_that("marginal inference conditions treatment factor levels by active weigh
     ),
     indicators
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- formula_result[["prior_list"]]
   fit <- attach_test_parameter_map(fit)
 
@@ -1030,8 +1026,7 @@ test_that("an empty conditioning event makes only its own levels unavailable", {
 
   # treatment-coded spike-and-slab factor with no occupied slab draw
   make_fit <- function(columns, priors){
-    fit <- coda::mcmc(columns)
-    class(fit) <- c("mcmc", "BayesTools_fit")
+    fit <- test_fit_from_chains(coda::mcmc(columns))
     attr(fit, "prior_list") <- priors
     attach_test_parameter_map(fit)
   }

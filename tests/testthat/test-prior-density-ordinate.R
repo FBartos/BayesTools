@@ -2895,8 +2895,7 @@ test_that("a point-mass ordinate reports the structural limit of a regular conti
 test_that("posterior producer maps declared zero states without changing mass", {
 
   draws <- cbind(x = c(rep(0, 12), seq(.1, 2, length.out = 24)), x_indicator = rep(c(0, 1), c(12, 24)))
-  fit <- coda::mcmc(draws)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(draws))
   attr(fit, "prior_list") <- list(x = prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)), prior_inclusion = prior("spike", list(.5))))
   fit <- attach_test_parameter_map(fit)
   fit <- .bt_attach_parameter_map(fit, monitor_names = colnames(draws))
@@ -2923,9 +2922,7 @@ test_that("a bare PET or PEESE prior is its underlying truncated simple prior", 
     # the density-context route of a fit returns the same ordinate
     name <- if(is.prior.PET(bare)) "PET" else "PEESE"
     set.seed(1)
-    fit <- structure(
-      coda::mcmc(matrix(abs(stats::rnorm(2000)), ncol = 1, dimnames = list(NULL, name))),
-      class = c("mcmc", "BayesTools_fit"))
+    fit <- test_fit_from_chains(coda::mcmc(matrix(abs(stats::rnorm(2000)), ncol = 1, dimnames = list(NULL, name))))
     attr(fit, "prior_list") <- stats::setNames(list(bare), name)
     fit <- attach_test_parameter_map(fit)
     density <- parameter_prior_density(fit, parameter_catalog_resolve(parameter_catalog(fit), name))

@@ -1,9 +1,7 @@
 .fit_to_posterior <- function(fit){
 
   ### check the input and split it on posterior and data
-  if(inherits(fit, "BayesTools_draws_view")){
-    posterior <- .extract_posterior_samples(fit, as_list = FALSE)
-  }else if(inherits(fit, "runjags")){
+  if(inherits(fit, "BayesTools_fit")){
 
     # get posterior and merge chains
     posterior <- .extract_posterior_samples(fit, as_list = FALSE)

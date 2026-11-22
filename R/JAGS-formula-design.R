@@ -493,7 +493,7 @@ JAGS_formula_draws <- function(draws, formula, parameter, data, prior_list,
     .bt_validate_formula_design_replay_schema(formula_design[[parameter_name]],
       context = "JAGS_formula_draws() existing declaration carrier")
   }
-  if(inherits(draws, c("runjags", "BayesTools_fit"))){
+  if(inherits(draws, "BayesTools_fit")){
     stop(
       "'draws' must be draws without a fit: a fit from JAGS_fit() carries ",
       "the formula designs of its formulas.",

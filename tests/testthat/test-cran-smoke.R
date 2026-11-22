@@ -32,7 +32,6 @@ test_that("native routines and S3 methods are registered", {
 test_that("the JAGS module compiles, samples, and bridges a minimal model", {
 
   skip_if_not_installed("rjags")
-  skip_if_not_installed("runjags")
   skip_if_not_installed("bridgesampling")
   expect_true(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = TRUE)))
 

@@ -56,7 +56,7 @@ JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, 
   )))
 }
 
-# 'adapt' of JAGS_fit() and of an extension. runjags counts the adaptation
+# 'adapt' of JAGS_fit() and of an extension. rjags counts the adaptation
 # iterations as an integer, so larger values cannot be run.
 .JAGS_check_adapt <- function(adapt, lower = 50, call = ""){
 

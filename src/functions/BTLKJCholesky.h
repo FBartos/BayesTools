@@ -12,15 +12,15 @@ namespace jags {
       BTLKJCholesky();
       void evaluate(double *value,
                     std::vector<double const *> const &args,
-                    std::vector<unsigned int> const &lengths) const;
-      unsigned int length(std::vector<unsigned int> const &lengths,
-                          std::vector<double const *> const &args) const;
-      bool checkParameterLength(std::vector<unsigned int> const &lengths) const;
+                    std::vector<unsigned long> const &lengths) const override;
+      unsigned long length(std::vector<unsigned long> const &lengths,
+                          std::vector<double const *> const &args) const override;
+      bool checkParameterLength(std::vector<unsigned long> const &lengths) const override;
       bool checkParameterValue(std::vector<double const *> const &args,
-                               std::vector<unsigned int> const &lengths) const;
-      bool checkParameterDiscrete(std::vector<bool> const &mask) const;
-      bool checkParameterFixed(std::vector<bool> const &mask) const;
-      bool isDiscreteValued(std::vector<bool> const &mask) const;
+                               std::vector<unsigned long> const &lengths) const override;
+      bool checkParameterDiscrete(std::vector<bool> const &mask) const override;
+      bool checkParameterFixed(std::vector<bool> const &mask) const override;
+      bool isDiscreteValued(std::vector<bool> const &mask) const override;
     };
 
     class BTLKJCholeskyOrdered : public VectorFunction
@@ -29,15 +29,15 @@ namespace jags {
       BTLKJCholeskyOrdered();
       void evaluate(double *value,
                     std::vector<double const *> const &args,
-                    std::vector<unsigned int> const &lengths) const;
-      unsigned int length(std::vector<unsigned int> const &lengths,
-                          std::vector<double const *> const &args) const;
-      bool checkParameterLength(std::vector<unsigned int> const &lengths) const;
+                    std::vector<unsigned long> const &lengths) const override;
+      unsigned long length(std::vector<unsigned long> const &lengths,
+                          std::vector<double const *> const &args) const override;
+      bool checkParameterLength(std::vector<unsigned long> const &lengths) const override;
       bool checkParameterValue(std::vector<double const *> const &args,
-                               std::vector<unsigned int> const &lengths) const;
-      bool checkParameterDiscrete(std::vector<bool> const &mask) const;
-      bool checkParameterFixed(std::vector<bool> const &mask) const;
-      bool isDiscreteValued(std::vector<bool> const &mask) const;
+                               std::vector<unsigned long> const &lengths) const override;
+      bool checkParameterDiscrete(std::vector<bool> const &mask) const override;
+      bool checkParameterFixed(std::vector<bool> const &mask) const override;
+      bool isDiscreteValued(std::vector<bool> const &mask) const override;
     };
 
     class BTLKJCorr : public VectorFunction
@@ -46,15 +46,15 @@ namespace jags {
       BTLKJCorr();
       void evaluate(double *value,
                     std::vector<double const *> const &args,
-                    std::vector<unsigned int> const &lengths) const;
-      unsigned int length(std::vector<unsigned int> const &lengths,
-                          std::vector<double const *> const &args) const;
-      bool checkParameterLength(std::vector<unsigned int> const &lengths) const;
+                    std::vector<unsigned long> const &lengths) const override;
+      unsigned long length(std::vector<unsigned long> const &lengths,
+                          std::vector<double const *> const &args) const override;
+      bool checkParameterLength(std::vector<unsigned long> const &lengths) const override;
       bool checkParameterValue(std::vector<double const *> const &args,
-                               std::vector<unsigned int> const &lengths) const;
-      bool checkParameterDiscrete(std::vector<bool> const &mask) const;
-      bool checkParameterFixed(std::vector<bool> const &mask) const;
-      bool isDiscreteValued(std::vector<bool> const &mask) const;
+                               std::vector<unsigned long> const &lengths) const override;
+      bool checkParameterDiscrete(std::vector<bool> const &mask) const override;
+      bool checkParameterFixed(std::vector<bool> const &mask) const override;
+      bool isDiscreteValued(std::vector<bool> const &mask) const override;
     };
   }
 }

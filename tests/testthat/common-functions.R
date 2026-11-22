@@ -117,8 +117,8 @@ ordered_plot_test_fixture <- function(total = prior("normal", list(1, 1)),
   }
   values <- cbind(mu_intercept = seq(-1, 1, length.out = 120L), coefficients, sources)
   fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(values)), sample = 120L,
-    summary.pars = list(mutate = NULL), monitor = colnames(values)),
-    class = c("runjags", "BayesTools_fit", "list"))
+    monitor = colnames(values)),
+    class = "BayesTools_fit")
   attr(fit, "prior_list") <- formula$prior_list
   attr(fit, "formula_design") <- list(mu = formula$formula_design)
   fit <- attach_test_parameter_map(fit)
@@ -137,15 +137,21 @@ hd_reference <- function(x, p) {
   sum(w * sort(x))
 }
 
-# A mock backend result with the fitted metadata that functions reading a fit
-# require: one draw column per chain of 'end.state', an empty parameter map,
-# draw geometry, and the fit contract.
-contract_test_backend_fit <- function(fit) {
-  chains <- max(length(fit[["end.state"]]), 1L)
-  fit[["mcmc"]] <- do.call(coda::mcmc.list, lapply(seq_len(chains), function(chain) {
+# Only mocked extensions use these states. Distinct per-chain RNG states and
+# JAGS provenance give the record the same continuation fields as a real fit.
+add_test_chain_states <- function(fit) {
+  fit$end_state <- lapply(seq_along(fit$mcmc), function(i) {
+    list(.RNG.name = "base::Wichmann-Hill", .RNG.state = c(i, i + 1L, i + 2L))
+  })
+  fit$backend <- list(jags = as.character(rjags::jags.version()), rjags = as.character(utils::packageVersion("rjags")))
+  fit
+}
+
+contract_test_backend_fit <- function(chains = 1L) {
+  mcmc <- coda::mcmc.list(lapply(seq_len(chains), function(i) {
     coda::mcmc(matrix(0, nrow = 2L, ncol = 1L, dimnames = list(NULL, "x")))
   }))
-  fit[["summary.pars"]] <- list(mutate = NULL)
+  fit <- add_test_chain_states(structure(list(mcmc = mcmc), class = "BayesTools_fit"))
   attr(fit, "parameter_map") <- BayesTools:::.bt_build_parameter_map(character())
   fit <- BayesTools:::.bt_attach_draw_geometry(fit)
   BayesTools:::.bt_attach_fit_contract(fit)
@@ -578,7 +584,7 @@ test_reference_text <- function(text, filename, info_msg = NULL,
 }
 
 .test_cache_required_catalog <- function() {
-  bayestools_required_fit_catalog()
+  bayestools_expected_fit_catalog()
 }
 
 skip_if_no_fits <- function() {
@@ -1193,7 +1199,7 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   # (.test_cache_description_hashes()).
   generator_sources <- c(
     .test_cache_package_src_files(
-      files = c("Makevars.in", "Makevars.win", "Makevars.win.common", "Makevars.ucrt"),
+      files = c("Makevars", "Makevars.win", "Makevars.common"),
       patterns = "\\.(c|cc|h)$"
     ),
     test_00_model_fits = testthat::test_path("test-00-model-fits.R")
@@ -1232,7 +1238,6 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
       test_helper_save_fit = "save_fit",
       catalog_registry_flag_columns = "bayestools_registry_flag_columns",
       catalog_registry_schema_columns = "bayestools_registry_schema_columns",
-      catalog_optional_fit_requirements = "bayestools_optional_fit_requirements",
       catalog_random_z_monitors = ".bayestools_random_z_monitors",
       catalog_indexed_monitors = ".bayestools_indexed_monitors",
       catalog_lkj_monitors = ".bayestools_lkj_monitors",
@@ -1242,8 +1247,7 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
       catalog_static_logical = ".bayestools_static_logical",
       catalog_save_fit_rows = ".bayestools_save_fit_catalog_rows",
       catalog_semantic_fit_overrides = "bayestools_semantic_fit_catalog_overrides",
-      catalog_expected_fit = "bayestools_expected_fit_catalog",
-      catalog_required_fit = "bayestools_required_fit_catalog"
+      catalog_expected_fit = "bayestools_expected_fit_catalog"
     ),
     character()
   )
@@ -1618,6 +1622,8 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
 .test_cache_source_hashes <- function(name) {
   c(
     .test_cache_file_source_hashes(name),
+    if (identical(name, "model-fit")) c(jags_version = as.character(rjags::jags.version()),
+                                         rjags_version = as.character(utils::packageVersion("rjags"))),
     .test_cache_function_hashes(name),
     .test_cache_package_function_hashes(name)
   )

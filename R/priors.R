@@ -423,7 +423,7 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' sampled parameters: the total effect, labelled \code{f{total}}, and, for
 #' random allocations, the allocation share of each increment, labelled by the
 #' level the increment reaches, \code{f[share: mid]} (see
-#' [runjags_estimates_table()], [ensemble_estimates_table()], and
+#' [JAGS_estimates_table()], [ensemble_estimates_table()], and
 #' [parameter_labels()] for the labels of terms with several slices or
 #' predictors). The total (one per slice) and each share of a random
 #' allocation are quantities of the parameter catalog ([parameter_catalog()]),

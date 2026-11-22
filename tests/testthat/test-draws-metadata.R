@@ -573,8 +573,7 @@ test_that("producers store their draw metadata in the container only", {
   set.seed(1)
   posterior <- cbind(mu = c(rep(0, 10), stats::rnorm(30)),
                      mu_indicator = rep(c(0, 1), c(10, 30)))
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- list(
     mu = prior_spike_and_slab(prior("normal", list(0, 1)))
   )
@@ -604,8 +603,7 @@ test_that("producers store their draw metadata in the container only", {
     mu_indicator = rep(c(0, 1), c(100, 300)),
     sigma        = stats::rlnorm(400, 0, .2)
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- list(
     mu    = prior_spike_and_slab(prior("normal", list(0, 1))),
     sigma = prior("lognormal", list(0, 1))
@@ -623,8 +621,7 @@ test_that("producers declare averaged draws and posterior_atoms_free() reads the
     mu_indicator = rep(c(0, 1), c(100, 300)),
     sigma        = stats::rlnorm(400, 0, .2)
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- list(
     mu    = prior_spike_and_slab(prior("normal", list(0, 1))),
     sigma = prior("lognormal", list(0, 1))
@@ -1008,8 +1005,7 @@ test_that("draw components index the declared component list", {
     theta           = c(rep(0, 20), stats::rnorm(40)),
     theta_indicator = rep(c(1, 2), c(20L, 40L))
   )
-  fit <- coda::mcmc(posterior)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- list(theta = prior_mixture(
     list(prior("spike", list(0)), prior("normal", list(0, 1))),
     is_null = c(TRUE, FALSE)
@@ -1170,11 +1166,10 @@ test_that("subsetting a list of mixed posteriors keeps the list's metadata", {
                      sigma = stats::rlnorm(n))
   fit <- list(
     mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-    summary.pars = list(mutate = NULL),
     monitor = colnames(posterior),
     sample = n
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- c(formula_result$prior_list, list(sigma = prior("lognormal", list(0, 1))))
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
@@ -1542,7 +1537,6 @@ test_that("a degenerate Bernoulli prior declares only its possible state", {
 
 test_that("a Bernoulli parameter declares atoms at its states with the draw frequencies as masses", {
 
-  skip_if_not_installed("runjags")
 
   # prior-only draws of b ~ Bernoulli(0.3), as JAGS_fit() returns them
   set.seed(3)
@@ -1552,10 +1546,9 @@ test_that("a Bernoulli parameter declares atoms at its states with the draw freq
       list(
         mcmc = coda::mcmc.list(coda::mcmc(posterior)),
         sample = nrow(posterior),
-        summary.pars = list(mutate = NULL),
         monitor = colnames(posterior)
       ),
-      class = c("runjags", "BayesTools_fit", "list")
+      class = "BayesTools_fit"
     )
     attr(fit, "prior_list") <- prior_list
     attach_test_parameter_map(fit)

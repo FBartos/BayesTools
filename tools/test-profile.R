@@ -79,9 +79,6 @@ report_elapsed <- function() {
   message("Elapsed seconds: ", round(as.numeric(elapsed), 1))
 }
 
-if (!requireNamespace("devtools", quietly = TRUE)) {
-  stop("The devtools package is required to run tools/test-profile.R.", call. = FALSE)
-}
 if (!requireNamespace("testthat", quietly = TRUE)) {
   stop("The testthat package is required to run tools/test-profile.R.", call. = FALSE)
 }
@@ -123,6 +120,9 @@ env_flag <- function(name, default) {
 }
 
 stop_on_failure <- env_flag("BAYESTOOLS_TEST_STOP_ON_FAILURE", TRUE)
+load_mode <- if (env_flag("BAYESTOOLS_TEST_INSTALLED", FALSE)) "installed" else "source"
+message("Testing ", if (load_mode == "installed") find.package("BayesTools") else project_root,
+        " (", load_mode, ")")
 reporter_object <- if (identical(reporter, "llm")) {
   if (env_flag("BAYESTOOLS_TEST_QUIET_SKIPS", FALSE)) {
     bayestools_quiet_llm_reporter()
@@ -150,7 +150,7 @@ if (length(bayestools_snapshot_unreadable(snapshot_state)) > 0L) {
 }
 unreviewed     <- list(changed = character(), deleted = character(), problems = character())
 # The guard's report is printed in 'finally', so it also follows a test failure
-# that propagates from devtools::test().
+# that propagates from testthat.
 report_unreviewed <- function(unreviewed) {
   if (length(unreviewed$problems) > 0L) {
     message("Restoring the reviewed snapshot files failed:\n- ", paste(unreviewed$problems, collapse = "\n- "))
@@ -165,7 +165,10 @@ report_unreviewed <- function(unreviewed) {
   }
 }
 tryCatch(
-  devtools::test(
+  # PSOCK workers load the installed DLL. A separate pkgload compilation of
+  # the same source can have a different binary fingerprint on Windows.
+  testthat::test_local(
+    load_package = load_mode,
     filter = test_filter,
     stop_on_failure = stop_on_failure,
     reporter = reporter_object

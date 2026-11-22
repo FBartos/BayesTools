@@ -76,7 +76,7 @@ and has no row). With \code{transform_factors = FALSE}, they report the
 sampled parameters: the total effect, labelled \code{f{total}}, and, for
 random allocations, the allocation share of each increment, labelled by the
 level the increment reaches, \code{f[share: mid]} (see
-\code{\link[=runjags_estimates_table]{runjags_estimates_table()}}, \code{\link[=ensemble_estimates_table]{ensemble_estimates_table()}}, and
+\code{\link[=JAGS_estimates_table]{JAGS_estimates_table()}}, \code{\link[=ensemble_estimates_table]{ensemble_estimates_table()}}, and
 \code{\link[=parameter_labels]{parameter_labels()}} for the labels of terms with several slices or
 predictors). The total (one per slice) and each share of a random
 allocation are quantities of the parameter catalog (\code{\link[=parameter_catalog]{parameter_catalog()}}),

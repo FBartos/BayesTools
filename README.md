@@ -14,6 +14,8 @@
 The goal of BayesTools is to provide functions that simplify building R
 packages focused on Bayesian inference and Bayesian model-averaging.
 
+Install JAGS 5.0.0 or later before installing BayesTools. BayesTools uses rjags 5-5 or later. Use `JAGS_extend()` to continue a fit and `coda::as.mcmc.list()` to extract its chains.
+
 The package provides several tools:
 
 - prior distribution (with S3 methods for plot/print/pdf/cdf/rng/…)
@@ -179,12 +181,7 @@ priors_list1 <- list(mu = p1)
 priors_list2 <- list(mu = p2)
 ```
 
-We create a `model_syntax` that defines likelihood of the data for the
-JAGs model and fit the models with the `JAGS_fit` wrapper that
-automatically adds prior distributions to the syntax, generates starting
-values, creates list of monitored variables, and contains additional
-control options (most of the functionality is build upon `runjags`
-package).
+We define the likelihood in `model_syntax`. `JAGS_fit()` adds the priors, prepares initial values, and samples with rjags.
 
 ``` r
 # define likelihood for the data
@@ -201,12 +198,12 @@ fit1 <- JAGS_fit(model_syntax, data, priors_list1, seed = 1)
 fit2 <- JAGS_fit(model_syntax, data, priors_list2, seed = 2)
 ```
 
-The `runjags_estimates_table` function then provides a nicely formated
+The `JAGS_estimates_table` function then provides a nicely formated
 summary for the fitted model using its stored prior distributions.
 
 ``` r
 # formatted summary tables
-runjags_estimates_table(fit1)
+JAGS_estimates_table(fit1)
 #>     Mean    SD  0.025   0.5 0.975 error(MCMC) error(MCMC)/SD   ESS R-hat
 #> mu 0.120 0.301 -0.467 0.121 0.713     0.00240          0.008 15656 1.000
 ```
@@ -250,9 +247,9 @@ can use `model_summary_table` to summarize the individual models.
 ``` r
 ## create an object with the models
 models <- list(
-  list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1, fit_summary = runjags_estimates_table(fit0)),
-  list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1, fit_summary = runjags_estimates_table(fit1)),
-  list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 1, fit_summary = runjags_estimates_table(fit2))
+  list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1, fit_summary = JAGS_estimates_table(fit0)),
+  list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1, fit_summary = JAGS_estimates_table(fit1)),
+  list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 1, fit_summary = JAGS_estimates_table(fit2))
 )
 # compare and summarize the models
 models <- models_inference(models)

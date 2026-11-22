@@ -1,7 +1,7 @@
 #' @title Create BayesTools model tables
 #'
-#' @description Creates model summary based on a model objects or
-#' provides estimates table for a runjags fit.
+#' @description Creates model summaries and parameter estimates tables for fits
+#' from [JAGS_fit()].
 #'
 #' @param model model object containing a list of \code{priors}
 #' and \code{inference} object, The \code{inference} must be a
@@ -9,7 +9,7 @@
 #' \code{m_number}, marginal likelihood \code{marglik}, prior and
 #' posterior probability \code{prior_prob} and \code{post_prob},
 #' and model inclusion Bayes factor \code{inclusion_BF}
-#' @param fit runjags model fit or a derived-draw view from [JAGS_with_draws()].
+#' @param fit model fitted with [JAGS_fit()] or a derived-draw view from [JAGS_with_draws()].
 #' Estimates and inference describe its supplied draws; chain diagnostics use
 #' the actual retained chain geometry.
 #' @param conditional summarizes estimates conditional on being included
@@ -340,18 +340,15 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
                                      remove_random_effects = NULL, keep_random_effects = NULL,
                                      remove_random_structures = NULL, keep_random_structures = NULL){
 
-  if(inherits(fit, "runjags")) .check_runjags()
   # most of the code is shared with .diagnostics_plot_data function (keep them in sync on update)
 
   # check fits
-  if(!.bt_is_jags_analysis_fit(fit))
-    stop("'fit' must be a runjags fit")
   if(!inherits(fit, "BayesTools_fit"))
-    stop("'fit' must be a BayesTools fit")
+    stop("'fit' must be a 'BayesTools_fit' object.", call. = FALSE)
   coordinates <- parameter_coordinates(fit)
   prior_list <- attr(fit, "prior_list")
-  check_list(prior_list, "prior_list")
-  if(!all(sapply(prior_list, is.prior)))
+  check_list(prior_list, "prior_list", allow_NULL = TRUE)
+  if(!all(vapply(prior_list, is.prior, logical(1))))
     stop("'prior_list' must be a list of priors.")
   check_list(transformations, "transformations", allow_NULL = TRUE)
   if(!is.null(transformations) && any(!sapply(transformations, function(trans)is.function(trans[["fun"]]))))
@@ -881,6 +878,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # label every column from its label parts: the parameter names are the
   # columns' selectors, the row labels their table labels
+  backend_anchor <- attr(fit, "backend_anchor", exact = TRUE)
+  if(!is.null(backend_anchor)){
+    model_samples <- model_samples[, colnames(model_samples) != backend_anchor, drop = FALSE]
+  }
   column_parts <- .bt_estimates_column_parts(
     columns     = colnames(model_samples),
     fit         = fit,
@@ -1331,13 +1332,11 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
                                      BF_diagnostic_columns = getOption("BayesTools.JAGS_BF_diagnostic_columns", if(BF_diagnostics) "all" else "none")){
 
   # check fits
-  if(!.bt_is_jags_analysis_fit(fit))
-    stop("'fit' must be a runjags fit")
   if(!inherits(fit, "BayesTools_fit"))
-    stop("'fit' must be a BayesTools fit")
+    stop("'fit' must be a 'BayesTools_fit' object.", call. = FALSE)
   prior_list <- attr(fit, "prior_list")
-  check_list(prior_list, "prior_list")
-  if(!all(sapply(prior_list, is.prior)))
+  check_list(prior_list, "prior_list", allow_NULL = TRUE)
+  if(!all(vapply(prior_list, is.prior, logical(1))))
     stop("'prior_list' must be a list of priors.")
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
@@ -1351,11 +1350,11 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   BF_error_diagnostics  <- "BF_error_percent" %in% BF_diagnostic_columns
 
   # return empty table if none of the priors defines a model component
-  if(!any(sapply(prior_list, function(p){
+  if(!any(vapply(prior_list, function(p){
     is.prior.spike_and_slab(p) | is.prior.mixture(p) |
       .bt_is_random_allocation_inclusion_prior(p) |
       .bt_is_ordered_spike_and_slab_total(p)
-  }))){
+  }, logical(1)))){
     runjags_summary <- runjags_inference_empty_table(
       title          = title,
       footnotes      = footnotes,

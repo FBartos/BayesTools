@@ -472,7 +472,6 @@ test_that("transform_scale_samples requires correlations for scaled correlated r
 
 test_that("JAGS_estimates_table backtransforms random-effect correlations", {
 
-  testthat::skip_if_not_installed("runjags")
 
   df <- data.frame(
     x = c(4, 5, 6),
@@ -532,11 +531,10 @@ test_that("JAGS_estimates_table backtransforms random-effect correlations", {
 
   fit <- list(
     mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-    summary.pars = list(mutate = NULL),
     monitor = colnames(posterior),
     sample = nrow(posterior)
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
@@ -616,7 +614,6 @@ test_that("JAGS_estimates_table backtransforms random-effect correlations", {
 
 test_that("backtransformed random-effect correlations use the transformed LKJ primitives", {
 
-  testthat::skip_if_not_installed("runjags")
 
   # Real fits always monitor the LKJ primitives, which the Cholesky evaluator
   # prefers over the monitored L; they must follow the original-scale L.
@@ -674,11 +671,10 @@ test_that("backtransformed random-effect correlations use the transformed LKJ pr
 
   fit <- list(
     mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-    summary.pars = list(mutate = NULL),
     monitor = colnames(posterior),
     sample = nrow(posterior)
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
@@ -735,7 +731,6 @@ test_that("backtransformed random-effect correlations use the transformed LKJ pr
 
 test_that("backtransformed LKJ coordinates are consistent and missing for undefined correlations", {
 
-  testthat::skip_if_not_installed("runjags")
 
   # Monitored canonical partial correlations (cpc = 2u - 1) follow the
   # rewritten primitives. A zero slope SD (e.g., an excluded spike-and-slab
@@ -794,11 +789,10 @@ test_that("backtransformed LKJ coordinates are consistent and missing for undefi
   )
   fit <- list(
     mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-    summary.pars = list(mutate = NULL),
     monitor = colnames(posterior),
     sample = nrow(posterior)
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
@@ -845,7 +839,6 @@ test_that("backtransformed LKJ coordinates are consistent and missing for undefi
 
 test_that("transform_prior_samples unscales correlated random slopes from LKJ primitives", {
 
-  testthat::skip_if_not_installed("runjags")
 
   df <- data.frame(
     x = c(4, 5, 6, 8),
@@ -891,11 +884,10 @@ test_that("transform_prior_samples unscales correlated random slopes from LKJ pr
   )
   fit <- list(
     mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-    summary.pars = list(mutate = NULL),
     monitor = colnames(posterior),
     sample = nrow(posterior)
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
@@ -1033,7 +1025,6 @@ test_that("transform_scale_samples clears invalid transformed random-effect corr
 
 test_that("factor point priors do not add unindexed columns when unscaling", {
 
-  testthat::skip_if_not_installed("runjags")
 
   df <- data.frame(
     x = c(1, 4, 6, 2, 8, 5, 3, 7, 9),
@@ -1091,11 +1082,10 @@ test_that("factor point priors do not add unindexed columns when unscaling", {
 
   fit <- list(
     mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-    summary.pars = list(mutate = NULL),
     monitor = colnames(posterior),
     sample = nrow(posterior)
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)

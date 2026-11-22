@@ -26,7 +26,7 @@ cached_fits <- vignette_cache(
     "marglik_brms_independent", "marglik_sleep_independent", "fit_sleep_hcs",
     "fit_sleep_hcs_test", "fit_nested", "fit_crossed_independent", "fit_crossed_allocation"
   ),
-  packages = c("lme4", "brms", "runjags", "rjags")
+  packages = c("lme4", "brms", "rjags")
 )
 
 options(width = 140)
@@ -709,6 +709,7 @@ compare_structured_estimates(lme4_model = lme4_hcs, bayes_model = fit_sleep_hcs)
 
 The day-specific SDs generally increase over the study, implying similar pattern to the one modeled by the random-slope model previously.
 HCS recovers the increase without assuming a linear trend per subject, and its day-specific SDs also capture departures from the smooth pattern implied by the random-slope model, such as the smaller SD on day 7.
+The two chains give less precise estimates for the residual SD and the common correlation. Their reported $\hat{R}$ values are 1.24 and 1.13, respectively, so the last digits of those estimates warrant caution.
 
 ### Testing the Correlation
 

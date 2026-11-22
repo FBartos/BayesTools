@@ -117,7 +117,7 @@ test_that("scalar affine ordinates at a bound of the mapped support are the one-
   columns <- .JAGS_prior_factor_names("mu_fac", formula$prior_list$mu_fac)
   posterior <- matrix(unlist(lapply(seq_along(columns), function(i) seq(-i, i, length.out = 201L))), 201L, dimnames = list(NULL, columns))
   if(!independent) posterior <- cbind(mu_intercept = seq(-1, 1, length.out = 201L), posterior)
-  fit <- structure(coda::mcmc(posterior), class = c("mcmc", "BayesTools_fit"))
+  fit <- test_fit_from_chains(coda::mcmc(posterior))
   attr(fit, "prior_list") <- formula$prior_list
   fit <- attach_test_parameter_map(fit)
   marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac", use_formula = FALSE, prior_samples = TRUE)

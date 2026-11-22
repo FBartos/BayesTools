@@ -6,10 +6,9 @@ skip_if_not_test_profile("unit")
     coda::mcmc(cbind(theta = offset + stats::qnorm((seq_len(60) - .5) / 60)), start = 11, thin = 2)
   }))
   fit <- structure(list(mcmc = chains, sample = 120L, model = "original model",
-                         data = "original data", end.state = list("state"),
-                         monitor = "theta",
-                         summary.pars = list(mutate = NULL)),
-                    class = c("runjags", "BayesTools_fit"))
+                         data = "original data", end_state = list("state"),
+                         monitor = "theta"),
+                    class = "BayesTools_fit")
   attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
   fit <- attach_test_parameter_map(fit)
   attr(fit, "runtime_setup") <- function(...) stop("Runtime setup must not run.")

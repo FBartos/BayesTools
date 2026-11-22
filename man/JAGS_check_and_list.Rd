@@ -34,17 +34,20 @@ JAGS_check_and_list_autofit_settings(
 
 \item{burnin}{number of burnin iterations of the MCMC chains, defaults to \code{1000}}
 
-\item{sample}{number of sampling iterations of the MCMC chains, defaults to \code{4000}}
+\item{sample}{number of draws to retain per chain, defaults to \code{4000}.
+Each chain runs \code{sample * thin} sampling iterations.}
 
 \item{thin}{thinning interval for the MCMC samples, defaults to \code{1}}
 
 \item{autofit}{whether the models should be refitted until convergence criteria
 specified in \code{autofit_control}. Defaults to \code{FALSE}.}
 
-\item{parallel}{whether the chains should be run in parallel \code{FALSE}}
+\item{parallel}{whether to distribute chains over PSOCK worker processes.
+Defaults to \code{FALSE}, which runs all chains in the calling process.
+Each sampling process uses one JAGS thread.}
 
-\item{cores}{number of cores used for multithreading if \code{parallel = TRUE},
-defaults to \code{chains}}
+\item{cores}{maximum number of workers when \code{parallel = TRUE},
+defaults to \code{chains}.}
 
 \item{silent}{whether the function should proceed silently, defaults to \code{TRUE}}
 
@@ -52,9 +55,7 @@ defaults to \code{chains}}
 integer between \code{-.Machine$integer.max} and \code{.Machine$integer.max}.
 Draws are reproducible for the same \code{seed}, \code{chains}, and R
 random-number generator settings (\code{RNGkind()}), and, with
-\code{parallel = TRUE}, the same \code{cores}. Parallel draws need not equal
-serial draws with the same seed, because the backend passes each chain's
-initial state to its worker in a serialized text form. Initial values are
+\code{parallel = TRUE}, the same \code{cores} and backend versions. Initial values are
 drawn from the priors after \code{set.seed(seed)}, and each chain's JAGS
 random-number seed is drawn from the same seed with
 \code{sample.int(.Machine$integer.max, chains)} (see

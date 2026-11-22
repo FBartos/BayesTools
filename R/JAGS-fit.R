@@ -1,9 +1,7 @@
 #' @title Fits a 'JAGS' model
 #'
-#' @description A wrapper around
-#' \link[runjags]{run.jags}  that simplifies fitting 'JAGS' models
-#' with usage with pre-specified model part of the 'JAGS' syntax, data and list
-#' of prior distributions.
+#' @description Compiles JAGS model syntax, data, formulas and priors into
+#' a model and samples it using \pkg{rjags}.
 #' @param model_syntax jags syntax for the model part
 #' @param data list containing data to fit the model (not including data for the formulas)
 #' @param prior_list named list of prior distribution
@@ -35,12 +33,10 @@
 #' when the backend builds the sampler from the stored chain states; the default
 #' \code{NULL} uses the setting of the initial fit. A value supplied to
 #' \code{JAGS_extend()} applies to that call only: the returned fit keeps the
-#' initial setting, which later calls without \code{adapt} use again. Fits that
-#' do not record their initial setting (created before BayesTools stored it)
-#' are extended with runjags' default of \code{1000} iterations, as before,
-#' with a warning of class \code{BayesTools_adaptation_unrecorded}.
+#' initial setting, which later calls without \code{adapt} use again.
 #' @param burnin number of burnin iterations of the MCMC chains, defaults to \code{1000}
-#' @param sample number of sampling iterations of the MCMC chains, defaults to \code{4000}
+#' @param sample number of draws to retain per chain, defaults to \code{4000}.
+#' Each chain runs \code{sample * thin} sampling iterations.
 #' @param thin thinning interval for the MCMC samples, defaults to \code{1}
 #' @param autofit whether the models should be refitted until convergence criteria
 #' specified in \code{autofit_control}. Defaults to \code{FALSE}.
@@ -93,17 +89,17 @@
 #'   \item{allow_not_assessable}{whether undefined diagnostics for requested
 #'   sampled parameters may be ignored. Defaults to \code{FALSE}.}
 #' }
-#' @param parallel whether the chains should be run in parallel \code{FALSE}
-#' @param cores number of cores used for multithreading if \code{parallel = TRUE},
-#'  defaults to \code{chains}
+#' @param parallel whether to distribute chains over PSOCK worker processes.
+#' Defaults to \code{FALSE}, which runs all chains in the calling process.
+#' Each sampling process uses one JAGS thread.
+#' @param cores maximum number of workers when \code{parallel = TRUE},
+#' defaults to \code{chains}.
 #' @param silent whether the function should proceed silently, defaults to \code{TRUE}
 #' @param seed seed for random number generation by \code{JAGS_fit()}: an
 #'   integer between \code{-.Machine$integer.max} and \code{.Machine$integer.max}.
 #'   Draws are reproducible for the same \code{seed}, \code{chains}, and R
 #'   random-number generator settings (\code{RNGkind()}), and, with
-#'   \code{parallel = TRUE}, the same \code{cores}. Parallel draws need not equal
-#'   serial draws with the same seed, because the backend passes each chain's
-#'   initial state to its worker in a serialized text form. Initial values are
+#'   \code{parallel = TRUE}, the same \code{cores} and backend versions. Initial values are
 #'   drawn from the priors after \code{set.seed(seed)}, and each chain's JAGS
 #'   random-number seed is drawn from the same seed with
 #'   \code{sample.int(.Machine$integer.max, chains)} (see
@@ -287,26 +283,22 @@
 #' fit <- JAGS_fit(model_syntax, data, priors_list)
 #' }
 #'
-#' @return \code{JAGS_fit} returns an object of class 'runjags' and 'BayesTools_fit'.
-#' \code{JAGS_extend} continues the backend random-number generator state of the
-#' existing chains; it does not reseed them.
-#' Stored parameter and RNG states initialize reconstruction; recompilation
-#' resets sampler tuning, which runjags adapts again for \code{adapt}
-#' iterations (when the model has adaptive samplers) before sampling, with no
-#' further burn-in. The model is
-#' always recompiled from these stored states, never continued from a compiled
-#' model left in the session, so extending the same object twice, or a saved and
-#' reloaded copy of it, gives identical draws. Within one call, automatic
-#' extensions continue the sampler compiled by the previous step without
-#' adapting it again, except parallel workers, which rebuild it for every
-#' extension. Neither function keeps runjags'
-#' compiled rjags model (\code{method.options$rjags}) in the returned object;
-#' \code{runjags::extend.jags()} recompiles a model without it, as after
-#' reloading.
+#' @return A successful fit is a \code{BayesTools_fit}. It contains the sampled
+#' chains, model and data used for compilation, monitored nodes, and final
+#' per-chain parameter and RNG states. Extract the chains with
+#' \code{coda::as.mcmc.list(fit)}. A failed initial fit returns its error
+#' condition.
+#'
+#' \code{JAGS_extend()} rebuilds the sampler from the stored states, adapts
+#' it for \code{adapt} iterations when needed, then appends draws without
+#' further burn-in. A saved and reloaded fit extends from the same state.
+#' Within one call, automatic extensions continue the serial sampler. Parallel
+#' workers rebuild their samplers at each extension. The returned fit stores
+#' ordinary R data and can be serialized with \code{saveRDS()}.
 #'
 #' The \code{adaptation} attribute of a fit records the adaptation settings:
-#' \code{initial}, the \code{adapt} of \code{JAGS_fit()} (\code{NA} for fits
-#' that did not record it), and \code{extensions}, a data frame with one row
+#' \code{initial}, the \code{adapt} of \code{JAGS_fit()}, and
+#' \code{extensions}, a data frame with one row
 #' per backend extension (automatic extensions of \code{JAGS_fit()} and the
 #' extensions of \code{JAGS_extend()}) giving the \code{adapt} passed to the
 #' backend and whether the backend \code{rebuilt} the sampler, the only case in
@@ -320,10 +312,8 @@
 #' @name JAGS_fit
 NULL
 
-.bt_extension_adapt_fallback <- 1000L
-
 # The adaptation record of a fit: the initial setting and, per backend
-# extension, the 'adapt' passed to runjags and whether it rebuilt the sampler.
+# extension, the requested adaptation length and whether it rebuilt the sampler.
 .bt_adaptation_record <- function(initial){
 
   list(
@@ -341,16 +331,13 @@ NULL
   record
 }
 
-# The stored adaptation record of 'fit', or NULL for fits created before
-# BayesTools recorded it.
+# The adaptation policy belongs to the stored fit.
 .bt_fit_adaptation_record <- function(fit){
 
   record <- attr(fit, "adaptation", exact = TRUE)
-  if(is.null(record)){
-    return(NULL)
-  }
   valid <- is.list(record) && identical(names(record), c("initial", "extensions")) &&
     is.integer(record$initial) && length(record$initial) == 1L &&
+    !is.na(record$initial) && record$initial >= 0L &&
     is.data.frame(record$extensions) &&
     identical(names(record$extensions), c("adapt", "rebuilt"))
   if(!valid){
@@ -361,60 +348,30 @@ NULL
   record
 }
 
-# The adaptation of an extension: an explicit 'adapt' for this call only,
-# otherwise the setting of the initial fit. runjags::extend.jags() would fall
-# back to its own default; fits that do not record their setting keep that
-# earlier behaviour, with a warning.
-.bt_extension_adapt <- function(adapt, record){
-
-  if(!is.null(adapt)){
-    return(adapt)
-  }
-  if(!is.null(record) && !is.na(record$initial)){
-    return(record$initial)
-  }
-  warning(warningCondition(
-    paste0(
-      "The fit does not record the adaptation length of its initial fit, so the ",
-      "extension adapts for runjags' default of ", .bt_extension_adapt_fallback,
-      " iterations. Set 'adapt' to choose the adaptation length."
-    ),
-    call = NULL,
-    class = c("BayesTools_adaptation_unrecorded", "BayesTools_compatibility_warning")
-  ))
-  .bt_extension_adapt_fallback
-}
-
-# runjags reports incomplete adaptation with plain warnings. They are issued
-# as usual and also returned, so that the fit can keep them.
+# Record warnings issued by the sampling process alongside the draws.
 .bt_collect_adaptation_warnings <- function(expr){
 
   messages <- character()
   value <- withCallingHandlers(expr, warning = function(condition){
-    if(grepl("adaptation phase", conditionMessage(condition), fixed = TRUE)){
+    if(inherits(condition, "BayesTools_adaptation_incomplete")){
       messages <<- c(messages, conditionMessage(condition))
     }
   })
   list(value = value, warnings = messages)
 }
 
-# One backend extension by 'sample' iterations without further burn-in. runjags
-# adapts for 'adapt' iterations only when it builds the sampler from the stored
-# chain states: always on parallel workers, and for an object without a
-# compiled model; a model compiled earlier in the same call has finished
-# adapting and continues.
-.bt_run_extension <- function(args, adapt, parallel){
+# A serial automatic extension can continue the sampler of the same call.
+.bt_run_extension <- function(fit, sample, adapt, cl, silent){
 
-  live_model <- is.list(args$runjags.object[["method.options"]]) &&
-    !is.null(args$runjags.object[["method.options"]][["rjags"]])
+  rebuilt <- !is.null(cl) || is.null(fit[["live_model"]])
   run <- .bt_collect_adaptation_warnings(.JAGS_run_backend(
-    runjags::extend.jags,
-    c(args, list(adapt = as.integer(adapt), burnin = 0)),
-    parallel
+    .bt_rjags_extend,
+    list(fit = fit, sample = sample, adapt = as.integer(adapt), cl = cl, silent = silent),
+    parallel = !is.null(cl)
   ))
   list(
     extension = run$value,
-    rebuilt   = parallel || !live_model,
+    rebuilt   = rebuilt,
     warnings  = run$warnings
   )
 }
@@ -467,7 +424,6 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
                      jags_modules = NULL, runtime_setup = NULL, runtime_cache = NULL, worker_output = NULL,
                      sampler_gates = FALSE, sampler_blocks = NULL, runtime_report = NULL, ...){
 
-  .check_runjags()
   # A seeded fit leaves the caller's random-number state as it found it.
   if(!is.null(seed)){
     rng_state <- .bt_rng_state()
@@ -639,9 +595,6 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   add_parameters <- unique(c(add_parameters, formula_add_parameters))
   jags_modules <- unique(c(jags_modules, formula_jags_modules))
   required_packages <- unique(c(required_packages, formula_required_packages))
-  # Fully observed data are constants of the model; the convergence roles of
-  # monitored deterministic nodes are derived from them.
-  data_names <- names(data)[vapply(data, function(x) !anyNA(x), logical(1))]
 
   if(.JAGS_prior_list_uses_BayesTools_module(prior_list)){
     jags_modules <- unique(c(jags_modules, "BayesTools"))
@@ -690,31 +643,26 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     data      = sampler_declarations$data,
     inits     = .JAGS_fit_inits(prior_list, chains = chains, seed = seed),
     monitor   = backend_monitor$monitor,
-    n.chains  = chains,
     adapt     = adapt,
     burnin    = burnin,
     sample    = sample,
     thin      = thin,
-    summarise = FALSE
+    silent    = silent
   )
 
   # Configure the actual backend topology, including automatic extensions.
+  cl <- NULL
   runtime_started <- FALSE
   if(parallel){
     cl <- .JAGS_runtime_cluster_start(
       cores = min(cores, chains), chains = chains,
-      packages = required_packages, runtime_setup = runtime_setup,
+      packages = unique(c(required_packages, "BayesTools")), runtime_setup = runtime_setup,
       jags_modules = jags_modules, warn = !silent,
       worker_output = worker_output
     )
     on.exit(.JAGS_runtime_cluster_stop(cl), add = TRUE)
     .JAGS_run_runtime_cache(runtime_cache, "restore", chains, cl)
-    model_call <- c(
-      model_call,
-      method = "rjparallel",
-      cl     = list(cl),
-      n.sims = length(cl)
-    )
+    model_call$cl <- cl
   }else{
     on.exit(.JAGS_finish_runtime_setup(
       if(runtime_started) runtime_setup else NULL, chains), add = TRUE)
@@ -723,35 +671,10 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     runtime_started <- TRUE
     .JAGS_run_runtime_setup(runtime_setup, chains)
     .JAGS_run_runtime_cache(runtime_cache, "restore", chains)
-    model_call <- c(
-      model_call,
-      method = "rjags"
-    )
   }
-
-  extension_runtime <- model_call[intersect(c("method", "cl", "n.sims"), names(model_call))]
 
   if(!is.null(seed)){
     set.seed(seed)
-  }
-
-  # set silent mode
-  if(silent){
-    user_silent.jags    <- runjags::runjags.getOption("silent.jags")
-    user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
-    on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags), add = TRUE)
-    runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
-  }
-
-  # the JAGS executable resolved once per session (.JAGS_backend_path()): the
-  # backend's 'jags' argument, and the 'jagspath' option for its model setup
-  # until JAGS_fit() returns
-  jags_path <- .JAGS_backend_path()
-  if(!is.null(jags_path)){
-    model_call$jags <- jags_path
-    user_jagspath <- runjags::runjags.options()[["jagspath"]]
-    on.exit(runjags::runjags.options(jagspath = list(user_jagspath)), add = TRUE)
-    runjags::runjags.options(jagspath = jags_path)
   }
 
   start_time <- Sys.time()
@@ -767,16 +690,25 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   }
   run_initial <- function(call){
     run <- .bt_collect_adaptation_warnings(
-      .JAGS_run_backend(runjags::run.jags, call, parallel))
+      .JAGS_run_backend(.bt_rjags_fit, call, parallel))
     report_run(run$value)
     if(!inherits(run$value, "error")){
       adaptation_warnings <<- run$warnings
     }
     run$value
   }
+  # Keep generated observations fixed when a new set of chain inits is tried.
+  prepared <- tryCatch(.bt_rjags_realize_data(model_call$model, model_call$data,
+    model_call$inits[[1L]][[".RNG.seed"]], model_call$monitor), error = identity)
+  if(!inherits(prepared, "error")){
+    model_call[c("model", "data")] <- prepared
+  }
   # special fitting procedure for JASP
   # singlcore interrupted fits allowing for bar progression
-  if(isTRUE(dots[["is_JASP"]])){
+  if(inherits(prepared, "error")){
+    fit <- prepared
+    report_run(fit)
+  }else if(isTRUE(dots[["is_JASP"]])){
 
     model_call_adapt  <- model_call
     model_call_adapt[["sample"]] <- 1 # at least one burnin & adapt need to be specified
@@ -790,10 +722,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     .JASP_progress_bar_start(n = 5, label = paste0(if(!is.null(dots[["is_JASP_prefix"]])) paste0(dots[["is_JASP_prefix"]], ": "), "Sampling the model"))
     for(i in 1:5){
       if(!inherits(fit, "error")){
-        run <- .bt_run_extension(c(
-          list(runjags.object = fit, sample = floor((model_call[["sample"]])/5)),
-          extension_runtime
-        ), adapt = adapt, parallel = parallel)
+        run <- .bt_run_extension(fit, sample = floor(model_call[["sample"]] / 5),
+          adapt = adapt, cl = cl, silent = silent)
         fit <- run$extension
         report_run(fit)
         if(!inherits(fit, "error")){
@@ -842,6 +772,11 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   if(inherits(fit, "error") & !silent)
     warning(paste0("The model estimation failed with the following error: ", fit$message), immediate. = TRUE)
 
+  # A BUGS data block can generate observations. Determine convergence roles
+  # from the actual sampled model and its realized, fully observed inputs.
+  sampling_model <- model_call$model
+  data_names <- names(model_call$data)[vapply(model_call$data, function(x) !anyNA(x), logical(1))]
+
   extension_failed <- FALSE
   last_valid_runtime_state <- NULL
   last_valid_capture_warnings <- character()
@@ -871,7 +806,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
           formula_scale = formula_scale_info,
           backend_anchor = backend_anchor,
           add_parameters = add_parameters,
-          model_syntax = model_syntax,
+          model_syntax = sampling_model,
           data_names = data_names
         )
       }
@@ -919,10 +854,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         break
       }
 
-      run <- .bt_run_extension(c(
-        list(runjags.object = fit, sample = autofit_control[["sample_extend"]]),
-        extension_runtime
-      ), adapt = adapt, parallel = parallel)
+      run <- .bt_run_extension(fit, sample = autofit_control[["sample_extend"]],
+        adapt = adapt, cl = cl, silent = silent)
       extension <- run$extension
       report_run(extension)
 
@@ -942,7 +875,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         break
       }
 
-      fit <- runjags::add.summary(extension)
+      fit <- extension
       last_valid_fit <- fit
       adaptation <- .bt_adaptation_add_extension(adaptation, adapt, run$rebuilt)
       adaptation_warnings <- c(adaptation_warnings, run$warnings)
@@ -961,7 +894,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   }
 
   # add information to the fitted object
-  fit <- .bt_fit_without_live_model(fit)
+  if(!inherits(fit, "error")){
+    fit[["live_model"]] <- NULL
+  }
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
   attr(fit, "add_parameters") <- add_parameters
@@ -983,10 +918,10 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     attr(fit, "formula_design") <- formula_design_info
   }
 
-  class(fit) <- c(class(fit), "BayesTools_fit")
   fit <- .bt_attach_parameter_map(
     fit,
     monitor_names = model_call$monitor,
+    model_syntax = sampling_model,
     data_names = data_names
   )
   fit <- .bt_attach_draw_geometry(fit)
@@ -1191,8 +1126,36 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       operation = "extension"
     ))
   }
-  if(!inherits(fit, "BayesTools_fit"))
-    stop("'fit' must be a 'BayesTools_fit'")
+  if(inherits(fit, "runjags")){
+    .bt_stop_refit_required(
+      "This fit was produced by runjags. Refit it with JAGS_fit() before extending its chains."
+    )
+  }
+  if(!inherits(fit, "BayesTools_fit") || inherits(fit, "error")){
+    stop("'fit' must be a fitted 'BayesTools_fit'.", call. = FALSE)
+  }
+  backend <- fit[["backend"]]
+  fitted_jags <- if(is.list(backend)) backend[["jags"]]
+  jags_major <- rjags::jags.version()[, 1L]
+  if(!is.character(fitted_jags) || length(fitted_jags) != 1L || is.na(fitted_jags) ||
+     !startsWith(fitted_jags, paste0(jags_major, "."))){
+    .bt_stop_refit_required(
+      "The fit has no compatible JAGS version record. Refit it with JAGS_fit() before extending its chains."
+    )
+  }
+  state <- fit[["end_state"]]
+  chains <- length(fit[["mcmc"]])
+  if(chains == 0L || !is.list(state) || length(state) != chains ||
+     !all(vapply(state, function(chain){
+       is.list(chain) && is.character(chain[[".RNG.name"]]) &&
+         length(chain[[".RNG.name"]]) == 1L && !is.na(chain[[".RNG.name"]]) &&
+         nzchar(chain[[".RNG.name"]]) && is.numeric(chain[[".RNG.state"]]) &&
+         length(chain[[".RNG.state"]]) > 0L
+     }, logical(1)))){
+    .bt_stop_refit_required(
+      "The fit does not contain the final state of every chain. Refit it with JAGS_fit() before extending."
+    )
+  }
 
   check_bool(parallel, "parallel", allow_NA = FALSE)
   check_int(cores, "cores", lower = 1, allow_NULL = TRUE, allow_NA = FALSE)
@@ -1208,7 +1171,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   runtime_state <- attr(fit, "runtime_state", exact = TRUE)
   last_valid_runtime_state <- runtime_state
   # Only the local input copy loses these attributes. Retained snapshots must
-  # never travel inside runjags.object to every extension worker. The input's
+  # never travel inside the fit to every extension worker. The input's
   # runtime report describes earlier runs, not those of this call.
   attr(fit, "runtime_state") <- NULL
   attr(fit, "runtime_cache") <- NULL
@@ -1218,7 +1181,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   # so that an extension depended on earlier in-memory extensions of the same
   # object. Extending from the stored chain states alone makes it depend only
   # on the fitted object, as after saving and reloading it.
-  fit <- .bt_fit_without_live_model(fit)
+  fit[["live_model"]] <- NULL
   fitted_parameter_map <- attr(fit, "parameter_map", exact = TRUE)
   backend_anchor     <- attr(fit, "backend_anchor", exact = TRUE)
   sampler_declarations <- attr(fit, "sampler_declarations", exact = TRUE)
@@ -1270,13 +1233,11 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   )
   # An explicit 'adapt' applies to this call; the record keeps the initial one.
   adaptation <- .bt_fit_adaptation_record(fit)
-  adapt      <- .bt_extension_adapt(adapt, adaptation)
-  if(is.null(adaptation)){
-    adaptation <- .bt_adaptation_record(NA_integer_)
+  if(is.null(adapt)){
+    adapt <- adaptation$initial
   }
 
-  # The backend uses end.state to determine the chains being extended.
-  chains <- length(fit[["end.state"]])
+  cl <- NULL
   runtime_started <- FALSE
   if(parallel){
     if(is.null(cores)){
@@ -1284,21 +1245,13 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     }
     cl <- .JAGS_runtime_cluster_start(
       cores = min(cores, chains), chains = chains,
-      packages = required_packages, runtime_setup = runtime_setup,
+      packages = unique(c(required_packages, "BayesTools")), runtime_setup = runtime_setup,
       jags_modules = jags_modules, warn = !silent,
       worker_output = worker_output
     )
     on.exit(.JAGS_runtime_cluster_stop(cl), add = TRUE)
     .JAGS_run_runtime_cache(runtime_cache, "restore", chains, cl, runtime_state)
     runtime_state <- NULL
-    refit_call <- list(
-      runjags.object = fit,
-      sample         = autofit_control[["sample_extend"]],
-      method         = "rjparallel",
-      cl             = cl,
-      n.sims         = length(cl),
-      summarise      = FALSE
-    )
   }else{
     on.exit(.JAGS_finish_runtime_setup(
       if(runtime_started) runtime_setup else NULL, chains), add = TRUE)
@@ -1308,21 +1261,6 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     .JAGS_run_runtime_setup(runtime_setup, chains)
     .JAGS_run_runtime_cache(runtime_cache, "restore", chains, state = runtime_state)
     runtime_state <- NULL
-    refit_call <- list(
-      runjags.object = fit,
-      sample         = autofit_control[["sample_extend"]],
-      method         = "rjags",
-      summarise      = FALSE
-    )
-  }
-
-
-  # set silent mode
-  if(silent){
-    user_silent.jags    <- runjags::runjags.getOption("silent.jags")
-    user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
-    on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags), add = TRUE)
-    runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   }
 
   start_time <- .bt_jags_extend_time()
@@ -1353,7 +1291,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       break
     }
 
-    run <- .bt_run_extension(refit_call, adapt = adapt, parallel = parallel)
+    run <- .bt_run_extension(fit, sample = autofit_control[["sample_extend"]],
+      adapt = adapt, cl = cl, silent = silent)
     extension <- run$extension
     reports <- .bt_runtime_report_after_run(reports, runtime_report, extension,
       chains, if(parallel) cl else NULL)
@@ -1402,15 +1341,13 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       allow_not_assessable = autofit_control[["allow_not_assessable"]]
     )
 
-    # update the refit call
     if(!converged){
       iteration <- iteration + 1
-      refit_call$runjags.object <- fit
     }
   }
 
   # add information to the fitted object
-  fit <- .bt_fit_without_live_model(fit)
+  fit[["live_model"]] <- NULL
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
   attr(fit, "add_parameters") <- add_parameters
@@ -1426,7 +1363,6 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     attr(fit, "formula_design") <- formula_design
   }
 
-  class(fit) <- unique(c(class(fit), "BayesTools_fit"))
   attr(fit, "parameter_map") <- fitted_parameter_map
   fit <- .bt_attach_draw_geometry(fit)
   fit <- .bt_attach_fit_contract(fit)
@@ -1449,21 +1385,4 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 
 .bt_jags_extend_time <- function(){
   Sys.time()
-}
-
-# runjags keeps the compiled rjags model of a run in 'method.options$rjags':
-# closures over the model's frame (its code, data, and initial values), so it
-# grows with the data. BayesTools continues a live model only within one call
-# (the autofit extensions of JAGS_fit() and JAGS_extend()); JAGS_extend()
-# recompiles from the stored chain states, as runjags does for a model that is
-# absent or no longer alive after saving and reloading. Fits leave without it.
-.bt_fit_without_live_model <- function(fit){
-
-  if(is.list(fit[["method.options"]])){
-    fit[["method.options"]] <- fit[["method.options"]][
-      names(fit[["method.options"]]) != "rjags"
-    ]
-  }
-
-  fit
 }

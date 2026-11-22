@@ -7,7 +7,7 @@
 #' specify a function that takes a named parameter list, the data, and any
 #' additional arguments, and returns the log likelihood of the model part.
 #'
-#' @param fit model fitted with \link[runjags]{runjags}, or posterior
+#' @param fit model fitted with [JAGS_fit()], or posterior
 #' samples obtained with \link[rjags]{rjags-package}.
 #' Derived-draw views are refused with
 #' \code{BayesTools_draws_view_inference_unavailable} (also

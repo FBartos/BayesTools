@@ -81,17 +81,17 @@ test_that("bridge callbacks reject undefined priors and retain zero density outs
   )
 })
 
-test_that("bridge chain metadata preserves runjags conversion errors", {
+test_that("bridge chain metadata preserves owned fit conversion errors", {
 
   testthat::local_mocked_bindings(
-    as.mcmc.list = function(...) stop("Malformed runjags chains.", call. = FALSE),
+    as.mcmc.list = function(...) stop("Malformed fit chains.", call. = FALSE),
     .package = "coda"
   )
   expect_error(
     BayesTools:::.bt_JAGS_bridge_chain_metadata(
-      structure(list(), class = "runjags"), matrix(1, nrow = 2)
+      structure(list(), class = "BayesTools_fit"), matrix(1, nrow = 2)
     ),
-    "Malformed runjags chains.", fixed = TRUE
+    "Malformed fit chains.", fixed = TRUE
   )
 })
 
@@ -667,8 +667,7 @@ test_that("a bridge target without any declared parameter is refused, not evalua
 
   constant <- function(parameters, data) -2.5
   raw <- coda::as.mcmc(matrix(0, nrow = 20, ncol = 1, dimnames = list(NULL, "mu")))
-  fit <- raw
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(raw)
   attr(fit, "prior_list") <- list(mu = prior("point", list(0)))
   fit <- attach_test_parameter_map(fit)
 
@@ -695,8 +694,7 @@ test_that("supplied non-formula priors must match the priors stored in the fit",
 
   set.seed(16)
   draws <- cbind(mu = abs(stats::rnorm(400)), sigma = stats::rgamma(400, 2, 2))
-  fit <- coda::as.mcmc(draws)
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::as.mcmc(draws))
   attr(fit, "prior_list") <- list(
     mu    = prior("normal", list(0, 1), list(0, Inf)),
     sigma = prior("gamma", list(2, 2))
@@ -743,7 +741,7 @@ test_that("BayesTools fits require the parameter map for bridge replay", {
     ncol = 1,
     dimnames = list(NULL, "mu")
   ))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(fit)
 
   expect_error(
     JAGS_bridgesampling(
@@ -867,10 +865,9 @@ test_that("global log-posterior callbacks survive a PSOCK round trip", {
 
 test_that("JAGS_bridgesampling reports the original error of a failed fit", {
 
-  skip_if_not_installed("runjags")
   testthat::local_mocked_bindings(
-    run.jags = function(...) stop("Compilation error on line 1: unknown variable tau"),
-    .package = "runjags"
+    .bt_rjags_fit = function(...) stop("Compilation error on line 1: unknown variable tau"),
+    .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
     .JAGS_require_packages = function(...) invisible(NULL),
@@ -899,7 +896,7 @@ test_that("JAGS_bridgesampling reports the original error of a failed fit", {
     seed = 1
   )
   expect_s3_class(failed, "error")
-  expect_s3_class(failed, "BayesTools_fit")
+  expect_false(inherits(failed, "BayesTools_fit"))
 
   expect_error(
     JAGS_bridgesampling(

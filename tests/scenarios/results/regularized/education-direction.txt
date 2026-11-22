@@ -1,2 +1,2 @@
   Alternative:         Null:     BF error%(BF)
- Education < 0 Education > 0 82.333      4.329
+ Education < 0 Education > 0 76.320      4.172

@@ -90,10 +90,8 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   }
 
   # check fits
-  if(!.bt_is_jags_analysis_fit(fit))
-    stop("'fit' must be a runjags fit or a derived-draw view.", call. = FALSE)
   if(!inherits(fit, "BayesTools_fit"))
-    stop("'fit' must be a BayesTools fit.", call. = FALSE)
+    stop("'fit' must be a 'BayesTools_fit' object.", call. = FALSE)
 
   check_char(type, "type", allow_values = c("density", "trace", "autocorrelation"))
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))

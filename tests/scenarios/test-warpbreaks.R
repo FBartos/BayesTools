@@ -44,8 +44,8 @@ testthat::test_that("Wool and loom tension model probabilities", {
     )
   })
 
-  # Load the MCMC methods when the fit is read from cache.
-  loadNamespace("runjags")
+  # Older scenario caches use the runjags MCMC methods.
+  if (inherits(fit, "runjags")) loadNamespace("runjags")
   draws <- as.matrix(coda::as.mcmc.list(fit))
   coefficient_draws <- draws[, paste0("effect[", 2:4, "]")]
   model <- 1L + draws[, "wool_on"] + 2L * draws[, "tension_on"]

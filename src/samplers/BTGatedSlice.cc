@@ -143,11 +143,8 @@ namespace jags {
           Slicer::adaptOff();
         }
 
-        // Incomplete until one update (open or closed) in adaptive mode, complete
-        // afterwards and unchanged by adaptOff(): runjags' serial method runs the
-        // requested adaptation phase only when some sampler still needs adapting.
-        // A rarely open gate leaves the width poorly adapted, which costs
-        // efficiency only; correctness never depends on adaptation.
+        // Either gate state counts as an adaptive update. A rarely open gate
+        // can have a poorly tuned width, which affects sampling efficiency.
         bool checkAdaptation() const
         {
           return _adapted;
@@ -162,8 +159,7 @@ namespace jags {
       const std::string sampler_name(gated_slice_name);
       try {
         for (StochasticNode *node : nodes) {
-          if (node->length() != 1 || node->isDiscreteValued() || node->df() == 0 ||
-              isObserved(node)) continue;
+          if (node->length() != 1 || node->isDiscreteValued() || !node->fullRank()) continue;
           Node const *active = gate_activity(node);
           if (active == nullptr) continue;
           std::unique_ptr<SingletonGraphView> view(new SingletonGraphView(node, graph));

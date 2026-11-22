@@ -154,12 +154,13 @@ bayestools_certification_key <- function(case, helper_env,
   }, logical(1)))
   if (runs_jags || calls_native) {
     native_files <- .test_cache_package_src_files(
-      files    = c("Makevars.in", "Makevars.win", "Makevars.win.common", "Makevars.ucrt"),
+      files    = c("Makevars", "Makevars.win", "Makevars.common"),
       patterns = "\\.(c|cc|h)$"
     )
     key <- c(
       key,
-      if (runs_jags) c(jags_version = as.character(rjags::jags.version())),
+      if (runs_jags) c(jags_version = as.character(rjags::jags.version()),
+                       rjags_version = as.character(utils::packageVersion("rjags"))),
       vapply(native_files, .test_cache_file_md5, character(1))
     )
   }

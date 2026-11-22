@@ -312,11 +312,10 @@ test_that("formula metadata exposes exact LKJ primitive coordinate priors", {
   )
   fit <- list(
     mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-    summary.pars = list(mutate = NULL),
     monitor = columns,
     sample = nrow(posterior)
   )
-  class(fit) <- c("runjags", "BayesTools_fit")
+  class(fit) <- "BayesTools_fit"
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
@@ -478,8 +477,7 @@ test_that("parameter-map accessors reject missing and malformed fitted objects",
     ncol = 1L,
     dimnames = list(NULL, "theta")
   ))
-  fit <- samples
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(samples)
   attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
 
   expect_error(
@@ -773,8 +771,7 @@ test_that("the parameter-map cache is session-local and never saved with a fit",
     ncol = 1L,
     dimnames = list(NULL, "theta")
   ))
-  fit <- samples
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(samples)
   attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
   fit <- attach_test_parameter_map(fit)
   fit <- .bt_attach_draw_geometry(fit)
@@ -824,8 +821,7 @@ test_that("parameter_map_cache recomputes when its key or the map changes", {
     ncol = 1L,
     dimnames = list(NULL, "theta")
   ))
-  fit <- samples
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(samples)
   attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
   fit <- attach_test_parameter_map(fit)
   fit <- .bt_attach_draw_geometry(fit)

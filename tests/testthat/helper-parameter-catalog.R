@@ -1,9 +1,17 @@
+# Construct the owned draw container for inference tests which do not fit JAGS.
+test_fit_from_chains <- function(chains){
+  if(!inherits(chains, "mcmc.list")){
+    chains <- coda::mcmc.list(coda::as.mcmc(chains))
+  }
+  structure(list(mcmc = chains, sample = nrow(chains[[1L]]),
+                 monitor = colnames(chains[[1L]])), class = "BayesTools_fit")
+}
+
 .parameter_catalog_test_fit <- function(chains, prior_list,
                                         formula_design = NULL,
                                         formula_scale = NULL){
 
-  fit <- chains
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(chains)
   if(is.list(formula_design)){
     if(is.null(formula_scale)) formula_scale <- list()
     for(parameter in names(formula_design)){

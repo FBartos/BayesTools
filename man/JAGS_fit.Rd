@@ -90,14 +90,12 @@ be standardized. Defaults to \code{NULL} (no standardization).}
 when the backend builds the sampler from the stored chain states; the default
 \code{NULL} uses the setting of the initial fit. A value supplied to
 \code{JAGS_extend()} applies to that call only: the returned fit keeps the
-initial setting, which later calls without \code{adapt} use again. Fits that
-do not record their initial setting (created before BayesTools stored it)
-are extended with runjags' default of \code{1000} iterations, as before,
-with a warning of class \code{BayesTools_adaptation_unrecorded}.}
+initial setting, which later calls without \code{adapt} use again.}
 
 \item{burnin}{number of burnin iterations of the MCMC chains, defaults to \code{1000}}
 
-\item{sample}{number of sampling iterations of the MCMC chains, defaults to \code{4000}}
+\item{sample}{number of draws to retain per chain, defaults to \code{4000}.
+Each chain runs \code{sample * thin} sampling iterations.}
 
 \item{thin}{thinning interval for the MCMC samples, defaults to \code{1}}
 
@@ -154,10 +152,12 @@ of \code{\link[=parameter_coordinates]{parameter_coordinates()}}.}
 sampled parameters may be ignored. Defaults to \code{FALSE}.}
 }}
 
-\item{parallel}{whether the chains should be run in parallel \code{FALSE}}
+\item{parallel}{whether to distribute chains over PSOCK worker processes.
+Defaults to \code{FALSE}, which runs all chains in the calling process.
+Each sampling process uses one JAGS thread.}
 
-\item{cores}{number of cores used for multithreading if \code{parallel = TRUE},
-defaults to \code{chains}}
+\item{cores}{maximum number of workers when \code{parallel = TRUE},
+defaults to \code{chains}.}
 
 \item{silent}{whether the function should proceed silently, defaults to \code{TRUE}}
 
@@ -165,9 +165,7 @@ defaults to \code{chains}}
 integer between \code{-.Machine$integer.max} and \code{.Machine$integer.max}.
 Draws are reproducible for the same \code{seed}, \code{chains}, and R
 random-number generator settings (\code{RNGkind()}), and, with
-\code{parallel = TRUE}, the same \code{cores}. Parallel draws need not equal
-serial draws with the same seed, because the backend passes each chain's
-initial state to its worker in a serialized text form. Initial values are
+\code{parallel = TRUE}, the same \code{cores} and backend versions. Initial values are
 drawn from the priors after \code{set.seed(seed)}, and each chain's JAGS
 random-number seed is drawn from the same seed with
 \code{sample.int(.Machine$integer.max, chains)} (see
@@ -348,26 +346,22 @@ they stop with an error of class \code{BayesTools_refit_required} (see
 \code{\link[=JAGS_validate_fit_contract]{JAGS_validate_fit_contract()}}).}
 }
 \value{
-\code{JAGS_fit} returns an object of class 'runjags' and 'BayesTools_fit'.
-\code{JAGS_extend} continues the backend random-number generator state of the
-existing chains; it does not reseed them.
-Stored parameter and RNG states initialize reconstruction; recompilation
-resets sampler tuning, which runjags adapts again for \code{adapt}
-iterations (when the model has adaptive samplers) before sampling, with no
-further burn-in. The model is
-always recompiled from these stored states, never continued from a compiled
-model left in the session, so extending the same object twice, or a saved and
-reloaded copy of it, gives identical draws. Within one call, automatic
-extensions continue the sampler compiled by the previous step without
-adapting it again, except parallel workers, which rebuild it for every
-extension. Neither function keeps runjags'
-compiled rjags model (\code{method.options$rjags}) in the returned object;
-\code{runjags::extend.jags()} recompiles a model without it, as after
-reloading.
+A successful fit is a \code{BayesTools_fit}. It contains the sampled
+chains, model and data used for compilation, monitored nodes, and final
+per-chain parameter and RNG states. Extract the chains with
+\code{coda::as.mcmc.list(fit)}. A failed initial fit returns its error
+condition.
+
+\code{JAGS_extend()} rebuilds the sampler from the stored states, adapts
+it for \code{adapt} iterations when needed, then appends draws without
+further burn-in. A saved and reloaded fit extends from the same state.
+Within one call, automatic extensions continue the serial sampler. Parallel
+workers rebuild their samplers at each extension. The returned fit stores
+ordinary R data and can be serialized with \code{saveRDS()}.
 
 The \code{adaptation} attribute of a fit records the adaptation settings:
-\code{initial}, the \code{adapt} of \code{JAGS_fit()} (\code{NA} for fits
-that did not record it), and \code{extensions}, a data frame with one row
+\code{initial}, the \code{adapt} of \code{JAGS_fit()}, and
+\code{extensions}, a data frame with one row
 per backend extension (automatic extensions of \code{JAGS_fit()} and the
 extensions of \code{JAGS_extend()}) giving the \code{adapt} passed to the
 backend and whether the backend \code{rebuilt} the sampler, the only case in
@@ -375,10 +369,8 @@ which it adapts. Warnings of the backend that adaptation was incomplete are
 issued and also kept in the fit's \code{warnings} attribute.
 }
 \description{
-A wrapper around
-\link[runjags]{run.jags}  that simplifies fitting 'JAGS' models
-with usage with pre-specified model part of the 'JAGS' syntax, data and list
-of prior distributions.
+Compiles JAGS model syntax, data, formulas and priors into
+a model and samples it using \pkg{rjags}.
 }
 \examples{
 \dontrun{

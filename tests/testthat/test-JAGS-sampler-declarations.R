@@ -37,9 +37,8 @@ test_that("default arguments leave the model text and data unchanged", {
   expect_false(out$uses_module)
 })
 
-test_that("JAGS_fit() hands runjags the same model text and data with default arguments", {
+test_that("JAGS_fit() hands the driver the same model text and data with default arguments", {
 
-  skip_if_not_installed("runjags")
   skip_if_not_installed("rjags")
   # the backend call is captured before any sampling
   capture <- function(...){
@@ -105,7 +104,7 @@ test_that("JAGS_fit() hands runjags the same model text and data with default ar
     expect_false(any(startsWith(names(default$call$data), "BayesTools_")))
   }
 
-  # with declarations the markers and their data reach runjags and the module is required
+  # with declarations the markers and their data reach the driver and the module is required
   declared <- do.call(capture, list(
     model_syntax = "model{\n  y ~ dnorm(mu + PET, 1)\n}", data = list(y = 0.3),
     prior_list = list(

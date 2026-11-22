@@ -36,7 +36,7 @@ make_adversarial_indicator_fit <- function(indicator = c(rep(1, 9900), rep(0, 10
   )
   fit <- structure(
     list(mcmc = coda::mcmc.list(samples), sample = length(indicator)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- list(
     theta = prior_spike_and_slab(
@@ -58,7 +58,7 @@ make_point_vector_fit <- function(){
   )
   fit <- structure(
     list(mcmc = coda::mcmc.list(samples), sample = 20L),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- list(
     theta = prior("mpoint", list(location = 2, K = 2)),
@@ -95,7 +95,7 @@ make_random_summary_fit <- function(formula, data, prior_random_list,
   colnames(samples) <- column_names
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
@@ -295,7 +295,7 @@ make_row_indexed_external_random_summary_fit <- function(){
 
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
-    class = c("runjags", "BayesTools_fit", "list")
+    class = "BayesTools_fit"
   )
   attr(fit, "prior_list") <- c(
     formula_result$prior_list,
@@ -498,7 +498,6 @@ test_that("runjags_inference_table supports selected BF diagnostics from argumen
 
 test_that("raw random-effect table filtering honors semantic aliases", {
 
-  skip_if_not_installed("runjags")
 
   fit <- make_raw_random_summary_fit()
   raw_samples <- JAGS_estimates_table(
@@ -525,7 +524,6 @@ test_that("raw random-effect table filtering honors semantic aliases", {
 
 test_that("standard random summaries replace LKJ coordinates with semantic rows", {
 
-  skip_if_not_installed("runjags")
 
   fit <- make_lkj_coordinate_summary_fit()
   raw <- JAGS_estimates_table(
@@ -579,7 +577,6 @@ test_that("standard random summaries replace LKJ coordinates with semantic rows"
 
 test_that("keep_random_effects preserves selected random rows with keep_parameters", {
 
-  skip_if_not_installed("runjags")
 
   fit <- make_two_block_random_summary_fit()
   kept <- JAGS_estimates_table(
@@ -596,7 +593,6 @@ test_that("keep_random_effects preserves selected random rows with keep_paramete
 
 test_that("random summaries use the canonical owner-and-quantity labels", {
 
-  skip_if_not_installed("runjags")
 
   fit <- make_two_block_random_summary_fit()
   summary <- JAGS_estimates_table(
@@ -614,7 +610,6 @@ test_that("random summaries use the canonical owner-and-quantity labels", {
 
 test_that("row-indexed external random SD summaries survive the public estimates wrapper", {
 
-  skip_if_not_installed("runjags")
 
   fit <- make_row_indexed_external_random_summary_fit()
   allocation_rows <- c(
@@ -1218,7 +1213,6 @@ test_that("Summary tables for all saved models", {
   skip_if_not_installed("bridgesampling")
   skip_if_no_fits()
 
-  runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
 
   # Load model registry to get list of all fitted models
   registry_file <- file.path(test_files_dir, "model_registry.RDS")

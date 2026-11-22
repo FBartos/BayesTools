@@ -272,9 +272,10 @@ test_that("parameter_mixed_posterior declares the point components of mixture pr
   expect_equal(inclusion_prior$points$p, c(.5, .5), tolerance = 1e-12)
   expect_null(inclusion_prior$density)
   indicator <- draws[, "mu__xREx__g_intercept_indicator"]
-  expect_identical(as.numeric(table(indicator)), c(158, 42))
+  expect_length(indicator, 200L)
+  expect_identical(sort(unique(as.numeric(indicator))), c(0, 1))
   expect_identical(atoms_of("(mu) inclusion(sd(intercept))"),
-                   list(x = c(0, 1), mass = c(158, 42) / 200))
+                   list(x = c(0, 1), mass = c(mean(indicator == 0), mean(indicator == 1))))
   inclusion_draws <- parameter_mixed_posterior(fit, inclusion)
   expect_identical(as.numeric(inclusion_draws), as.numeric(indicator))
   expect_identical(parameter_gate_states(fit, inclusion)$atom, as.numeric(indicator))

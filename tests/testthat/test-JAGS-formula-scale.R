@@ -736,8 +736,7 @@ test_that("transform_prior_samples respects seed and validates formula_scale", {
     mu_x1 = rnorm(32)
   )
 
-  fit <- coda::mcmc(posterior_samples)
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc(posterior_samples))
   attr(fit, "prior_list") <- list(
     mu_intercept = prior("normal", list(0, 1)),
     mu_x1 = prior("normal", list(0.25, 0.5))
@@ -808,8 +807,7 @@ test_that("transform_prior_samples handles scaled multi-factor interactions", {
     }
   }), use.names = FALSE)
 
-  fit <- coda::mcmc(matrix(0, nrow = 4, ncol = length(posterior_columns), dimnames = list(NULL, posterior_columns)))
-  class(fit) <- c("mcmc", "BayesTools_fit")
+  fit <- test_fit_from_chains(coda::mcmc(matrix(0, nrow = 4, ncol = length(posterior_columns), dimnames = list(NULL, posterior_columns))))
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
@@ -879,6 +877,19 @@ test_that("Manual and automatic scaling produce equivalent results", {
   # Load pre-fitted models
   fit_manual <- readRDS(file.path(temp_fits_dir, "fit_formula_manual_scaled.RDS"))
   fit_auto   <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
+
+  # For these fixed data, integrating out the four normal coefficients gives
+  # y | sigma ~ N(0, sigma^2 I + X diag(25, 1, 1, 1) X'). Quadrature over
+  # log(sigma) with its N(0,1) prior gives E[sigma | y] = 698029.2 and
+  # SD[sigma | y] = 46697.7. Matching manual and automatic fits could both be
+  # stuck in the same transient. Require the mean within five MCSEs and an
+  # MCSE below 5% of the posterior SD (about 400 effective draws).
+  for(fit in list(fit_manual, fit_auto)){
+    sigma <- coda::as.mcmc.list(fit)[, "sigma", drop = FALSE]
+    mcse <- summary(sigma)$statistics[["Time-series SE"]]
+    expect_lt(abs(mean(as.matrix(sigma)) - 698029.2), 5 * mcse)
+    expect_lt(mcse, 0.05 * 46697.7)
+  }
 
   # Check that automatic scaling has formula_scale attribute with nested structure
   expect_true(!is.null(attr(fit_auto, "formula_scale")))
@@ -2274,8 +2285,7 @@ test_that("lm validation: factor interactions with multiple scaled continuous", 
 # stores a formula that was standardized by hand.
 .manual_scale_carrier_fit <- function(carrier){
 
-  fit <- coda::mcmc.list(coda::mcmc(as.matrix(carrier)))
-  class(fit) <- c("BayesTools_fit", class(fit))
+  fit <- test_fit_from_chains(coda::mcmc.list(coda::mcmc(as.matrix(carrier))))
   for(name in c("prior_list", "formula_design", "formula_scale")){
     attr(fit, name) <- attr(carrier, name)
   }
