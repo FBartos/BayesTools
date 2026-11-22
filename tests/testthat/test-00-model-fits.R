@@ -1670,12 +1670,12 @@ test_that("Advanced JAGS_fit features work correctly", {
                               chains = 2, adapt = 100, burnin = 50, sample = 100, seed = 3)
   result <- save_fit(fit_autofit_ess, "fit_autofit_ess",
                      simple_priors = TRUE, autofit = TRUE,
-                     note = "Autofit with min_ESS criterion (> 200)")
+                     note = "Autofit with min_ESS criterion (at least 200)")
   model_registry[["fit_autofit_ess"]] <<- result$registry_entry
   fit_autofit_ess <- result$fit
 
   summary_autofit_ess <- summary(fit_autofit_ess)
-  expect_true(summary_autofit_ess[1,"ESS"] > 200)
+  expect_gte(summary_autofit_ess[1,"ESS"], 200)
 
   # Test 3: parallel - running chains in parallel
   # Note: parallel execution is tested but results should be the same as non-parallel

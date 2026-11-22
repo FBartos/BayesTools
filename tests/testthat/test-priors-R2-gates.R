@@ -85,7 +85,11 @@ test_that("the core emits the exact sequential gates, the budget indicator and t
   expect_true(is.prior.R2_budget(priors$mu_R2))
   expect_null(priors$mu_R2_allocation)
   syntax <- .JAGS_add_priors.fun(priors)
-  expect_match(syntax, "mu_R2_gate[1] ~ dbern(0.6666666666666666)", fixed = TRUE)
+  # For three gates with a uniform shared inclusion rate, P(first open |
+  # nonempty) = (1/2) / (1 - 1/4). libm can round the calculation one ULP apart.
+  first_gate <- priors$mu_R2$gates$p_trunc[[1L]]
+  expect_lte(abs(first_gate - 2 / 3), .Machine$double.eps / 2)
+  expect_match(syntax, paste0("mu_R2_gate[1] ~ dbern(", .JAGS_prior_number(first_gate), ")"), fixed = TRUE)
   expect_match(syntax, "mu_R2_gate[3] ~ dbern(ifelse(sum(mu_R2_gate[1:2]) > 0, (1 + sum(mu_R2_gate[1:2])) / 4, 1))", fixed = TRUE)
   expect_match(syntax, "mu_R2_indicator ~ dbern(0.6)", fixed = TRUE)
   expect_match(syntax, "mu_R2 <- mu_R2_variable * step(", fixed = TRUE)
