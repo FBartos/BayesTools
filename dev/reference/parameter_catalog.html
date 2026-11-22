@@ -21,7 +21,30 @@ versions (term_ordered_total) remain aliases. Each share of a random
 allocation of an ordered term is a derived quantity,
 &amp;lt;parameter&amp;gt;_ordered_allocation[&amp;lt;level&amp;gt;] displayed as term[share: level]
 (support [0, 1], the Beta marginal of the Dirichlet prior); its earlier
-labels (term_ordered_allocation[level]) are aliases. The level names of transformed summaries,
+labels (term_ordered_allocation[level]) are aliases. The total of an
+R-squared budget (prior_R2()) is the quantity of its total coordinate
+&amp;lt;parameter&amp;gt;_&amp;lt;name&amp;gt; displayed as &amp;lt;name&amp;gt;{total} (support [0, 1], the
+Beta prior of the model), and each retained term of a budget that retains
+two or more terms has a derived share quantity
+&amp;lt;parameter&amp;gt;_&amp;lt;name&amp;gt;_allocation[&amp;lt;term&amp;gt;] displayed as &amp;lt;name&amp;gt;[share: &amp;lt;term&amp;gt;]
+(support [0, 1], the Beta marginal of the Dirichlet allocation summed over
+the term's allocation units); the allocation coordinates of a budget are
+backend coordinates. For a budget with inclusion gates or a spike-and-slab
+total, the total has an atom at zero (the budget null) and the inclusion
+event of the budget indicator, displayed &amp;lt;name&amp;gt;{total} (inclusion);
+every gated term has a realized inclusion quantity &amp;lt;parameter&amp;gt;_&amp;lt;name&amp;gt;_open[&amp;lt;term&amp;gt;]
+displayed as &amp;lt;term&amp;gt; (inclusion), with the Bernoulli prior of its marginal
+inclusion probability. The earlier selector &amp;lt;parameter&amp;gt;_&amp;lt;name&amp;gt;_gate[&amp;lt;term&amp;gt;]
+remains an alias of that realized event. A share is undefined (&quot;term_included&quot;) on
+the draws where its term is closed, with the prior of the share given that
+the term is open. The scalar coefficients of a gated term have an atom at
+zero (the term closed) and are tested on these quantities; the levels and
+coded coefficients of an exact-law factor have a catalog prior law, including
+under gating. For the normal and Laplace kernels, a level that combines
+several coded coefficients has no supported marginal prior law. R-squared quantities record
+owner_type = &quot;r2_budget&quot;, the declared budget in owner_name, and their
+quantity (total, share, term or budget inclusion, inclusion rate, or
+coefficient). The budget total is the parent of its members. The level names of transformed summaries,
 &amp;lt;parameter&amp;gt;[dif: level], and the row labels those summaries display,
 (formula) term[dif: level] and term[dif: level], are aliases of the
 level quantity. JAGS
@@ -126,7 +149,9 @@ Downstream packages can provide methods for package-owned
 derived quantities. For gated total-variance allocations, realized
 sd_total and var_total draws include the all-off zero branch.
 var_prop(...) draws are normalized over active components and are NA on
-draws where the realized allocation total is zero. Random-effect
+draws where its parent gate is closed or no local component is active. The
+normalized allocation weights can remain defined when a separate external
+scale is zero and all realized component variances are zero. Random-effect
 correlations (cor(...) of LKJ blocks; original-scale correlations in a
 block with scaled columns) are NA on draws where the correlation is
 undefined, i.e. where one of the SDs of its pair is zero; a correlation
@@ -159,7 +184,8 @@ coordinates under the fitted prior, whose multiply_by scales enter only
 the linear predictor; structural levels are point masses at their fixed
 value), one-to-one transformations, Dirichlet allocation marginals, and
 allocation-derived component SDs. Variance proportions are conditional on
-positive allocation variance. A shared parent inclusion gate cancels from
+an active allocation. They describe the relative gated weights and hence
+can remain defined at a zero external scale. A shared parent inclusion gate cancels from
 that conditional law, leaving the Dirichlet marginal
 Beta(alpha_i, sum(alpha) - alpha_i). Independently gated components keep the mixed measure
 over the realized active set: atoms at 0 and 1, and a Beta mixture over
@@ -233,7 +259,7 @@ formula-scale transformations."><meta name="robots" content="noindex"><!-- mathj
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9013</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9014</span>
       </span>
     </div>
 
@@ -303,7 +329,30 @@ versions (<code>term_ordered_total</code>) remain aliases. Each share of a rando
 allocation of an ordered term is a derived quantity,
 <code>&lt;parameter&gt;_ordered_allocation[&lt;level&gt;]</code> displayed as <code>term[share: level]</code>
 (support [0, 1], the Beta marginal of the Dirichlet prior); its earlier
-labels (<code>term_ordered_allocation[level]</code>) are aliases. The level names of transformed summaries,
+labels (<code>term_ordered_allocation[level]</code>) are aliases. The total of an
+R-squared budget (<code><a href="prior_R2.html">prior_R2()</a></code>) is the quantity of its total coordinate
+<code>&lt;parameter&gt;_&lt;name&gt;</code> displayed as <code>&lt;name&gt;{total}</code> (support [0, 1], the
+Beta prior of the model), and each retained term of a budget that retains
+two or more terms has a derived share quantity
+<code>&lt;parameter&gt;_&lt;name&gt;_allocation[&lt;term&gt;]</code> displayed as <code>&lt;name&gt;[share: &lt;term&gt;]</code>
+(support [0, 1], the Beta marginal of the Dirichlet allocation summed over
+the term's allocation units); the allocation coordinates of a budget are
+backend coordinates. For a budget with inclusion gates or a spike-and-slab
+total, the total has an atom at zero (the budget null) and the inclusion
+event of the budget indicator, displayed <code>&lt;name&gt;{total} (inclusion)</code>;
+every gated term has a realized inclusion quantity <code>&lt;parameter&gt;_&lt;name&gt;_open[&lt;term&gt;]</code>
+displayed as <code>&lt;term&gt; (inclusion)</code>, with the Bernoulli prior of its marginal
+inclusion probability. The earlier selector <code>&lt;parameter&gt;_&lt;name&gt;_gate[&lt;term&gt;]</code>
+remains an alias of that realized event. A share is undefined (<code>"term_included"</code>) on
+the draws where its term is closed, with the prior of the share given that
+the term is open. The scalar coefficients of a gated term have an atom at
+zero (the term closed) and are tested on these quantities; the levels and
+coded coefficients of an exact-law factor have a catalog prior law, including
+under gating. For the normal and Laplace kernels, a level that combines
+several coded coefficients has no supported marginal prior law. R-squared quantities record
+<code>owner_type = "r2_budget"</code>, the declared budget in <code>owner_name</code>, and their
+<code>quantity</code> (total, share, term or budget inclusion, inclusion rate, or
+coefficient). The budget total is the parent of its members. The level names of transformed summaries,
 <code>&lt;parameter&gt;[dif: level]</code>, and the row labels those summaries display,
 <code>(formula) term[dif: level]</code> and <code>term[dif: level]</code>, are aliases of the
 level quantity. JAGS
@@ -408,7 +457,9 @@ Downstream packages can provide methods for package-owned
 derived quantities. For gated total-variance allocations, realized
 <code>sd_total</code> and <code>var_total</code> draws include the all-off zero branch.
 <code>var_prop(...)</code> draws are normalized over active components and are <code>NA</code> on
-draws where the realized allocation total is zero. Random-effect
+draws where its parent gate is closed or no local component is active. The
+normalized allocation weights can remain defined when a separate external
+scale is zero and all realized component variances are zero. Random-effect
 correlations (<code>cor(...)</code> of LKJ blocks; original-scale correlations in a
 block with scaled columns) are <code>NA</code> on draws where the correlation is
 undefined, i.e. where one of the SDs of its pair is zero; a correlation
@@ -441,7 +492,8 @@ coordinates under the fitted prior, whose <code>multiply_by</code> scales enter 
 the linear predictor; structural levels are point masses at their fixed
 value), one-to-one transformations, Dirichlet allocation marginals, and
 allocation-derived component SDs. Variance proportions are conditional on
-positive allocation variance. A shared parent inclusion gate cancels from
+an active allocation. They describe the relative gated weights and hence
+can remain defined at a zero external scale. A shared parent inclusion gate cancels from
 that conditional law, leaving the Dirichlet marginal
 <code>Beta(alpha_i, sum(alpha) - alpha_i)</code>. Independently gated components keep the mixed measure
 over the realized active set: atoms at 0 and 1, and a Beta mixture over

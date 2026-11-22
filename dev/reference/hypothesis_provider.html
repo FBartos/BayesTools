@@ -29,7 +29,7 @@ what is specific to its model."><meta name="robots" content="noindex"><!-- mathj
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9013</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9014</span>
       </span>
     </div>
 
@@ -191,7 +191,9 @@ parameter), <code>component</code> (a value of <code>components$values</code>),
 (<code>"formula_coefficient_group"</code> for a whole factor term, whose levels
 are its <code>member_quantity_ids</code>), <code>quantity</code>, <code>status</code>,
 <code>fixed_value</code>, <code>aliases</code> (a list column), and
-<code>member_quantity_ids</code> (a list column). The alias rows of the catalog
+<code>member_quantity_ids</code> (a list column). For a fitted R-squared budget
+marginal the native provider records <code>source = "BayesTools::r2_budget"</code>
+and the catalog's <code>quantity</code> kind. The alias rows of the catalog
 of the entries carry the component as their <code>namespace</code> and
 <code>component</code>.</p></dd>
 

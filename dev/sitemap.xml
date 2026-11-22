@@ -45,6 +45,7 @@
 <url><loc>https://fbartos.github.io/BayesTools/reference/interpret_records.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/invert_BF_bound_operator.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/is.prior.html</loc></url>
+<url><loc>https://fbartos.github.io/BayesTools/reference/is.prior.R2.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/is_prior_bias.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/is_prior_phacking.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/JAGS_add_priors.html</loc></url>
@@ -92,6 +93,8 @@
 <url><loc>https://fbartos.github.io/BayesTools/reference/parameter_map_cache.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/parameter_mixed_posterior.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/parameter_names.html</loc></url>
+<url><loc>https://fbartos.github.io/BayesTools/reference/parameter_plot_samples.html</loc></url>
+<url><loc>https://fbartos.github.io/BayesTools/reference/parameter_relationships.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/parameter_source.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/phack_pi_null.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/plot.prior.html</loc></url>
@@ -132,10 +135,13 @@
 <url><loc>https://fbartos.github.io/BayesTools/reference/prior_ordinate_status.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/prior_phacking.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/prior_PP.html</loc></url>
+<url><loc>https://fbartos.github.io/BayesTools/reference/prior_R2.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/prior_random.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/prior_regularized.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/prior_spike_and_slab.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/prior_weightfunction.html</loc></url>
+<url><loc>https://fbartos.github.io/BayesTools/reference/R2_dirichlet.html</loc></url>
+<url><loc>https://fbartos.github.io/BayesTools/reference/R2_model.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/random_effects_compile.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/random_effects_correlation_draws.html</loc></url>
 <url><loc>https://fbartos.github.io/BayesTools/reference/random_effects_dependency_matrix.html</loc></url>

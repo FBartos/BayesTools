@@ -18,7 +18,7 @@ for a given parameter of a JAGS model."><meta name="robots" content="noindex"><!
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9013</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9014</span>
       </span>
     </div>
 
@@ -228,8 +228,10 @@ binary null/alternative decision shows the alternative alone.
 <code>"switching"</code> shows the fraction of adjacent retained draws in the
 same batch that changed component, including switches within a group.
 The last three statistics need a trace plot without <code>transformations</code>
-and a sampled indicator: a mixture or spike-and-slab prior with at least two
-components (also as an ordered total) or a random-effect allocation gate.</p></dd>
+and a monitored indicator. These include a mixture or spike-and-slab prior
+with at least two components (also as an ordered total), a random-effect
+allocation gate, and the realized inclusion of a gated R-squared budget
+term or total. A budget spike closes every term in that draw.</p></dd>
 
 
 <dt id="arg-batch-size">batch_size<a class="anchor" aria-label="anchor" href="#arg-batch-size"></a></dt>

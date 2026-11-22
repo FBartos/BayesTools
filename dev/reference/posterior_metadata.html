@@ -22,7 +22,7 @@ use this accessor instead of setting attributes."><meta name="robots" content="n
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9013</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9014</span>
       </span>
     </div>
 
@@ -107,6 +107,11 @@ field.</p></dd>
 <dd><p>a character vector naming quantities
 whose draws may be <code>NA</code> because the quantity is undefined in those
 draws (e.g. <code>"correlation"</code>), as returned by <code><a href="parameter_catalog.html">parameter_draws()</a></code>.</p></dd>
+
+<dt><code>"omitted_undefined_draws"</code></dt>
+<dd><p>for the scalar mixed posterior
+of a term share conditional on inclusion in an R-squared budget, the
+number of fitted draws excluded because the term is closed.</p></dd>
 
 <dt><code>"prior_density"</code></dt>
 <dd><p>the prior density of the quantity.</p></dd>

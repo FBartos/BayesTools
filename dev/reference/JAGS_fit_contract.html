@@ -8,6 +8,8 @@ than parsing a JAGS name.
 JAGS_fit_contract() returns the schema contract attached to a fit.
 JAGS_validate_fit_contract() checks the components named in requires and
 requires unsupported objects to be refitted rather than adapted.
+A complete pre-R2 version 22 parameter map is reported as version 23 after
+its fitted declarations are validated.
 Every error that asks to refit the model has class
 BayesTools_refit_required: these validators, and every function that
 reads fitted metadata, stop with it on a fit (or stored metadata or draw
@@ -40,7 +42,7 @@ message."><meta name="robots" content="noindex"><!-- mathjax --><script src="htt
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9013</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9014</span>
       </span>
     </div>
 
@@ -96,7 +98,9 @@ Downstream code should use this map or <code><a href="parameter_map.html">parame
 than parsing a JAGS name.</p>
 <p><code>JAGS_fit_contract()</code> returns the schema contract attached to a fit.
 <code>JAGS_validate_fit_contract()</code> checks the components named in <code>requires</code> and
-requires unsupported objects to be refitted rather than adapted.</p>
+requires unsupported objects to be refitted rather than adapted.
+A complete pre-R2 version 22 parameter map is reported as version 23 after
+its fitted declarations are validated.</p>
 <p>Every error that asks to refit the model has class
 <code>BayesTools_refit_required</code>: these validators, and every function that
 reads fitted metadata, stop with it on a fit (or stored metadata or draw

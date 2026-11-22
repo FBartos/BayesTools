@@ -18,7 +18,7 @@ from JAGS_fit()."><meta name="robots" content="noindex"><!-- mathjax --><script 
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9013</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9014</span>
       </span>
     </div>
 
@@ -498,7 +498,25 @@ backend coordinates shown for inspection: their labels describe the
 coordinate, but they are not catalog quantities and do not select one in
 <code><a href="parameter_catalog.html">parameter_catalog_resolve()</a></code>, hypotheses, or plots (the shares of the
 ordered-factor allocations, which the table shows as <code>&lt;term&gt;[share:
-&lt;level&gt;]</code>, are catalog quantities).
+&lt;level&gt;]</code>, and the shares of the terms of R-squared budgets, shown as
+<code>&lt;budget&gt;[share: &lt;term&gt;]</code> in place of the budget's allocation
+coordinates, are catalog quantities). An R-squared budget with inclusion
+gates or a spike-and-slab total shows inclusion rows as spike-and-slab
+priors do (<code>&lt;term&gt; (inclusion)</code> for every gated term and
+<code>&lt;budget&gt;{total} (inclusion)</code> for a total that can be zero), the
+shares on the draws where their terms are open (reported with their
+defined draw counts), and with
+<code>conditional = TRUE</code> the coefficients of a gated term (and the total)
+on the draws where the term (the budget) is open. Both catalog extraction
+and tables normalize the declared Gamma weights over the open units. The
+registered realized-open flags include the budget spike. An ungated member
+of a spiked budget reads the budget indicator. A view lacking a required
+source signals <code>BayesTools_draws_view_coordinate_unavailable</code> from
+estimates extraction or <code>BayesTools_R2_coordinates_unavailable</code> from
+event reconstruction. A fit without the required monitors signals
+<code>BayesTools_refit_monitoring</code> when extracting its quantities.
+<code>JAGS_inference_table()</code> reports the prior and posterior inclusion
+probabilities and inclusion Bayes factors.
 Internal latent and realized group-coefficient coordinates
 are omitted when <code>transform_scaled = TRUE</code>, including in <code>"raw"</code>
 mode, because those coordinates remain on the fitted standardized scale.</p></dd>
@@ -577,7 +595,7 @@ row and the columns <code>row</code> (the row label), <code>quantity_id</code> (
 <code><a href="parameter_catalog.html">parameter_catalog()</a></code> quantity id of the quantity the row's label names,
 its canonical name or an exact alias such as a transformed factor level
 <code>&lt;parameter&gt;[dif: level]</code>; <code>""</code> for rows that are not catalog
-quantities, such as inclusion rows, mixture components, backend
+quantities, such as unregistered inclusion events, mixture components, backend
 coordinates, fitted random-effect summaries whose catalog quantity is on
 the original scale, ordered-factor allocation shares, and rows whose values
 <code>transformations</code> changed, whose
@@ -604,7 +622,13 @@ inclusion Bayes factor is undefined and reported as <code>NA</code>, because
 the corresponding inclusion/exclusion comparison was not tested.</p>
 <p>The inference table has a row for every spike-and-slab and mixture prior,
 for the spike-and-slab total of an ordered-factor prior (reported under the
-term label), and for every random-effect inclusion gate.</p>
+term label), for random-effect inclusion gates and for the budget and term
+inclusion events of R-squared budgets. The per-row <code>event_quantity_ids</code>
+attribute identifies the catalog quantity of the tested 0/1 event, with
+an empty string when no such quantity is registered. <code>parameters</code>
+identifies the tested owner and <code>parameter_roles</code> distinguishes
+<code>r2_budget_inclusion</code> and <code>r2_term_inclusion</code>. Subsetting the
+table retains the corresponding event IDs, owners and roles.</p>
 <p>An original-scale random-effect correlation is defined in a posterior draw
 whenever both of its SDs are positive, including draws with a singular
 covariance (for example, a zero scaled intercept SD with a nonzero scaled

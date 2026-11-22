@@ -72,6 +72,11 @@ for quantities that are undefined on some
 fitted draws (the catalog definedness, e.g. variance proportions when
 no allocation component is active), the reason; those draws are omitted,
 and the prior density and atom masses are conditional on definedness.
+For an R-squared term share the reason is term_included and
+omitted_undefined_draws gives the number of closed draws.
+If no fitted draw defines the selected posterior or satisfies its
+requested inclusion condition, the function signals
+BayesTools_no_defined_posterior_draws.
 
 condition
 the conditioning of the draws: unconditional
@@ -102,7 +107,7 @@ labels.
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9013</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9014</span>
       </span>
     </div>
 
@@ -221,7 +226,12 @@ gives the constant.</p></dd>
 <dd><p>for quantities that are undefined on some
 fitted draws (the catalog <code>definedness</code>, e.g. variance proportions when
 no allocation component is active), the reason; those draws are omitted,
-and the prior density and atom masses are conditional on definedness.</p></dd>
+and the prior density and atom masses are conditional on definedness.
+For an R-squared term share the reason is <code>term_included</code> and
+<code>omitted_undefined_draws</code> gives the number of closed draws.
+If no fitted draw defines the selected posterior or satisfies its
+requested inclusion condition, the function signals
+<code>BayesTools_no_defined_posterior_draws</code>.</p></dd>
 
 <dt><code>condition</code></dt>
 <dd><p>the conditioning of the draws: unconditional
