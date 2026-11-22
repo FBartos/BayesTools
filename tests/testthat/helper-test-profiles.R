@@ -79,6 +79,8 @@ bayestools_test_profile_contexts <- list(
     "JAGS-fit-contract",
     "JAGS-fit-settings",
     "JAGS-sampler-declarations",
+    "JAGS-sampler-plan",
+    "JAGS-nested-weights",
     "JAGS-formula-coefficient-density",
     "JAGS-formula-coefficient-arithmetic",
     "JAGS-formula-contrasts",
@@ -207,6 +209,8 @@ bayestools_test_profile_contexts <- list(
   certification = c(
     "certification-count-marginal-likelihood",
     "certification-density-kernels",
+    "certification-finite-readout",
+    "certification-nested-weights",
     "certification-fit-assertions",
     "certification-hypothesis-bayes-factors",
     "certification-marginal-likelihood",

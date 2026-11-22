@@ -8,6 +8,75 @@ skip_if_not_installed("rjags")
 # test-00-model-fits.R, which runs only when its cache is stale; each block fits
 # live, and the case is certified again when the code it reaches changes.
 
+test_that("pre-fit sampler sources and the fitted catalog agree in their respective roles", {
+
+  predictors <- data.frame(
+    x = seq(1, 8.7, length.out = 9),
+    z = c(-1, 0, 2, 3, -1, 1, 2, 0, 4),
+    f = factor(rep(c("lo", "mid", "hi"), 3), levels = c("hi", "lo", "mid"))
+  )
+  bias <- prior_mixture(list(
+    prior_none(),
+    prior_weightfunction("one-sided", 0.05, wf_cumulative(c(1, 1))),
+    prior_PET("normal", list(0, 1))
+  ), is_null = c(TRUE, FALSE, FALSE))
+  prefit <- new.env(parent = emptyenv())
+  fit <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i] + theta * s[i] + omega[2] + PET * s[i], 1) } }",
+    data = list(N = 9L, y = c(-1, .4, .7, 1.1, .7, -.4, .6, .5, 1.5), s = seq(0, 1, length.out = 9)),
+    prior_list = list(theta = prior("normal", list(0, 1)), bias = bias),
+    formula_list = list(mu = ~ x + z + f),
+    formula_data_list = list(mu = predictors),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      f = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      Signal = prior_R2(terms = "z", model = R2_model(law = "normal", sigma = 1))
+    )),
+    formula_scale_list = list(mu = list(x = TRUE)),
+    chains = 1L, adapt = 100L, burnin = 50L, sample = 100L, seed = 123L, silent = TRUE,
+    sampler_gates = TRUE,
+    sampler_blocks = function(priors){
+      prefit$block <- JAGS_sampler_sources(priors, c("theta", "mu_x", "mu_f", "mu_z", "mu_Signal"))
+      prefit$bias <- JAGS_mixture_sources(priors, "bias")
+      NULL
+    }
+  )
+  expect_s3_class(fit, "BayesTools_fit")
+
+  nodes <- fit$samplers$Node
+  coordinates <- parameter_coordinates(fit)
+  quantities <- parameter_catalog(fit, transform_scaled = FALSE)$quantities
+  dependencies <- function(name){
+    quantities$extraction_key[[match(name, quantities$canonical_name)]]$dependencies
+  }
+  eligible <- prefit$block$node[prefit$block$status == "eligible"]
+  expect_setequal(eligible, c("theta", "mu_x", "mu_f[1]", "mu_f[2]", "mu_Signal"))
+  expect_true(all(eligible %in% nodes))
+  expect_true(all(eligible %in% coordinates$coordinate_name))
+  expect_identical(dependencies("theta"), "theta")
+  expect_identical(dependencies("mu_x"), "mu_x")
+  expect_identical(quantities$display_scale[quantities$canonical_name == "mu_x"], "fitted_standardized")
+  expect_identical(dependencies("mu_f[hi]"), character())
+  expect_identical(dependencies("mu_f[lo]"), "mu_f[1]")
+  expect_identical(dependencies("mu_f[mid]"), "mu_f[2]")
+
+  expect_identical(prefit$block$status[prefit$block$prior == "mu_z"], "declined")
+  expect_identical(coordinates$monitor_status[coordinates$coordinate_name == "mu_z"], "sampled")
+  expect_identical(quantities$owner_type[quantities$canonical_name == "mu_z"], "r2_budget")
+  expect_true("prior_par_z_mu_z" %in% nodes)
+  expect_false("mu_z" %in% nodes)
+
+  bias_gate <- prefit$bias$gate
+  raw_pet <- prefit$bias$branches[[3L]]$source
+  branch_weights <- prefit$bias$branches[[2L]]$omega
+  expect_true(all(c(bias_gate, raw_pet) %in% nodes))
+  expect_identical(dependencies(bias_gate), bias_gate)
+  expect_identical(dependencies("PET"), "PET")
+  expect_identical(dependencies("omega[2]"), "omega[2]")
+  expect_false(any(c(raw_pet, branch_weights) %in% quantities$canonical_name))
+})
+
 
 # ============================================================================ #
 # CENTRALIZED LIVE-FIT TESTS FROM test-JAGS-fit-edge-cases.R

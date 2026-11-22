@@ -1,5 +1,23 @@
 skip_if_not_test_profile("unit")
 
+test_that("a bound R2 mixture component describes the derived coefficient", {
+
+  priors <- JAGS_formula(~ x, "mu", data.frame(x = 1:6), list(
+    intercept = prior("normal", list(0, 1)),
+    Signal = prior_R2(model = R2_model(law = "normal", sigma = 1))
+  ))$prior_list
+  priors$mu_x <- prior_mixture(list(priors$mu_x, prior("point", list(0))))
+  sources <- JAGS_mixture_sources(priors, "mu_x")
+  branch <- sources$branches[[1L]]
+  expect_identical(branch$source, "mu_x_component_1")
+  expect_identical(branch$family, "derived")
+  expect_false(branch$stochastic)
+  expect_identical(sources$branches[[2L]]$family, "point")
+  syntax <- JAGS_add_priors("model{ y ~ dnorm(mu_x, 1) }", priors)
+  expect_match(syntax, paste0(branch$source, " <- "), fixed = TRUE)
+  expect_match(syntax, paste0("prior_par_z_", branch$source, " ~ "), fixed = TRUE)
+})
+
 test_that("R2 convergence and block declarations distinguish values, gates and allocation copies", {
 
   data <- data.frame(x = seq_len(8), f = factor(rep(letters[1:4], 2)))
@@ -73,12 +91,21 @@ test_that("R2 convergence and block declarations distinguish values, gates and a
   ordinary <- compile(~ x + f, prior_R2(model = R2_model(sigma = 1)))
   allocation <- .bt_convergence_role_prior("mu_Signal_allocation", ordinary$prior_list$mu_Signal_allocation)
   expect_identical(allocation$role, "derived")
-  for (target in c("mu_x", "mu_f", "mu_Signal")) {
-    expect_error(.bt_sampler_block_declarations(list(target), priors),
-                 "its R-squared budget value is deterministic", fixed = TRUE,
+  targets <- c("mu_x", "mu_f", "mu_Signal")
+  sources <- JAGS_sampler_sources(priors, targets)
+  expect_identical(sources$prior, targets)
+  expect_identical(sources$node, rep(NA_character_, 3L))
+  expect_identical(sources$status, rep("declined", 3L))
+  expect_identical(sources$reason, c(rep("its bound R-squared coefficient is deterministic", 2L),
+                                    "its realized R-squared budget total is deterministic"))
+  for (i in seq_along(targets)) {
+    expect_error(.bt_sampler_block_declarations(list(targets[[i]]), priors),
+                 sources$reason[[i]], fixed = TRUE,
                  class = "BayesTools_sampler_declaration_error")
   }
-  expect_identical(.bt_sampler_block_leaves(ordinary$prior_list$mu_Signal, "mu_Signal")$leaves, "mu_Signal")
+  ordinary_sources <- JAGS_sampler_sources(ordinary$prior_list, c("mu_x", "mu_Signal"))
+  expect_identical(ordinary_sources$node, c(NA_character_, "mu_Signal"))
+  expect_identical(ordinary_sources$status, c("declined", "eligible"))
 })
 
 test_that("an unavailable kernel factor projection only refuses hypotheses about that level", {

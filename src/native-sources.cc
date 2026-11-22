@@ -14,3 +14,4 @@
 #include "samplers/BTSamplerDeclarations.cc"
 #include "samplers/BTGatedSlice.cc"
 #include "samplers/BTFactorSlice.cc"
+#include "samplers/BTFiniteReadout.cc"

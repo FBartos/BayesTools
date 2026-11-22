@@ -1,12 +1,14 @@
 #include "DBTSamplerMarker.h"
 
+#include <BayesTools/sampler_declarations.h>
+
 #include <util/nainf.h>
 
 namespace jags {
   namespace BayesTools {
 
-    char const *const gate_marker_name = "dbt_gate";
-    char const *const block_marker_name = "dbt_block";
+    char const *const gate_marker_name = sampler_declarations::gate_marker_name();
+    char const *const block_marker_name = sampler_declarations::block_marker_name();
 
     DBTSamplerMarker::DBTSamplerMarker(std::string const &name)
       : ScalarDist(name, 2, DIST_SPECIAL)

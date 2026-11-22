@@ -607,13 +607,19 @@ JAGS_add_priors           <- function(syntax, prior_list){
 }
 
 
-# The syntax with its JAGS comments ('#' to the end of the line and '/* */')
-# replaced by spaces, so that positions are those of the syntax.
+# Structural view of JAGS source. Match SPECIAL (%+[^% \t\r\n]*%) and comments
+# in one left-to-right pass, so their contents cannot start another token.
+# The greedy leading percent run gives the scanner's longest SPECIAL match.
+# Keep special operators as opaque punctuation. Preserve line endings and
+# source offsets for consumers that edit the original text.
 .JAGS_mask_comments <- function(syntax){
 
-  comments <- gregexpr("(?s)/\\*.*?\\*/|#[^\n]*", syntax, perl = TRUE)
-  regmatches(syntax, comments) <- lapply(regmatches(syntax, comments), function(comment){
-    strrep(" ", nchar(comment))
+  spans <- gregexpr("(?s)%+[^% \t\r\n]*%|/\\*.*?(?:\\*/|\\z)|#[^\r\n]*", syntax, perl = TRUE)
+  regmatches(syntax, spans) <- lapply(regmatches(syntax, spans), function(tokens){
+    special <- startsWith(tokens, "%")
+    tokens[special] <- strrep("%", nchar(tokens[special]))
+    tokens[!special] <- gsub("[^\r\n]", " ", tokens[!special], perl = TRUE)
+    tokens
   })
 
   syntax
