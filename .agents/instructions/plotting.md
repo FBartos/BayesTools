@@ -155,6 +155,12 @@ Ordered prior means use declared
 allocation expectations; intervals use structural CDF diagnostics, exact atom
 jumps and checked generalized inversion, or a typed model/level limitation.
 
+`plot_model_probabilities()` takes declared posterior model probabilities and
+model-by-row states. Both backends use the same cumulative probability intervals,
+with ties resolved by input model order. Row order follows first occurrence, and
+group labels identify contiguous runs. The ggplot object carries the displayed
+row count as the integer `n_rows` attribute.
+
 Plotting density grids are approximations for display. They are not evidence
 for the structural classifications returned by `prior_density_ordinate()`.
 Automatic prior-coordinate ranges are source ranges, independent of

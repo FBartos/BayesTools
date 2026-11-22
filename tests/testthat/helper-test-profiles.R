@@ -112,6 +112,7 @@ bayestools_test_profile_contexts <- list(
     "marginal-inference-conditioning",
     "model-averaging-edge-cases",
     "model-averaging-plots-edge-cases",
+    "model-probability-plot",
     "posterior-factor-levels",
     "native-registration",
     "native-range",
@@ -178,6 +179,7 @@ bayestools_test_profile_contexts <- list(
     "weightfunction-redesign"
   ),
   visual = c(
+    "model-probability-plot",
     "JAGS-ensemble-plots",
     "model-averaging-plots",
     "priors",

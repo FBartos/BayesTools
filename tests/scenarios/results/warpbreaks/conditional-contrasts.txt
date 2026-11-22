@@ -1,0 +1,9 @@
+      source            model Wool B - A Tension L Tension M Tension H
+1 BayesTools          Tension      0.000     0.245    -0.026    -0.219
+2 BayesTools Wool and tension     -0.139     0.245    -0.026    -0.218
+3 BayesTools          Neither      0.000     0.000     0.000     0.000
+4 BayesTools             Wool     -0.142     0.000     0.000     0.000
+5      Exact          Tension      0.000     0.245    -0.027    -0.218
+6      Exact Wool and tension     -0.139     0.245    -0.027    -0.218
+7      Exact          Neither      0.000     0.000     0.000     0.000
+8      Exact             Wool     -0.139     0.000     0.000     0.000
