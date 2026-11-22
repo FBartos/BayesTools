@@ -607,13 +607,19 @@ JAGS_add_priors           <- function(syntax, prior_list){
 }
 
 
-# Mask comments in place, preserving line endings and the offsets needed to
-# insert generated code. JAGS also accepts a trailing block comment at EOF.
+# Structural view of JAGS source. Match SPECIAL (%+[^% \t\r\n]*%) and comments
+# in one left-to-right pass, so their contents cannot start another token.
+# The greedy leading percent run gives the scanner's longest SPECIAL match.
+# Keep special operators as opaque punctuation. Preserve line endings and
+# source offsets for consumers that edit the original text.
 .JAGS_mask_comments <- function(syntax){
 
-  comments <- gregexpr("(?s)/\\*.*?(?:\\*/|\\z)|#[^\r\n]*", syntax, perl = TRUE)
-  regmatches(syntax, comments) <- lapply(regmatches(syntax, comments), function(comment){
-    gsub("[^\r\n]", " ", comment, perl = TRUE)
+  spans <- gregexpr("(?s)%+[^% \t\r\n]*%|/\\*.*?(?:\\*/|\\z)|#[^\r\n]*", syntax, perl = TRUE)
+  regmatches(syntax, spans) <- lapply(regmatches(syntax, spans), function(tokens){
+    special <- startsWith(tokens, "%")
+    tokens[special] <- strrep("%", nchar(tokens[special]))
+    tokens[!special] <- gsub("[^\r\n]", " ", tokens[!special], perl = TRUE)
+    tokens
   })
 
   syntax

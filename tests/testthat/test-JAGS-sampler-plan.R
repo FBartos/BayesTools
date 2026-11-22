@@ -262,6 +262,92 @@ test_that("comment masking preserves native line breaks and source offsets", {
   }
 })
 
+test_that("JAGS special operators are opaque to structural syntax scans", {
+
+  operators <- c("%#%", "%/*%", "%}%", "%model{%", "%PET_1%", "%]~(y)%", "%*%",
+    "%%#%", "%%%#%", "%%%%", paste0("%x\fy%"), paste0("%x", intToUtf8(0xA0), "y%"))
+  for(line_end in c("\n", "\r\n", "\r")){
+    for(operator in operators){
+      hash <- paste0("# ", operator, " hidden }")
+      block <- paste0("/* ", operator, " hidden } */")
+      source <- paste0(hash, line_end, "model { x <- a ", operator, " b ", block,
+        line_end, "y ~ dnorm(x, 1) }")
+      opaque <- strrep("%", nchar(operator))
+      expect_identical(.JAGS_mask_comments(source), paste0(strrep(" ", nchar(hash)),
+        line_end, "model { x <- a ", opaque, " b ", strrep(" ", nchar(block)),
+        line_end, "y ~ dnorm(x, 1) }"))
+      graph <- .bt_jags_syntax_graph(source)
+      expect_identical(graph$deterministic$x, c("a", "b"))
+      expect_identical(graph$stochastic, "y")
+      expect_identical(.bt_sampler_tokens(source), c("model", "x", "a", "b", "y", "dnorm", "x"))
+    }
+  }
+  # When no final percent follows the body, the longest valid token ends
+  # within the leading run. The following hash begins an ordinary comment.
+  expect_identical(.JAGS_mask_comments("a %%%# gone\r b"), "a %%%      \r b")
+
+  source <- paste(
+    "data { precision <- a %model{% b %}% c }",
+    "model {",
+    "  for(i in 1:2) { g[i] ~ dbern(p[i %]~(% 1]) }",
+    "}", sep = "\n"
+  )
+  opening <- regexpr("model {", source, fixed = TRUE)[1L] + nchar("model {") - 1L
+  expect_identical(.JAGS_model_block_opening(source), as.integer(opening))
+  graph <- .bt_jags_syntax_graph(source)
+  expect_identical(graph$data, "precision")
+  expect_identical(graph$stochastic, "g")
+  marked <- .bt_sampler_insert_markers(source, "mark <- 0")
+  expect_identical(marked, sub("\\}$", "  mark <- 0\n}", source))
+})
+
+test_that("special operators keep real gate dependencies and tag calls visible", {
+
+  prior_list <- list(bias = prior_mixture(list(prior_none(),
+    prior_PET("normal", list(0, 1))), is_null = c(TRUE, FALSE)))
+  gate_plan <- function(node){
+    syntax <- paste0("model { precision <- 96 %PET_1% 4; y ~ dnorm(", node, ", precision) }")
+    .bt_sampler_declarations(JAGS_add_priors(syntax, prior_list), list(y = 10),
+      prior_list, NULL, sampler_gates = TRUE)
+  }
+  expect_identical(gate_plan("PET")$declarations$gates$node, "PET_1")
+  expect_equal(nrow(gate_plan("PET_1")$declarations$gates), 0L)
+
+  declaration <- function(prior_list, formula_design, data){
+    list(markers = list(list(name = "private_terminal", tag = "package_zero", arguments = list("x"))))
+  }
+  plan <- function(operator, relation){
+    legacy <- list(model = paste0("model { x ~ dnorm(0, 1); precision <- 96 ", operator, " 4; ", relation, " }"))
+    .bt_sampler_apply_plan(legacy, NULL, NULL, NULL, NULL, declaration, NULL, "Package")
+  }
+  for(operator in c("%#%", "%/*%", "%%#%", "%}%")){
+    expect_error(plan(operator, "scientific <- package_zero(x)"),
+      "tag function 'package_zero' is already called by the model", fixed = TRUE,
+      class = "BayesTools_sampler_declaration_error")
+    expect_error(plan(operator, "y ~ dnorm(x + private_terminal, precision)"),
+      "name 'private_terminal' is already used or reserved", fixed = TRUE,
+      class = "BayesTools_sampler_declaration_error")
+  }
+  expect_match(plan("%private_terminal%", "y ~ dnorm(x, precision)")$model,
+    "private_terminal <- package_zero(x)", fixed = TRUE)
+})
+
+test_that("explicit probability requests reserve the private finite functions", {
+
+  plan <- function(syntax, nodes){
+    legacy <- list(model = syntax, data = list(y = 0.2))
+    .bt_sampler_apply_plan(legacy, NULL, NULL, NULL, NULL, NULL, nodes)
+  }
+  for(call in c("bt_finite_witness_tag(z, w)", "bt_finite_tag(z2)")){
+    syntax <- paste0("model { z ~ dbern(0.5); y ~ dnorm(z, 1); extra <- ", call, " }")
+    expect_error(plan(syntax, "z"), "The model calls the private finite readout function",
+      fixed = TRUE, class = "BayesTools_sampler_declaration_error")
+    expect_identical(plan(syntax, NULL)$model, syntax)
+  }
+  syntax <- "model { z ~ dbern(0.5)\n# extra <- bt_finite_tag(z2)\n y ~ dnorm(z, 1) }"
+  expect_match(plan(syntax, "z")$model, "BayesTools_finite_1 <- bt_finite_tag(z)", fixed = TRUE)
+})
+
 test_that("parallel merge checks probability schema by indicator and reports mixed gate ownership", {
 
   make_worker <- function(ids, start, gate_sampler){

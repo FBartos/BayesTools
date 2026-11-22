@@ -259,6 +259,33 @@ test_that("compiled aliases share finite readouts and real scientific names rema
   expect_true(all(scientific %in% colnames(ordinary$mcmc[[1L]])))
 })
 
+test_that("public finite requests refuse manual witness and unrequested-node tags", {
+
+  skip_if_not_installed("rjags")
+  fit <- function(extra = "", probabilities = NULL){
+    model <- paste(
+      "model {", "z ~ dbern(0.5)", "z2 ~ dbern(0.5)", "y ~ dnorm(z, 1)",
+      "y2 ~ dnorm(z2 + w, 1)", extra, "}", sep = "\n"
+    )
+    JAGS_fit(model, data = list(y = 0.2, y2 = 0.3), prior_list = list(w = prior("normal", list(0, 1))),
+      add_parameters = c("z", "z2"), sampler_probabilities = probabilities,
+      chains = 1L, adapt = 50L, burnin = 50L, sample = 100L, seed = 332L)
+  }
+  stock <- fit()
+  recorded <- fit(probabilities = "z")
+  expect_s3_class(recorded, "BayesTools_fit")
+  expect_identical(recorded$mcmc, stock$mcmc)
+  expect_identical(recorded$end_state, stock$end_state)
+  expect_named(recorded$sampler_probabilities, "z")
+  expect_identical(recorded$samplers$Node[recorded$samplers$Sampler == "BayesTools::Finite"], "z")
+  expect_identical(recorded$sampler_probabilities$z[[1L]][, "selected"], recorded$mcmc[[1L]][, "z"])
+  for(extra in c("extra <- bt_finite_witness_tag(z, w)", "extra <- bt_finite_tag(z2)")){
+    expect_error(fit(extra, "z"), "The model calls the private finite readout function",
+      fixed = TRUE, class = "BayesTools_sampler_declaration_error")
+    expect_s3_class(fit(extra), "BayesTools_fit")
+  }
+})
+
 test_that("public finite readouts follow scientific draws and survive parallel saved-fit extension", {
 
   skip_if_not_installed("rjags")
@@ -397,6 +424,25 @@ test_that("hash comment line endings preserve real gate dependencies and hide no
       "name 'private_terminal' is already used or reserved", fixed = TRUE,
       class = "BayesTools_sampler_declaration_error")
   }
+})
+
+test_that("the native matrix operator survives structural scanning of generated data", {
+
+  skip_if_not_installed("rjags")
+  model <- paste(
+    "data { converted[1:2,1:1] <- A[1:2,1:2] %*% B[1:2,1:1] }",
+    "model { z ~ dbern(0.5)\n y ~ dnorm(z + converted[2,1], 1) }", sep = "\n"
+  )
+  args <- list(model, data = list(A = diag(2), B = matrix(c(2, -1), 2), y = 0.4),
+    add_parameters = "z", chains = 1L, adapt = 50L, burnin = 50L, sample = 100L, seed = 991L)
+  stock <- do.call(JAGS_fit, args)
+  recorded <- do.call(JAGS_fit, c(args, list(sampler_probabilities = "z")))
+  expect_s3_class(recorded, "BayesTools_fit")
+  expect_identical(as.numeric(recorded$data$converted), c(2, -1))
+  expect_identical(recorded$mcmc, stock$mcmc)
+  expect_identical(recorded$end_state, stock$end_state)
+  expect_equal(as.numeric(recorded$sampler_probabilities$z[[1L]][, "p[1]"]),
+    rep(stats::plogis(0.9), 100L), tolerance = 1e-14)
 })
 
 test_that("validated package declarations survive recompilation without replaying the callback", {

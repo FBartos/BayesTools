@@ -2,6 +2,7 @@
 # deterministic tags, with optional numeric data for their arguments.
 .bt_sampler_finite_prefix <- "BayesTools_finite_"
 .bt_sampler_finite_readout_prefix <- "BayesTools_finite_readout_"
+.bt_sampler_finite_functions <- c("bt_finite_tag", "bt_finite_witness_tag")
 .bt_sampler_node_pattern <- "[A-Za-z][A-Za-z0-9_.]*"
 .bt_sampler_keywords <- c("model", "data", "var", "in", "for")
 
@@ -116,7 +117,7 @@
     }
     symbol <- as.vector(marker[[type]])
     if(type == "tag"){
-      if(symbol %in% c("bt_finite_tag", "bt_finite_witness_tag")){
+      if(symbol %in% .bt_sampler_finite_functions){
         fail("tag function '", symbol, "' is reserved by BayesTools")
       }
       if(!any(startsWith(symbol, tag_prefix))){
@@ -233,6 +234,11 @@
   }
 
   if(length(sampler_probabilities)){
+    called <- intersect(graph$calls, .bt_sampler_finite_functions)
+    if(length(called)){
+      .bt_sampler_declaration_stop("The model calls the private finite readout function '", called[[1L]],
+        "'. Remove that call and request the indicator through 'sampler_probabilities'.")
+    }
     reserved <- existing[startsWith(existing, .bt_sampler_finite_prefix)]
     if(length(reserved)){
       .bt_sampler_declaration_stop("The model uses reserved BayesTools sampler node name '", reserved[[1L]], "'.")
