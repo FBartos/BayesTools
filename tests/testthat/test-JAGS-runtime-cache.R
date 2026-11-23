@@ -693,29 +693,62 @@ test_that("fits without a runtime report are unchanged and never contact the wor
   }
 })
 
-test_that("the JASP fitting path reports after its initial run and each of its extensions", {
+test_that("JASP ticks follow completed work on both chain groups", {
 
-  entry <- .report_test_entry
+  completed <- c(NA_real_, NA_real_)
+  observed <- list()
+  worker <- 0L
+  testthat::local_mocked_bindings(
+    clusterApply = function(cl, x, fun, ...){
+      lapply(seq_along(x), function(i){
+        worker <<- i
+        fun(x[[i]], ...)
+      })
+    }, .package = "parallel"
+  )
+  testthat::local_mocked_bindings(
+    .bt_rjags_group = function(inits, ...){
+      expect_length(inits, if(worker == 1L) 2L else 1L)
+      completed[worker] <<- 0
+    },
+    .bt_rjags_batch = function(sample, ...) completed[worker] <<- completed[worker] + sample,
+    .bt_rjags_merge_workers = function(...) list(),
+    .JASP_progress_bar_start = function(...) NULL,
+    .JASP_progress_bar_tick = function() observed[[length(observed) + 1L]] <<- completed,
+    .package = "BayesTools"
+  )
+  .bt_rjags_run("", list(), list(1L, 2L, 3L), "x", 50L, 50L, 103L, 3L,
+    list(1L, 2L), TRUE, jasp_prefix = "")
+  expect_identical(observed, lapply(c(0, 21, 42, 63, 83, 103), rep, 2L))
+})
+
+test_that("JASP progress preserves one runtime report per fit or autofit extension", {
+
   state <- .report_test_backend(.report_test_state())
   report <- .report_test_callback(state)
   for(parallel in c(FALSE, TRUE)){
-    .report_test_script(state)
+    .report_test_script(state, unconverged = 1L)
     fit <- .report_test_fit(runtime_report = report, parallel = parallel, cores = 2,
-      is_JASP = TRUE)
-    expect_identical(state$extensions, 5L)
+      is_JASP = TRUE, autofit = TRUE, autofit_control = .report_test_control())
+    expect_identical(c(state$runs, state$extensions), c(1L, 1L))
     runs <- attr(fit, "runtime_report_values")
-    expect_length(runs, 6L)
-    expect_identical(lengths(runs), rep(if(parallel) 2L else 1L, 6L))
-    expect_identical(runs[[6L]][[1L]], entry(if(parallel) "worker 1" else "local 1",
-      if(parallel) 11L else 6L))
+    if(parallel){
+      expect_identical(runs, list(
+        list(.report_test_entry("worker 1", 1L), .report_test_entry("worker 2", 2L)),
+        list(.report_test_entry("worker 1", 3L), .report_test_entry("worker 2", 4L))
+      ))
+    }else{
+      expect_identical(runs, list(
+        list(.report_test_entry("local 1", 1L)), list(.report_test_entry("local 1", 2L))
+      ))
+    }
   }
 
-  # a failed extension makes the fit an error, which carries no report
-  .report_test_script(state, fail_extensions = 3L)
-  failed <- .report_test_fit(runtime_report = report, is_JASP = TRUE)
+  .report_test_script(state, fail_runs = 1L)
+  failed <- .report_test_fit(runtime_report = report, is_JASP = TRUE,
+    autofit_control = .report_test_control())
   expect_s3_class(failed, "error")
-  expect_identical(state$reports, 4L)
-  expect_false("runtime_report_values" %in% names(attributes(failed)))
-  expect_null(attr(failed, "runtime_report_values"))
+  expect_identical(state$reports, 1L)
+  expect_null(attr(failed, "runtime_report_values", exact = TRUE))
   expect_identical(attr(failed, "runtime_report"), report)
 })
