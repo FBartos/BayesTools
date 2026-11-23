@@ -1,1 +1,0 @@
-BayesTools JAGS fit with 1 chain and 101 retained draws.

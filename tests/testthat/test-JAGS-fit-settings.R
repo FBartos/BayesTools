@@ -1621,16 +1621,13 @@ test_that("JAGS_fit forwards its adaptation to automatic extensions", {
     .jags_adaptation_test_record(750, c(750, 750), c(TRUE, TRUE))
   )
 
-  # the JASP fitting path samples in five extensions
+  # Progress is delivered by the initial backend run.
   recorder <- .jags_extension_recorder()
   testthat::local_mocked_bindings(.bt_rjags_extend = recorder$extend, .package = "BayesTools")
   jasp <- fit_with(autofit = FALSE, parallel = TRUE, cores = 2, is_JASP = TRUE)
-  expect_identical(lapply(recorder$calls(), `[[`, "adapt"), rep(list(750L), 5))
-  expect_true(all(vapply(recorder$calls(), function(call) !"burnin" %in% names(call), logical(1))))
-  expect_identical(
-    attr(jasp, "adaptation"),
-    .jags_adaptation_test_record(750, rep(750, 5), rep(TRUE, 5))
-  )
+  expect_length(recorder$calls(), 0L)
+  expect_identical(run_calls[[3L]]$sample, 100)
+  expect_identical(attr(jasp, "adaptation"), .jags_adaptation_test_record(750))
 
   # a fit without extensions records only the initial setting
   plain <- fit_with(autofit = FALSE)

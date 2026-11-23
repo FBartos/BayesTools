@@ -197,7 +197,10 @@ connections before reporting cleanup failure; do not run the runtime finish
 callback when worker shutdown failed. Explicit worker-output paths are
 call-specific and must not be replayed from a serialized fit.
 After a graceful last-valid-fit return, do not recapture `runtime_state` onto
-the retained fit from the failed attempt. Serial automatic extensions may retain a compiled rjags model within one call.
+the retained fit from the failed attempt. Serial automatic extensions and JASP
+parallel automatic extensions retain their compiled samplers within one fitting
+call. JASP progress ticks divide the requested draws into at most five batches.
+Only the calling process ticks, after every group completes its batch.
 Returned fits store the compiled model text and data, chain states and RNGs.
 An explicit `JAGS_extend()` rebuilds the sampler, uses the recorded adaptation
 length (or the call-specific override), and starts sampling with zero additional
@@ -206,7 +209,7 @@ burn-in. Record the adaptation settings and rebuild status for each extension.
 The optional `runtime_report` callback (stored as `attr(fit, "runtime_report")`,
 replayed by `JAGS_extend()` like `runtime_cache`) runs with
 `phase = "report"` in every process that ran chains immediately after every
-backend run (initial run, restart attempts, JASP runs, automatic and
+backend run (initial run including all JASP sampling batches, restart attempts, automatic and
 `JAGS_extend()` extensions), also after a failed run, so that read-and-clear
 consumers start the next attempt clean, but never after a worker connection
 error. Only successful runs enter `attr(fit, "runtime_report_values")` (one

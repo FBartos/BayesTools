@@ -2,9 +2,15 @@
 # setup and reporting. Keep JAGS to one thread per process for both serial
 # fits and PSOCK workers, including workers that own multiple chains.
 .bt_rjags_group <- function(inits, model, data, monitor, adapt, burnin, sample,
-                            thin, silent, keep_live, live_model = NULL, probability_plan = NULL){
+                            thin, silent, keep_live, live_model = NULL, probability_plan = NULL,
+                            prepare = FALSE, session = .bt_rjags_worker_session){
 
   progress <- if(silent) "none" else "text"
+  if(isTRUE(live_model)){
+    # Only the coordinator's private worker cluster uses this marker.
+    live_model <- session$model
+    if(is.null(live_model)) stop("The worker lost its compiled JAGS model.", call. = FALSE)
+  }
   if(is.null(live_model)){
     uses_lecuyer <- vapply(inits, function(chain){
       identical(chain[[".RNG.name"]], "lecuyer::RngStream")
@@ -29,6 +35,28 @@
   if(burnin > 0){
     stats::update(live_model, n.iter = burnin, progress.bar = progress)
   }
+  if(prepare){
+    session$model <- live_model
+    session$chunks <- list()
+    return(NULL)
+  }
+  .bt_rjags_batch(sample, monitor, thin, progress, keep_live, probability_plan,
+    live_model = live_model, session = NULL)
+}
+
+# Each JAGS_fit() creates its own PSOCK workers and stops them on exit.
+# Serial progress uses an environment local to the fitting call instead.
+.bt_rjags_worker_session <- new.env(parent = emptyenv())
+
+.bt_rjags_batch <- function(sample, monitor, thin, progress, keep_live, probability_plan,
+                            last = TRUE, session = .bt_rjags_worker_session,
+                            live_model = session$model){
+
+  readouts <- if(!is.null(probability_plan)){
+    stats::setNames(probability_plan$readout, probability_plan$node)
+  }
+  draws <- .bt_rjags_samples(live_model, monitor, sample, thin, progress, readouts, session, last)
+  if(!last) return(NULL)
   assignments <- rjags::list.samplers(live_model)
   samplers <- data.frame(
     Index.No = rep(seq_along(assignments), lengths(assignments)),
@@ -36,10 +64,6 @@
     Node = as.character(unlist(assignments, use.names = FALSE))
   )
 
-  readouts <- if(!is.null(probability_plan)){
-    stats::setNames(probability_plan$readout, probability_plan$node)
-  }
-  draws <- .bt_rjags_samples(live_model, monitor, sample, thin, progress, readouts)
   out <- list(mcmc = draws, end_state = live_model$state(internal = TRUE), samplers = samplers,
     live_model = if(keep_live) live_model)
   if(!is.null(probability_plan)){
@@ -104,7 +128,8 @@
 # monitors and passes their subscript to JAGS as part of the variable name.
 # Read those arrays by name, retaining just the coordinates the user requested.
 # Other indexed requests can still read a small slice of a large array.
-.bt_rjags_samples <- function(model, monitor, sample, thin, progress, readouts = NULL){
+.bt_rjags_samples <- function(model, monitor, sample, thin, progress, readouts = NULL,
+                              session = NULL, last = TRUE){
 
   monitor <- unname(trimws(monitor))
   base <- trimws(.bt_jags_parameter_base(monitor))
@@ -113,6 +138,18 @@
   native <- ifelse(base %in% whole, base, monitor)
   draws <- rjags::coda.samples(model, variable.names = unique(c(unname(native), unname(readouts))),
     n.iter = as.double(sample) * thin, thin = thin, na.rm = FALSE, progress.bar = progress)
+  if(!is.null(session)){
+    session$chunks[[length(session$chunks) + 1L]] <- draws
+    if(!last) return(NULL)
+    # Combine once, before checking undefined coordinates and probability traces.
+    if(length(session$chunks) > 1L){
+      draws <- coda::mcmc.list(lapply(seq_along(draws), function(i){
+        chains <- lapply(session$chunks, `[[`, i)
+        coda::mcmc(do.call(rbind, lapply(chains, as.matrix)), start = stats::start(chains[[1L]]), thin = thin)
+      }))
+    }
+    session$chunks <- NULL
+  }
 
   # JAGS returns variables in name order, and each array in column-major order.
   # Retain the original request order across variables and overlapping slices.
@@ -172,11 +209,11 @@
 
 # Warnings emitted on a worker must reach the calling fit, including the
 # incomplete-adaptation warning. Do not send compiled JAGS objects over sockets.
-.bt_rjags_worker <- function(inits, ...){
+.bt_rjags_worker <- function(input, step, ...){
 
   warnings <- list()
   value <- tryCatch(withCallingHandlers(
-    .bt_rjags_group(inits, ..., keep_live = FALSE),
+    step(input, ...),
     warning = function(w){
       warnings[[length(warnings) + 1L]] <<- w
       invokeRestart("muffleWarning")
@@ -185,25 +222,45 @@
 }
 
 .bt_rjags_run <- function(model, data, inits, monitor, adapt, burnin, sample,
-                          thin, cl, silent, live_model = NULL, probability_plan = NULL){
-
-  if(is.null(cl)){
-    return(.bt_rjags_group(inits, model, data, monitor, adapt, burnin, sample,
-      thin, silent, keep_live = TRUE, live_model = live_model, probability_plan = probability_plan))
-  }
+                          thin, cl, silent, live_model = NULL, probability_plan = NULL,
+                          jasp_prefix = NULL){
 
   # The runtime callbacks use the same round-robin chain assignment. Restore
   # the original chain order before returning draws and their matching states.
-  groups <- split(seq_along(inits), rep_len(seq_along(cl), length(inits)))
-  results <- parallel::clusterApply(cl, lapply(groups, function(ids) inits[ids]),
-    .bt_rjags_worker, model = model, data = data, monitor = monitor, adapt = adapt,
-    burnin = burnin, sample = sample, thin = thin, silent = silent, probability_plan = probability_plan)
-  for(result in results){
-    for(w in result$warnings) warning(w)
-    if(inherits(result$value, "error")) stop(result$value)
+  local <- is.null(cl)
+  groups <- if(local) list(seq_along(inits)) else split(seq_along(inits), rep_len(seq_along(cl), length(inits)))
+  session <- new.env(parent = emptyenv())
+  run_groups <- function(step, inputs, ...){
+    if(local) return(list(step(inputs[[1L]], ..., session = session)))
+    results <- parallel::clusterApply(cl, inputs, .bt_rjags_worker, step, ...)
+    for(result in results){
+      for(w in result$warnings) warning(w)
+      if(inherits(result$value, "error")) stop(result$value)
+    }
+    lapply(results, "[[", "value")
   }
-  out <- lapply(results, "[[", "value")
-  .bt_rjags_merge_workers(out, groups, thin, probability_plan)
+  jasp <- !is.null(jasp_prefix)
+  if(jasp) .JASP_progress_bar_start(1L, paste0(jasp_prefix, "Adapting and burnin the model"))
+  out <- run_groups(.bt_rjags_group, lapply(groups, function(ids) inits[ids]),
+    model = model, data = data, monitor = monitor, adapt = adapt, burnin = burnin, sample = sample,
+    thin = thin, silent = silent, keep_live = local, live_model = live_model,
+    probability_plan = probability_plan, prepare = jasp)
+  if(jasp){
+    .JASP_progress_bar_tick()
+    batches <- min(5L, sample)
+    sizes <- sample %/% batches + (seq_len(batches) <= sample %% batches)
+    .JASP_progress_bar_start(batches, paste0(jasp_prefix, "Sampling the model"))
+    for(i in seq_along(sizes)){
+      out <- run_groups(.bt_rjags_batch, rep(list(sizes[[i]]), length(groups)), monitor = monitor,
+        thin = thin, progress = if(silent) "none" else "text", keep_live = local,
+        probability_plan = probability_plan, last = i == batches)
+      .JASP_progress_bar_tick()
+    }
+  }
+  if(local) return(out[[1L]])
+  merged <- .bt_rjags_merge_workers(out, groups, thin, probability_plan)
+  if(jasp || isTRUE(live_model)) merged$live_model <- TRUE
+  merged
 }
 
 .bt_rjags_merge_workers <- function(out, groups, thin, probability_plan){
@@ -244,10 +301,10 @@
 }
 
 .bt_rjags_fit <- function(model, data, inits, monitor, adapt, burnin, sample, thin,
-                          cl = NULL, silent = TRUE, probability_plan = NULL){
+                          cl = NULL, silent = TRUE, probability_plan = NULL, jasp_prefix = NULL){
 
   out <- .bt_rjags_run(model, data, inits, monitor, adapt, burnin, sample, thin, cl, silent,
-    probability_plan = probability_plan)
+    probability_plan = probability_plan, jasp_prefix = jasp_prefix)
   # Public chain indices count the requested adaptation and burn-in, even
   # when JAGS selects only samplers that never require adaptation.
   public_iteration <- function(draws) coda::mcmc.list(lapply(draws, function(chain){

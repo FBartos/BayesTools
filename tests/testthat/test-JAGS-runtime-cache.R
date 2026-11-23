@@ -693,29 +693,33 @@ test_that("fits without a runtime report are unchanged and never contact the wor
   }
 })
 
-test_that("the JASP fitting path reports after its initial run and each of its extensions", {
+test_that("JASP progress preserves one runtime report per fit or autofit extension", {
 
-  entry <- .report_test_entry
   state <- .report_test_backend(.report_test_state())
   report <- .report_test_callback(state)
   for(parallel in c(FALSE, TRUE)){
-    .report_test_script(state)
+    .report_test_script(state, unconverged = 1L)
     fit <- .report_test_fit(runtime_report = report, parallel = parallel, cores = 2,
-      is_JASP = TRUE)
-    expect_identical(state$extensions, 5L)
+      is_JASP = TRUE, autofit = TRUE, autofit_control = .report_test_control())
+    expect_identical(c(state$runs, state$extensions), c(1L, 1L))
     runs <- attr(fit, "runtime_report_values")
-    expect_length(runs, 6L)
-    expect_identical(lengths(runs), rep(if(parallel) 2L else 1L, 6L))
-    expect_identical(runs[[6L]][[1L]], entry(if(parallel) "worker 1" else "local 1",
-      if(parallel) 11L else 6L))
+    if(parallel){
+      expect_identical(runs, list(
+        list(.report_test_entry("worker 1", 1L), .report_test_entry("worker 2", 2L)),
+        list(.report_test_entry("worker 1", 3L), .report_test_entry("worker 2", 4L))
+      ))
+    }else{
+      expect_identical(runs, list(
+        list(.report_test_entry("local 1", 1L)), list(.report_test_entry("local 1", 2L))
+      ))
+    }
   }
 
-  # a failed extension makes the fit an error, which carries no report
-  .report_test_script(state, fail_extensions = 3L)
-  failed <- .report_test_fit(runtime_report = report, is_JASP = TRUE)
+  .report_test_script(state, fail_runs = 1L)
+  failed <- .report_test_fit(runtime_report = report, is_JASP = TRUE,
+    autofit_control = .report_test_control())
   expect_s3_class(failed, "error")
-  expect_identical(state$reports, 4L)
-  expect_false("runtime_report_values" %in% names(attributes(failed)))
-  expect_null(attr(failed, "runtime_report_values"))
+  expect_identical(state$reports, 1L)
+  expect_null(attr(failed, "runtime_report_values", exact = TRUE))
   expect_identical(attr(failed, "runtime_report"), report)
 })

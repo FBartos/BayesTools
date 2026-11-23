@@ -8,6 +8,7 @@
 - a mixture of publication-bias priors must be named `bias` in the prior list
 
 ### Features
+- JASP progress updates retain the requested draw count and reuse adapted samplers throughout a fit
 - `plot_model_probabilities()` displays posterior model probabilities and model states in a matrix
 - `plot_posterior()` and `plot_marginal()` can select factor levels by name and draw a separate plot for each selected level
 - `hypothesis_BF()` accepts interval hypotheses such as `"-0.1 <= mu <= 0.1"` and explicit comparisons with `unconstrained`

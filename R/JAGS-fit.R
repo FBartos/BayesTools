@@ -288,8 +288,9 @@
 #' reads small values of a process, such as sampler counters. It is called in
 #' every process that ran chains (the calling process of a serial fit, each
 #' worker of a parallel fit) after every backend run: the initial run, each
-#' restart attempt, each automatic extension, each run of the JASP fitting
-#' path, and each extension of \code{JAGS_extend()}. It must not change
+#' restart attempt, each automatic extension, and each extension of
+#' \code{JAGS_extend()}. JASP sampling batches share one report for the initial run.
+#' The callback must not change
 #' inference targets or random-number state, must capture only small settings,
 #' and returns \code{NULL} or a small serializable value. The values of runs
 #' that do not give the returned fit (failed attempts and failed extensions)
@@ -356,8 +357,9 @@
 #' \code{JAGS_extend()} rebuilds the sampler from the stored states, adapts
 #' it for \code{adapt} iterations when needed, then appends draws without
 #' further burn-in. A saved and reloaded fit extends from the same state.
-#' Within one call, automatic extensions continue the serial sampler. Parallel
-#' workers rebuild their samplers at each extension. The returned fit stores
+#' Within one call, automatic extensions continue the serial sampler. JASP fits
+#' also keep parallel worker samplers through progress updates and automatic
+#' extensions. Other parallel fits rebuild at each extension. The returned fit stores
 #' ordinary R data and can be serialized with \code{saveRDS()}.
 #'
 #' The \code{adaptation} attribute of a fit records the adaptation settings:
@@ -424,10 +426,10 @@ NULL
   list(value = value, warnings = messages)
 }
 
-# A serial automatic extension can continue the sampler of the same call.
+# A JASP fit keeps its compiled samplers in its private workers through autofit.
 .bt_run_extension <- function(fit, sample, adapt, cl, silent){
 
-  rebuilt <- !is.null(cl) || is.null(fit[["live_model"]])
+  rebuilt <- if(is.null(cl)) is.null(fit[["live_model"]]) else !isTRUE(fit[["live_model"]])
   run <- .bt_collect_adaptation_warnings(.JAGS_run_backend(
     .bt_rjags_extend,
     list(fit = fit, sample = sample, adapt = as.integer(adapt), cl = cl, silent = silent),
@@ -786,37 +788,13 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   if(!inherits(prepared, "error")){
     model_call[c("model", "data")] <- prepared
   }
-  # special fitting procedure for JASP
-  # singlcore interrupted fits allowing for bar progression
   if(inherits(prepared, "error")){
     fit <- prepared
     report_run(fit)
   }else if(isTRUE(dots[["is_JASP"]])){
-
-    model_call_adapt  <- model_call
-    model_call_adapt[["sample"]] <- 1 # at least one burnin & adapt need to be specified
-
-    # adapt & burnin
-    .JASP_progress_bar_start(n = 1, label = paste0(if(!is.null(dots[["is_JASP_prefix"]])) paste0(dots[["is_JASP_prefix"]], ": "), "Adapting and burnin the model"))
-    fit <- run_initial(model_call_adapt)
-    .JASP_progress_bar_tick()
-
-    # sample
-    .JASP_progress_bar_start(n = 5, label = paste0(if(!is.null(dots[["is_JASP_prefix"]])) paste0(dots[["is_JASP_prefix"]], ": "), "Sampling the model"))
-    for(i in 1:5){
-      if(!inherits(fit, "error")){
-        run <- .bt_run_extension(fit, sample = floor(model_call[["sample"]] / 5),
-          adapt = adapt, cl = cl, silent = silent)
-        fit <- run$extension
-        report_run(fit)
-        if(!inherits(fit, "error")){
-          adaptation <- .bt_adaptation_add_extension(adaptation, adapt, run$rebuilt)
-          adaptation_warnings <- c(adaptation_warnings, run$warnings)
-        }
-        .JASP_progress_bar_tick()
-      }
-    }
-
+    prefix <- dots[["is_JASP_prefix"]]
+    model_call$jasp_prefix <- if(is.null(prefix)) "" else paste0(prefix, ": ")
+    fit <- run_initial(model_call)
   }else{
     if(is.null(autofit_control[["restarts"]])){
       fit <- run_initial(model_call)

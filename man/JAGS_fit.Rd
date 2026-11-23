@@ -319,8 +319,9 @@ as for \code{runtime_setup} but with \code{context$phase = "report"}, that
 reads small values of a process, such as sampler counters. It is called in
 every process that ran chains (the calling process of a serial fit, each
 worker of a parallel fit) after every backend run: the initial run, each
-restart attempt, each automatic extension, each run of the JASP fitting
-path, and each extension of \code{JAGS_extend()}. It must not change
+restart attempt, each automatic extension, and each extension of
+\code{JAGS_extend()}. JASP sampling batches share one report for the initial run.
+The callback must not change
 inference targets or random-number state, must capture only small settings,
 and returns \code{NULL} or a small serializable value. The values of runs
 that do not give the returned fit (failed attempts and failed extensions)
@@ -425,8 +426,9 @@ condition.
 \code{JAGS_extend()} rebuilds the sampler from the stored states, adapts
 it for \code{adapt} iterations when needed, then appends draws without
 further burn-in. A saved and reloaded fit extends from the same state.
-Within one call, automatic extensions continue the serial sampler. Parallel
-workers rebuild their samplers at each extension. The returned fit stores
+Within one call, automatic extensions continue the serial sampler. JASP fits
+also keep parallel worker samplers through progress updates and automatic
+extensions. Other parallel fits rebuild at each extension. The returned fit stores
 ordinary R data and can be serialized with \code{saveRDS()}.
 
 The \code{adaptation} attribute of a fit records the adaptation settings:

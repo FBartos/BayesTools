@@ -1253,56 +1253,83 @@ test_that("JAGS_check_convergence handles ESS and error checks", {
 # ============================================================================ #
 # SECTION 3: JAGS_fit with is_JASP mode
 # ============================================================================ #
-test_that("JAGS_fit works with is_JASP mode", {
+test_that("JASP progress preserves adaptive chains and finite readouts", {
 
-  skip_if_not_installed("rjags")
   skip_on_cran()
 
-  # Simple model for testing is_JASP mode
-  set.seed(1)
-  data <- list(
-    y = rnorm(20, 0.5, 1),
-    N = 20
+  # sigma uses an adaptive sampler. The gate supplies a finite-state readout,
+  # and mu exercises a requested readout without a finite sampler.
+  fit_with <- function(sample, parallel, ...){
+    JAGS_fit("model{ gate ~ dbern(0.4); y ~ dnorm(mu + gate, pow(sigma, -2)) }",
+      data = list(y = 1.3), prior_list = list(mu = prior("normal", list(0, 1)),
+        sigma = prior("normal", list(0, 1), list(0, Inf))),
+      add_parameters = "gate", sampler_probabilities = c("gate", "mu"),
+      chains = 3L, cores = 2L, parallel = parallel, adapt = 1000L, burnin = 50L,
+      sample = sample, thin = 3L, seed = 14567L, ...)
+  }
+  for(parallel in c(FALSE, TRUE)){
+    reference <- fit_with(103L, parallel)
+    fit <- fit_with(103L, parallel, is_JASP = TRUE, is_JASP_prefix = "Subgroup A")
+    expect_s3_class(fit, "BayesTools_fit")
+    expect_equal(fit$sample, 103L)
+    expect_identical(vapply(fit$mcmc, nrow, integer(1)), rep(103L, 3L))
+    expect_identical(fit$mcmc, reference$mcmc)
+    expect_identical(fit$end_state, reference$end_state)
+    expect_null(fit$sampler_probabilities$mu)
+    expect_s3_class(fit$sampler_probabilities$gate, "mcmc.list")
+    expect_identical(fit$sampler_probabilities, reference$sampler_probabilities)
+    expect_identical(attr(fit, "adaptation"), attr(reference, "adaptation"))
+    expect_null(fit[["live_model"]])
+  }
+
+  # Force one automatic extension and compare it with uninterrupted sampling
+  # for the same total length and chain-to-worker assignment.
+  reference <- fit_with(110L, TRUE)
+  fit <- fit_with(103L, TRUE, is_JASP = TRUE, autofit = TRUE, autofit_control = list(
+    max_Rhat = NULL, min_ESS = 1e9, max_error = NULL, max_SD_error = NULL, max_time = NULL,
+    max_extend = 1L, sample_extend = 7L))
+  expect_s3_class(fit, "BayesTools_fit")
+  expect_identical(fit$mcmc, reference$mcmc)
+  expect_identical(fit$sampler_probabilities, reference$sampler_probabilities)
+  expect_identical(fit$end_state, reference$end_state)
+  expect_identical(attr(fit, "adaptation")$extensions, data.frame(adapt = 1000L, rebuilt = FALSE))
+  expect_null(fit[["live_model"]])
+})
+
+test_that("serial and parallel sampling report completed batches to the JASP process", {
+
+  skip_on_cran()
+  # The workers verify package builds before we intercept UI calls on the
+  # coordinating process. Compiled models and sampling run on the real backend.
+  cl <- .JAGS_runtime_cluster_start(1L, chains = 1L, packages = "BayesTools")
+  on.exit(.JAGS_runtime_cluster_stop(cl), add = TRUE)
+  labels <- character()
+  expected <- ticks <- integer()
+  testthat::local_mocked_bindings(
+    .JASP_progress_bar_start = function(n, label){
+      labels <<- c(labels, label)
+      expected <<- c(expected, as.integer(n))
+      ticks <<- c(ticks, 0L)
+    },
+    .JASP_progress_bar_tick = function(){
+      ticks[length(ticks)] <<- ticks[length(ticks)] + 1L
+    },
+    .package = "BayesTools"
   )
-
-  prior_list <- list(
-    mu    = prior("normal", list(0, 1)),
-    sigma = prior("normal", list(0, 1), list(0, Inf))
-  )
-
-  model_syntax <- "model{
-    for(i in 1:N){
-      y[i] ~ dnorm(mu, 1/pow(sigma, 2))
+  for(cluster in list(NULL, cl)){
+    for(sample in c(1L, 3L, 17L)){
+      labels <- character()
+      expected <- ticks <- integer()
+      fit <- .bt_rjags_fit("model{ x ~ dnorm(0, 1) }", list(),
+        inits = list(list(.RNG.name = "base::Super-Duper", .RNG.seed = 42L)),
+        monitor = "x", adapt = 0L, burnin = 0L, sample = sample, thin = 2L,
+        cl = cluster, jasp_prefix = "Subgroup A")
+      expect_identical(nrow(fit$mcmc[[1L]]), sample)
+      expect_true(all(startsWith(labels, "Subgroup A")))
+      expect_identical(expected, c(1L, min(5L, sample)))
+      expect_identical(ticks, expected)
     }
-  }"
-
-  # Mock JASP progress bar functions (they should be skipped if not available)
-  # The is_JASP mode should work but simply skip progress bars if functions don't exist
-  fit_jasp <- capture.output(tryCatch({
-    suppressWarnings(JAGS_fit(
-      model_syntax = model_syntax,
-      data = data,
-      prior_list = prior_list,
-      chains = 1,
-      adapt = 50,
-      burnin = 50,
-      sample = 100,
-      seed = 1,
-      silent = TRUE,
-      is_JASP = TRUE,
-      is_JASP_prefix = "Test"
-    ))
-  }, error = function(e) {
-    # If JASP functions don't exist, this should still produce a fit
-    # or fail gracefully
-    if (grepl("JASP", e$message)) {
-      skip("JASP progress bar functions not available")
-    }
-    stop(e)
-  }))
-
-  test_reference_text(paste0(fit_jasp, collapse = ","), "fit_jasp.txt")
-
+  }
 })
 
 test_that("runtime reports come from the process of a serial fit and from every parallel worker", {
