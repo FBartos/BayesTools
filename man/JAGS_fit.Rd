@@ -321,6 +321,8 @@ every process that ran chains (the calling process of a serial fit, each
 worker of a parallel fit) after every backend run: the initial run, each
 restart attempt, each automatic extension, and each extension of
 \code{JAGS_extend()}. JASP sampling batches share one report for the initial run.
+An error in a JASP progress callback propagates to the caller. If warmup
+has completed, the reporting callback runs before the error propagates.
 The callback must not change
 inference targets or random-number state, must capture only small settings,
 and returns \code{NULL} or a small serializable value. The values of runs

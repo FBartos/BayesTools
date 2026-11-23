@@ -50,7 +50,7 @@
 
 .bt_rjags_batch <- function(sample, monitor, thin, progress, keep_live, probability_plan,
                             last = TRUE, session = .bt_rjags_worker_session,
-                            live_model = session$model){
+                            live_model = session$model, release_model = FALSE){
 
   readouts <- if(!is.null(probability_plan)){
     stats::setNames(probability_plan$readout, probability_plan$node)
@@ -66,6 +66,7 @@
 
   out <- list(mcmc = draws, end_state = live_model$state(internal = TRUE), samplers = samplers,
     live_model = if(keep_live) live_model)
+  if(release_model) session$model <- NULL
   if(!is.null(probability_plan)){
     out$sampler_probabilities <- attr(draws, "sampler_probabilities", exact = TRUE)
     attr(out$mcmc, "sampler_probabilities") <- NULL
@@ -145,7 +146,7 @@
     if(length(session$chunks) > 1L){
       draws <- coda::mcmc.list(lapply(seq_along(draws), function(i){
         chains <- lapply(session$chunks, `[[`, i)
-        coda::mcmc(do.call(rbind, lapply(chains, as.matrix)), start = stats::start(chains[[1L]]), thin = thin)
+        coda::mcmc(do.call(rbind, chains), start = stats::start(chains[[1L]]), thin = thin)
       }))
     }
     session$chunks <- NULL
@@ -223,7 +224,7 @@
 
 .bt_rjags_run <- function(model, data, inits, monitor, adapt, burnin, sample,
                           thin, cl, silent, live_model = NULL, probability_plan = NULL,
-                          jasp_prefix = NULL){
+                          jasp_prefix = NULL, retain_workers = FALSE){
 
   # The runtime callbacks use the same round-robin chain assignment. Restore
   # the original chain order before returning draws and their matching states.
@@ -240,26 +241,36 @@
     lapply(results, "[[", "value")
   }
   jasp <- !is.null(jasp_prefix)
-  if(jasp) .JASP_progress_bar_start(1L, paste0(jasp_prefix, "Adapting and burnin the model"))
+  warmed_up <- FALSE
+  # The caller catches sampler and worker errors. Let UI exceptions escape
+  # that handler with their original condition, including JASP IPC failures.
+  notify <- function(callback, ...){
+    withCallingHandlers(callback(...), error = function(e){
+      tryInvokeRestart("BayesTools_jasp_progress_error", e, warmed_up)
+    })
+  }
+  if(jasp) notify(.JASP_progress_bar_start, 1L, paste0(jasp_prefix, "Adapting and burnin the model"))
   out <- run_groups(.bt_rjags_group, lapply(groups, function(ids) inits[ids]),
     model = model, data = data, monitor = monitor, adapt = adapt, burnin = burnin, sample = sample,
     thin = thin, silent = silent, keep_live = local, live_model = live_model,
     probability_plan = probability_plan, prepare = jasp)
   if(jasp){
-    .JASP_progress_bar_tick()
+    warmed_up <- TRUE
+    notify(.JASP_progress_bar_tick)
     batches <- min(5L, sample)
     sizes <- sample %/% batches + (seq_len(batches) <= sample %% batches)
-    .JASP_progress_bar_start(batches, paste0(jasp_prefix, "Sampling the model"))
+    notify(.JASP_progress_bar_start, batches, paste0(jasp_prefix, "Sampling the model"))
     for(i in seq_along(sizes)){
       out <- run_groups(.bt_rjags_batch, rep(list(sizes[[i]]), length(groups)), monitor = monitor,
         thin = thin, progress = if(silent) "none" else "text", keep_live = local,
-        probability_plan = probability_plan, last = i == batches)
-      .JASP_progress_bar_tick()
+        probability_plan = probability_plan, last = i == batches,
+        release_model = !local && !retain_workers && i == batches)
+      notify(.JASP_progress_bar_tick)
     }
   }
   if(local) return(out[[1L]])
   merged <- .bt_rjags_merge_workers(out, groups, thin, probability_plan)
-  if(jasp || isTRUE(live_model)) merged$live_model <- TRUE
+  if((jasp && retain_workers) || isTRUE(live_model)) merged$live_model <- TRUE
   merged
 }
 
@@ -301,10 +312,11 @@
 }
 
 .bt_rjags_fit <- function(model, data, inits, monitor, adapt, burnin, sample, thin,
-                          cl = NULL, silent = TRUE, probability_plan = NULL, jasp_prefix = NULL){
+                          cl = NULL, silent = TRUE, probability_plan = NULL, jasp_prefix = NULL,
+                          retain_workers = FALSE){
 
   out <- .bt_rjags_run(model, data, inits, monitor, adapt, burnin, sample, thin, cl, silent,
-    probability_plan = probability_plan, jasp_prefix = jasp_prefix)
+    probability_plan = probability_plan, jasp_prefix = jasp_prefix, retain_workers = retain_workers)
   # Public chain indices count the requested adaptation and burn-in, even
   # when JAGS selects only samplers that never require adaptation.
   public_iteration <- function(draws) coda::mcmc.list(lapply(draws, function(chain){

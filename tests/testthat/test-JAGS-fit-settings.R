@@ -1624,12 +1624,31 @@ test_that("JAGS_fit forwards its adaptation to automatic extensions", {
   # Progress is delivered by the initial backend run.
   recorder <- .jags_extension_recorder()
   testthat::local_mocked_bindings(.bt_rjags_extend = recorder$extend, .package = "BayesTools")
-  jasp <- fit_with(autofit = FALSE, parallel = TRUE, cores = 2, is_JASP = TRUE)
+  jasp <- fit_with(autofit = FALSE, parallel = TRUE, cores = 2, is_JASP = TRUE,
+    is_JASP_prefix = "Subgroup A")
   expect_length(recorder$calls(), 0L)
   expect_identical(run_calls[[3L]]$sample, 100)
+  expect_identical(run_calls[[3L]]$jasp_prefix, "Subgroup A: ")
+  expect_false(run_calls[[3L]]$retain_workers)
   expect_identical(attr(jasp, "adaptation"), .jags_adaptation_test_record(750))
 
-  # a fit without extensions records only the initial setting
   plain <- fit_with(autofit = FALSE)
   expect_identical(attr(plain, "adaptation"), .jags_adaptation_test_record(750))
+
+  # During JASP autofit the coordinator identifies the live worker models
+  # with TRUE. All extensions reuse the same worker group.
+  testthat::local_mocked_bindings(
+    .bt_rjags_fit = function(retain_workers, ...){
+      expect_true(retain_workers)
+      fit <- backend_fit()
+      fit$live_model <- TRUE
+      fit
+    },
+    .bt_rjags_extend = function(fit, ...) fit,
+    .package = "BayesTools"
+  )
+  jasp_auto <- fit_with(autofit = TRUE, parallel = TRUE, cores = 2, is_JASP = TRUE)
+  expect_identical(attr(jasp_auto, "adaptation"),
+    .jags_adaptation_test_record(750, c(750, 750), c(FALSE, FALSE)))
+
 })

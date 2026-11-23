@@ -1298,7 +1298,7 @@ test_that("serial and parallel sampling report completed batches to the JASP pro
   skip_on_cran()
   # The workers verify package builds before we intercept UI calls on the
   # coordinating process. Compiled models and sampling run on the real backend.
-  cl <- .JAGS_runtime_cluster_start(1L, chains = 1L, packages = "BayesTools")
+  cl <- .JAGS_runtime_cluster_start(2L, chains = 3L, packages = "BayesTools")
   on.exit(.JAGS_runtime_cluster_stop(cl), add = TRUE)
   labels <- character()
   expected <- ticks <- integer()
@@ -1318,15 +1318,68 @@ test_that("serial and parallel sampling report completed batches to the JASP pro
       labels <- character()
       expected <- ticks <- integer()
       fit <- .bt_rjags_fit("model{ x ~ dnorm(0, 1) }", list(),
-        inits = list(list(.RNG.name = "base::Super-Duper", .RNG.seed = 42L)),
+        inits = lapply(1:3, function(i) list(.RNG.name = "base::Super-Duper", .RNG.seed = 42L + i)),
         monitor = "x", adapt = 0L, burnin = 0L, sample = sample, thin = 2L,
-        cl = cluster, jasp_prefix = "Subgroup A")
+        cl = cluster, jasp_prefix = "Subgroup A: ")
       expect_identical(nrow(fit$mcmc[[1L]]), sample)
-      expect_true(all(startsWith(labels, "Subgroup A")))
+      expect_identical(labels, paste0("Subgroup A: ", c("Adapting and burnin the model", "Sampling the model")))
       expect_identical(expected, c(1L, min(5L, sample)))
       expect_identical(ticks, expected)
     }
   }
+  expect_identical(parallel::clusterEvalQ(cl, is.null(BayesTools:::.bt_rjags_worker_session$model)),
+    list(TRUE, TRUE))
+})
+
+test_that("JASP progress errors propagate past fitting and leave healthy workers reportable", {
+
+  skip_on_cran()
+  cl <- .JAGS_runtime_cluster_start(2L, chains = 2L, packages = "BayesTools")
+  on.exit(.JAGS_runtime_cluster_stop(cl), add = TRUE)
+  ui_error <- errorCondition("JASP UI socket disconnected", class = "test_jasp_error")
+  reports <- NULL
+  ticks <- 0L
+  fail_at <- 0L
+  collect <- .JAGS_run_runtime_report
+  testthat::local_mocked_bindings(
+    .JAGS_runtime_cluster_start = function(...) cl,
+    .JASP_progress_bar_start = function(...) if(fail_at == 0L) stop(ui_error),
+    .JASP_progress_bar_tick = function(){
+      ticks <<- ticks + 1L
+      if(ticks == fail_at) stop(ui_error)
+    },
+    .JAGS_run_runtime_report = function(...){
+      reports <<- collect(...)
+      reports
+    },
+    .package = "BayesTools"
+  )
+  report <- function(context) context$role
+  environment(report) <- baseenv()
+  catch_fit <- function(parallel){
+    tryCatch({
+      JAGS_fit("model{ y ~ dnorm(mu, 1) }", data = list(y = 0),
+        prior_list = list(mu = prior("normal", list(0, 1))),
+        chains = 2L, cores = 2L, parallel = parallel, seed = 1L,
+        adapt = 50L, burnin = 50L, sample = 100L, is_JASP = TRUE, runtime_report = report)
+      NULL
+    }, error = identity)
+  }
+  expect_identical(catch_fit(FALSE), ui_error)
+  expect_null(reports)
+  for(fail_at in c(2L, 6L)){
+    ticks <- 0L
+    reports <- NULL
+    expect_identical(catch_fit(FALSE), ui_error)
+    expect_identical(ticks, fail_at)
+    expect_identical(reports, list("local"))
+  }
+  ticks <- 0L
+  reports <- NULL
+  expect_identical(catch_fit(TRUE), ui_error)
+  expect_identical(ticks, fail_at)
+  expect_identical(reports, list("worker", "worker"))
+  expect_true(attr(cl, "BayesTools_runtime")$stopped)
 })
 
 test_that("runtime reports come from the process of a serial fit and from every parallel worker", {

@@ -290,6 +290,8 @@
 #' worker of a parallel fit) after every backend run: the initial run, each
 #' restart attempt, each automatic extension, and each extension of
 #' \code{JAGS_extend()}. JASP sampling batches share one report for the initial run.
+#' An error in a JASP progress callback propagates to the caller. If warmup
+#' has completed, the reporting callback runs before the error propagates.
 #' The callback must not change
 #' inference targets or random-number state, must capture only small settings,
 #' and returns \code{NULL} or a small serializable value. The values of runs
@@ -774,8 +776,12 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       chains, if(parallel) cl else NULL)
   }
   run_initial <- function(call){
-    run <- .bt_collect_adaptation_warnings(
-      .JAGS_run_backend(.bt_rjags_fit, call, parallel))
+    run <- withRestarts(
+      .bt_collect_adaptation_warnings(.JAGS_run_backend(.bt_rjags_fit, call, parallel)),
+      BayesTools_jasp_progress_error = function(e, ran){
+        if(ran) report_run(e)
+        stop(e)
+      })
     report_run(run$value)
     if(!inherits(run$value, "error")){
       adaptation_warnings <<- run$warnings
@@ -794,6 +800,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   }else if(isTRUE(dots[["is_JASP"]])){
     prefix <- dots[["is_JASP_prefix"]]
     model_call$jasp_prefix <- if(is.null(prefix)) "" else paste0(prefix, ": ")
+    model_call$retain_workers <- autofit
     fit <- run_initial(model_call)
   }else{
     if(is.null(autofit_control[["restarts"]])){

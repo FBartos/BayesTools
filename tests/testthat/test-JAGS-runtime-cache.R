@@ -693,6 +693,35 @@ test_that("fits without a runtime report are unchanged and never contact the wor
   }
 })
 
+test_that("JASP ticks follow completed work on both chain groups", {
+
+  completed <- c(NA_real_, NA_real_)
+  observed <- list()
+  worker <- 0L
+  testthat::local_mocked_bindings(
+    clusterApply = function(cl, x, fun, ...){
+      lapply(seq_along(x), function(i){
+        worker <<- i
+        fun(x[[i]], ...)
+      })
+    }, .package = "parallel"
+  )
+  testthat::local_mocked_bindings(
+    .bt_rjags_group = function(inits, ...){
+      expect_length(inits, if(worker == 1L) 2L else 1L)
+      completed[worker] <<- 0
+    },
+    .bt_rjags_batch = function(sample, ...) completed[worker] <<- completed[worker] + sample,
+    .bt_rjags_merge_workers = function(...) list(),
+    .JASP_progress_bar_start = function(...) NULL,
+    .JASP_progress_bar_tick = function() observed[[length(observed) + 1L]] <<- completed,
+    .package = "BayesTools"
+  )
+  .bt_rjags_run("", list(), list(1L, 2L, 3L), "x", 50L, 50L, 103L, 3L,
+    list(1L, 2L), TRUE, jasp_prefix = "")
+  expect_identical(observed, lapply(c(0, 21, 42, 63, 83, 103), rep, 2L))
+})
+
 test_that("JASP progress preserves one runtime report per fit or autofit extension", {
 
   state <- .report_test_backend(.report_test_state())
