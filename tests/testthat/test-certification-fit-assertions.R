@@ -93,7 +93,7 @@ test_that("pre-fit sampler sources and the fitted catalog agree in their respect
 #
 # DEPENDENCIES:
 #   - rjags: For JAGS model syntax generation and testing
-#   - common-functions.R: REFERENCE_DIR, test_reference_text, skip_if_no_fits
+#   - common-functions.R: shared fitting and RNG checks
 #
 # SKIP CONDITIONS:
 #   - skip_if_not_installed("rjags"): For all tests
@@ -103,9 +103,6 @@ test_that("pre-fit sampler sources and the fitted catalog agree in their respect
 #
 # TAGS: @edge-cases, @JAGS, @input-validation
 # ============================================================================ #
-
-# Reference directory for text output comparisons
-REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-fit-edge-cases")
 
 source(testthat::test_path("common-functions.R"))
 

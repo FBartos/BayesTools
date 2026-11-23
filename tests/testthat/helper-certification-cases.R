@@ -26,8 +26,7 @@ bayestools_certification_cases <- function() {
     ),
     `fit-assertions` = list(
       description = "Live-fit assertions of the post-fit interface, run when the code they reach changes.",
-      native      = TRUE,
-      references  = "results/JAGS-fit-edge-cases"
+      native      = TRUE
     ),
     `hypothesis-bayes-factors` = list(
       description = "Point and region Bayes factors of hypothesis_BF() against a conjugate posterior.",
