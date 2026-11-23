@@ -205,6 +205,26 @@ test_that("the public model probability plot rejects invalid inputs", {
                "The 'labels' argument must contain nonempty labels keyed by displayed row IDs.", fixed = TRUE)
 })
 
+# Swatch positions at a rounding boundary can differ by one 0.01 pt SVG unit.
+# Compare their x coordinates in those units and every other attribute as text.
+.compare_model_legend_svg <- function(old, new){
+
+  old <- readLines(old, warn = FALSE)
+  new <- readLines(new, warn = FALSE)
+  if(length(old) != length(new)){
+    return(FALSE)
+  }
+  different <- old != new
+  swatches <- function(lines){
+    pattern <- "^<rect x='([0-9]+[.][0-9]{2})' (.*stroke: #[[:xdigit:]]+; fill:.*)$"
+    strcapture(pattern, lines, list(x = double(), attributes = character()))
+  }
+  old <- swatches(old[different])
+  new <- swatches(new[different])
+  !anyNA(old$x) && !anyNA(new$x) && identical(old$attributes, new$attributes) &&
+    all(abs(round(100 * old$x) - round(100 * new$x)) <= 1)
+}
+
 test_that("the model probability matrix renders in both graphics backends", {
   skip_if_not_test_profile("visual")
   skip_if_not_installed("vdiffr")
@@ -217,10 +237,13 @@ test_that("the model probability matrix renders in both graphics backends", {
     col = fixture$col, state_labels = c(adjustment = "Selection model"),
     legend = TRUE, legend_position = "top", plot_type = "ggplot"
   ))
-  vdiffr::expect_doppelganger("model probabilities base", function(){
+  svg <- tempfile(fileext = ".svg")
+  withr::defer(unlink(svg))
+  vdiffr::write_svg(function(){
     plot_model_probabilities(
       fixture$probabilities, cells, labels = c(loc = "Dose (mg)"), group_labels = TRUE,
       col = fixture$col, state_labels = c(adjustment = "Selection model"), legend = TRUE
     )
-  })
+  }, svg, "model probabilities base")
+  expect_snapshot_file(svg, "model-probabilities-base.svg", compare = .compare_model_legend_svg)
 })
