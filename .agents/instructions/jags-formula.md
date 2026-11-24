@@ -193,9 +193,12 @@ With `autofit_control$sample_extend = "auto"` the check runs without
 diagnostics when the loop is about to run it; it computes no diagnostics of
 its own. `JAGS_extend()` checks the supplied fit before its first extension,
 without R-hat for one chain, whose warning the later checks give. With
-`max_time`, `.bt_autofit_time_cap()` then shortens the extension to what the
-time left allows at the rate of the draws on the `max_time` clock, and stops
-the fitting below 100 draws. Every automatic extension is also at most
+`max_time`, `.bt_autofit_time_cap()` then shortens the extension, also below
+the 1000 minimum, to what the time left allows at the wall-clock rate observed
+on the `max_time` clock (the retained draws per chain run on that clock over
+its elapsed seconds), and stops the fitting below 100 draws, also once no time
+is left. The first `JAGS_extend()` extension has no rate yet and is not
+shortened. Every automatic extension is also at most
 `.bt_autofit_iteration_cap()`, the largest multiple of 100 retained draws per
 chain whose `draws * thin` sampling iterations fit rjags' signed-integer
 `n.iter`; sizes stay whole doubles until these caps apply. The fixed step

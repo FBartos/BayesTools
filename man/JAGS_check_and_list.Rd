@@ -126,9 +126,10 @@ initial run, so the rate includes its adaptation and burn-in), rounded
 down to a multiple of 100; when that is below 100, the fitting stops with
 the \code{max_time} warning. In \code{JAGS_extend()}, the first extension
 is sized from the check of the supplied fit and, with no rate observed
-yet, is not shortened. Without \code{max_time}, the extensions of a fit
-that cannot converge roughly double the draws each time, up to
-\code{max_extend}.}
+yet, is not shortened. Without \code{max_time}, each extension of a fit
+that cannot converge multiplies the draws per chain by about 2.1 (a
+failed R-hat or a parameter whose diagnostics are not assessable) and up
+to 3 (large ESS or error deficits), up to \code{max_extend}.}
 \item{restarts}{maximum number of fitting attempts when the model fails
 to initialize; every failed attempt but the last is retried with new
 initial values (\code{restarts = 1} fits once, without a retry). A
