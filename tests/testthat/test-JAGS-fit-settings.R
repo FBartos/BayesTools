@@ -1787,9 +1787,10 @@ test_that("automatic extensions are sized from the failed convergence check", {
       state$samples <- c(state$samples, as.integer(sample))
       grow(fit, sample)
     },
-    .bt_check_convergence = function(fit, ..., fail_fast){
+    .bt_check_convergence = function(fit, ..., max_Rhat, fail_fast){
       n <- nrow(fit$mcmc[[1L]])
-      state$checks[[length(state$checks) + 1L]] <- list(n = n, fail_fast = fail_fast)
+      state$checks[[length(state$checks) + 1L]] <- list(n = n, fail_fast = fail_fast,
+        Rhat = !is.null(max_Rhat))
       rows <- data.frame(parameter = "mu", state = "assessable", Rhat = NA_real_,
         ESS = 0.04 * n, MCMC_error = NA_real_, MCMC_SD_error = NA_real_)
       structure(0.04 * n >= 500, diagnostics = rows)
@@ -1817,11 +1818,34 @@ test_that("JAGS_extend sizes each extension from the last check and stops at max
   expect_identical(backend$samples, c(1000L, 2000L, 6000L, 3900L))
   expect_identical(vapply(backend$checks, `[[`, integer(1), "n"), c(2L, 1002L, 3002L, 9002L, 12902L))
   expect_false(any(vapply(backend$checks, `[[`, logical(1), "fail_fast")))
+  # the one-chain fit: the check of the supplied fit, which only sizes the
+  # first extension, skips R-hat without the one-chain warning of the others
+  expect_identical(vapply(backend$checks, `[[`, logical(1), "Rhat"), c(FALSE, rep(TRUE, 4L)))
   expect_identical(nrow(extended$mcmc[[1L]]), 12902L)
   expect_null(attr(extended, "warnings"))
 
+  # an extension is sized only when it runs: max_extend = 2 sizes two
+  size_from <- .bt_autofit_extension_size_from
+  sized <- 0L
+  testthat::local_mocked_bindings(
+    .bt_autofit_extension_size_from = function(...){
+      sized <<- sized + 1L
+      size_from(...)
+    },
+    .package = "BayesTools"
+  )
+  backend <- .autofit_size_test_backend()
+  limited <- suppressWarnings(JAGS_extend(fit, autofit_control = .autofit_size_test_control(
+    max_extend = 2)))
+  expect_identical(backend$samples, c(1000L, 2000L))
+  expect_identical(vapply(backend$checks, `[[`, integer(1), "n"), c(2L, 1002L, 3002L))
+  expect_identical(sized, 2L)
+  expect_identical(attr(limited, "warnings"),
+    "The automatic model fitting was terminated due to the 'max_extend' constraint.")
+
   # max_time stops the loop as with a fixed size: a started extension is
-  # finished, the next one is not started
+  # finished, the next one is not started; past the limit at the first
+  # extension, the supplied fit is neither checked nor sized
   clock <- as.POSIXct("2026-01-01 00:00:00", tz = "UTC") + c(0, 0.5, 1.5, 2.5)
   calls <- 0L
   testthat::local_mocked_bindings(
@@ -1835,6 +1859,17 @@ test_that("JAGS_extend sizes each extension from the last check and stops at max
   stopped <- JAGS_extend(fit, autofit_control = .autofit_size_test_control(
     max_time = list(time = 2, unit = "secs")))
   expect_identical(backend$samples, c(1000L, 2000L))
+  expect_identical(attr(stopped, "warnings"),
+    "The automatic model fitting was terminated due to the 'max_time' constraint.")
+  calls <- 0L
+  clock <- clock[[1L]] + c(0, 2.5)
+  sized <- 0L
+  backend <- .autofit_size_test_backend()
+  stopped <- JAGS_extend(fit, autofit_control = .autofit_size_test_control(
+    max_time = list(time = 2, unit = "secs")))
+  expect_length(backend$samples, 0L)
+  expect_length(backend$checks, 0L)
+  expect_identical(sized, 0L)
   expect_identical(attr(stopped, "warnings"),
     "The automatic model fitting was terminated due to the 'max_time' constraint.")
 
