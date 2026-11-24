@@ -138,6 +138,9 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
   # a positive whole number of draws, or "auto" (.bt_autofit_extension_size())
   if(is.character(autofit_control[["sample_extend"]])){
     check_char(autofit_control[["sample_extend"]], "sample_extend", allow_values = "auto", allow_NA = FALSE, call = call)
+    # the plain string, without names, which the fitting loops compare with
+    # identical()
+    autofit_control[["sample_extend"]] <- "auto"
   }else{
     check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, allow_NA = FALSE, call = call)
   }

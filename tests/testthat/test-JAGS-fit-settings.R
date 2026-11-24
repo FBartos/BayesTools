@@ -1665,6 +1665,8 @@ test_that("sample_extend accepts a positive whole number or 'auto'", {
   }
   expect_identical(JAGS_check_and_list_autofit_settings(control("auto"))$sample_extend, "auto")
   expect_identical(JAGS_check_and_list_autofit_settings(control(1000))$sample_extend, 1000)
+  # a named "auto" is stored as the plain string
+  expect_identical(JAGS_check_and_list_autofit_settings(control(c(a = "auto")))$sample_extend, "auto")
   invalid <- list(
     list(value = "Auto",            message = "The 'Auto' values are not recognized by the 'sample_extend' argument."),
     list(value = c("auto", "auto"), message = "The 'sample_extend' argument must have length '1'."),
@@ -1823,6 +1825,12 @@ test_that("JAGS_extend sizes each extension from the last check and stops at max
   expect_identical(vapply(backend$checks, `[[`, logical(1), "Rhat"), c(FALSE, rep(TRUE, 4L)))
   expect_identical(nrow(extended$mcmc[[1L]]), 12902L)
   expect_null(attr(extended, "warnings"))
+  # a named "auto" runs as "auto"
+  backend <- .autofit_size_test_backend()
+  named <- JAGS_extend(fit, autofit_control = .autofit_size_test_control(
+    sample_extend = c(step = "auto"), max_time = NULL))
+  expect_identical(backend$samples, c(1000L, 2000L, 6000L, 3900L))
+  expect_identical(nrow(named$mcmc[[1L]]), 12902L)
 
   # an extension is sized only when it runs: max_extend = 2 sizes two
   size_from <- .bt_autofit_extension_size_from
