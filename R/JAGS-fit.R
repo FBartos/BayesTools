@@ -64,9 +64,9 @@
 #'   parameter: with \code{n} retained draws per chain and \code{f} the largest
 #'   required growth over the parameters (\code{min_ESS / ESS},
 #'   \code{(error / max_error)^2}, and \code{(SD_error / max_SD_error)^2} for
-#'   the criteria that are set; \code{2} for an R-hat above \code{max_Rhat}
-#'   when the parameter meets the other criteria, and for a parameter whose
-#'   diagnostics are not assessable unless \code{allow_not_assessable}), the
+#'   the criteria that are set; at least \code{2} for an R-hat above
+#'   \code{max_Rhat}, and for a parameter whose diagnostics are not assessable
+#'   unless \code{allow_not_assessable}), the
 #'   extension is \code{n * (f - 1) * 1.1} draws per chain, at least 1000 and
 #'   at most \code{2 * n}, rounded up to a multiple of 100. In
 #'   \code{JAGS_extend()}, the first extension is sized from the check of the

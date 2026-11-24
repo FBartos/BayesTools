@@ -1720,10 +1720,13 @@ test_that("automatic extensions are sized from the failed convergence check", {
     list(rows = diagnostics(ESS = 250, MCMC_error = 0.015, MCMC_SD_error = 0.06), size = 5500L),
     list(rows = diagnostics(state = c("assessable", "assessable"), ESS = c(250, 1000),
       MCMC_error = c(0.005, 0.015)),                                   size = 5500L),
-    # R-hat: 2 when the quantity meets the other criteria, otherwise the
-    # growth those criteria require
+    # R-hat: at least 2, also when the quantity misses another criterion by
+    # less (ESS 495 or 400 of 500), and a larger growth of another criterion
+    # (ESS 200: f = 2.5) wins
     list(rows = diagnostics(Rhat = 1.2),                              size = 4400L),
-    list(rows = diagnostics(Rhat = 1.2, ESS = 400),                   size = 1100L),
+    list(rows = diagnostics(Rhat = 1.1, ESS = 495),                   size = 4400L),
+    list(rows = diagnostics(Rhat = 1.2, ESS = 400),                   size = 4400L),
+    list(rows = diagnostics(Rhat = 1.2, ESS = 200),                   size = 6600L),
     list(rows = diagnostics(state = c("assessable", "assessable"), Rhat = c(1.2, 1.01),
       ESS = c(1000, 400)),                                             size = 4400L),
     # caps: a small shortfall takes the minimum, a large one (or ESS 0) 2 n

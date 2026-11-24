@@ -767,9 +767,9 @@ JAGS_check_convergence <- function(
 # (run with fail_fast = FALSE, so that every selected quantity is checked) and
 # its criteria (NULL when not set). Over the checked quantities, f is the
 # largest required growth factor: min_ESS / ESS, (error / max_error)^2 and
-# (SD_error / max_SD_error)^2; 2 for an R-hat above max_Rhat when the quantity
-# meets every other criterion; and 2 for a quantity whose diagnostics are not
-# assessable, unless allow_not_assessable. With n retained draws per chain, the
+# (SD_error / max_SD_error)^2; at least 2 for an R-hat above max_Rhat; and at
+# least 2 for a quantity whose diagnostics are not assessable, unless
+# allow_not_assessable. With n retained draws per chain, the
 # extension is n * (f - 1) * 1.1 draws, at least 1000 and at most 2 n (the
 # lower limit wins when 2 n < 1000), rounded up to a multiple of 100.
 .bt_autofit_extension_size <- function(diagnostics, n, max_Rhat, min_ESS, max_error,
@@ -791,7 +791,7 @@ JAGS_check_convergence <- function(
   )
   Rhat_failed <- if(is.null(max_Rhat)) rep(FALSE, rows) else
     !is.na(diagnostics[["Rhat"]]) & diagnostics[["Rhat"]] > max_Rhat
-  growth <- pmax(others, ifelse(Rhat_failed & others <= 1, 2, -Inf))
+  growth <- pmax(others, ifelse(Rhat_failed, 2, -Inf))
   not_assessable <- diagnostics[["state"]] == "not_assessable"
   if(!allow_not_assessable){
     growth[not_assessable] <- pmax(growth[not_assessable], 2)
