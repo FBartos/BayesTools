@@ -204,19 +204,23 @@ JAGS_runtime_cluster_stop <- function(cl){
   # PSOCK can wrap worker conditions in text, so the original socket condition's
   # class/call need not survive. These transport failures cannot be repaired by
   # changing JAGS initial values and reusing the same worker connections.
-  # Match the connection/socket class rather than a closed list of phrases:
-  # unknown wording in that class is fail-closed (no retry), not treated as a
-  # restartable JAGS sampler error.
-  transport_failure <- grepl(
-    "\\bconnection\\b|\\bsocket\\b|broken pipe",
-    conditionMessage(result), ignore.case = TRUE
-  )
-  if(!transport_failure) return(result)
+  if(!.JAGS_transport_failure(result)) return(result)
   errorCondition(
     paste0("Parallel JAGS worker communication failed. Automatic retries were stopped. ",
       "Inspect the first backend error and worker output before refitting. Backend error: ",
       conditionMessage(result)),
     class = "BayesTools_JAGS_worker_connection_error", parent = result
+  )
+}
+
+# Match the connection/socket class rather than a closed list of phrases:
+# unknown wording in that class is fail-closed (no retry), not treated as a
+# restartable JAGS sampler error.
+.JAGS_transport_failure <- function(condition){
+
+  grepl(
+    "\\bconnection\\b|\\bsocket\\b|broken pipe",
+    conditionMessage(condition), ignore.case = TRUE
   )
 }
 
