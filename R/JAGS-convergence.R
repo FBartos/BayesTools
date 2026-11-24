@@ -772,7 +772,10 @@ JAGS_check_convergence <- function(
 # allow_not_assessable. With n retained draws per chain, the extension is
 # n * (f - 1) * 1.1 draws rounded up to a multiple of 100; then at most 2 n
 # rounded down to a multiple of 100; then at least 1000, which wins when 2 n is
-# smaller. The caller then applies the time cap (.bt_autofit_time_cap()).
+# smaller. The caller then applies the time cap (.bt_autofit_time_cap()) and
+# the backend's iteration limit (.bt_autofit_iteration_cap()), to which the
+# minimum also yields; the size is a whole double, so that it stays
+# representable above the integer range until those caps apply.
 .bt_autofit_extension_size <- function(diagnostics, n, max_Rhat, min_ESS, max_error,
                                        max_SD_error, allow_not_assessable = FALSE){
 
@@ -805,8 +808,7 @@ JAGS_check_convergence <- function(
   # products that are whole (9000 * (500 / 450 - 1) * 1.1 is 1100, not 1200)
   draws <- ceiling(round(n * (f - 1) * 11 / 10, 6) / 100) * 100
   draws <- min(draws, floor(2 * n / 100) * 100)
-  draws <- max(draws, 1000)
-  as.integer(draws)
+  max(draws, 1000)
 }
 
 # The extension after the failed convergence 'check' of 'fit' under the
@@ -847,6 +849,14 @@ JAGS_check_convergence <- function(
     return(Inf)
   }
   floor(left * draws / elapsed / 100) * 100
+}
+
+# The longest automatic extension, in retained draws per chain, whose sampling
+# iterations (draws * thin) the backend can run: rjags takes n.iter as a signed
+# integer. Rounded down to a multiple of 100.
+.bt_autofit_iteration_cap <- function(thin){
+
+  floor(.Machine$integer.max / thin / 100) * 100
 }
 
 # The sentence that names the parameters failing a criterion; the first few

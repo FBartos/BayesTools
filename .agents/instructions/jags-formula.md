@@ -195,7 +195,11 @@ its own. `JAGS_extend()` checks the supplied fit before its first extension,
 without R-hat for one chain, whose warning the later checks give. With
 `max_time`, `.bt_autofit_time_cap()` then shortens the extension to what the
 time left allows at the rate of the draws on the `max_time` clock, and stops
-the fitting below 100 draws. The fixed step keeps `fail_fast` and its size.
+the fitting below 100 draws. Every automatic extension is also at most
+`.bt_autofit_iteration_cap()`, the largest multiple of 100 retained draws per
+chain whose `draws * thin` sampling iterations fit rjags' signed-integer
+`n.iter`; sizes stay whole doubles until these caps apply. The fixed step
+keeps `fail_fast` and its size.
 
 Worker connection failures stop fitting retries; new initial values cannot
 repair the existing cluster. Preserve the original backend condition. Classify

@@ -379,6 +379,7 @@ test_that("JAGS_extend validates runtime controls before extension", {
 .jags_extend_test_fit <- function(){
 
   fit <- contract_test_backend_fit()
+  fit$thin <- 1L
   attr(fit, "prior_list") <- list()
   attr(fit, "model_syntax") <- "model{}"
   attr(fit, "required_packages") <- character()
@@ -1714,64 +1715,77 @@ test_that("automatic extensions are sized from the failed convergence check", {
   cases <- list(
     # each criterion alone: f = 2 (ESS 250 of 500), 2.25 ((0.015 / 0.01)^2),
     # 1.44 ((0.06 / 0.05)^2: 1936 draws, rounded up), 1.5625 (ESS 320: 2475)
-    list(rows = diagnostics(ESS = 250),                               size = 4400L),
-    list(rows = diagnostics(MCMC_error = 0.015),                      size = 5500L),
-    list(rows = diagnostics(MCMC_SD_error = 0.06),                    size = 2000L),
-    list(rows = diagnostics(ESS = 320),                               size = 2500L),
+    list(rows = diagnostics(ESS = 250),                               size = 4400),
+    list(rows = diagnostics(MCMC_error = 0.015),                      size = 5500),
+    list(rows = diagnostics(MCMC_SD_error = 0.06),                    size = 2000),
+    list(rows = diagnostics(ESS = 320),                               size = 2500),
     # several at once, in one quantity and across quantities: the largest
-    list(rows = diagnostics(ESS = 250, MCMC_error = 0.015, MCMC_SD_error = 0.06), size = 5500L),
+    list(rows = diagnostics(ESS = 250, MCMC_error = 0.015, MCMC_SD_error = 0.06), size = 5500),
     list(rows = diagnostics(state = c("assessable", "assessable"), ESS = c(250, 1000),
-      MCMC_error = c(0.005, 0.015)),                                   size = 5500L),
+      MCMC_error = c(0.005, 0.015)),                                   size = 5500),
     # R-hat: at least 2, also when the quantity misses another criterion by
     # less (ESS 495 or 400 of 500), and a larger growth of another criterion
     # (ESS 200: f = 2.5) wins
-    list(rows = diagnostics(Rhat = 1.2),                              size = 4400L),
-    list(rows = diagnostics(Rhat = 1.1, ESS = 495),                   size = 4400L),
-    list(rows = diagnostics(Rhat = 1.2, ESS = 400),                   size = 4400L),
-    list(rows = diagnostics(Rhat = 1.2, ESS = 200),                   size = 6600L),
+    list(rows = diagnostics(Rhat = 1.2),                              size = 4400),
+    list(rows = diagnostics(Rhat = 1.1, ESS = 495),                   size = 4400),
+    list(rows = diagnostics(Rhat = 1.2, ESS = 400),                   size = 4400),
+    list(rows = diagnostics(Rhat = 1.2, ESS = 200),                   size = 6600),
     list(rows = diagnostics(state = c("assessable", "assessable"), Rhat = c(1.2, 1.01),
-      ESS = c(1000, 400)),                                             size = 4400L),
+      ESS = c(1000, 400)),                                             size = 4400),
     # caps: a small shortfall takes the minimum, a large one (or ESS 0) 2 n
-    list(rows = diagnostics(ESS = 450),                               size = 1000L),
-    list(rows = diagnostics(ESS = 10),                                size = 8000L),
-    list(rows = diagnostics(ESS = 0),                                 size = 8000L),
-    list(rows = diagnostics(MCMC_error = Inf, MCMC_SD_error = Inf),   size = 8000L),
+    list(rows = diagnostics(ESS = 450),                               size = 1000),
+    list(rows = diagnostics(ESS = 10),                                size = 8000),
+    list(rows = diagnostics(ESS = 0),                                 size = 8000),
+    list(rows = diagnostics(MCMC_error = Inf, MCMC_SD_error = Inf),   size = 8000),
     # not assessable: f = 2, or what its computed diagnostics require
     list(rows = diagnostics(state = "not_assessable", Rhat = NA, ESS = NA,
-      MCMC_error = NA, MCMC_SD_error = NA),                            size = 4400L),
+      MCMC_error = NA, MCMC_SD_error = NA),                            size = 4400),
     list(rows = diagnostics(state = "not_assessable", Rhat = NA, ESS = 100),
-                                                                       size = 8000L),
+                                                                       size = 8000),
     # quantities that were not checked and constants add nothing
     list(rows = diagnostics(state = c("not_checked", "structural_constant", "not_requested"),
-      ESS = c(10, NA, 10)),                                             size = 1000L),
-    list(rows = diagnostics()[0L, ],                                   size = 1000L)
+      ESS = c(10, NA, 10)),                                             size = 1000),
+    list(rows = diagnostics()[0L, ],                                   size = 1000)
   )
   for(i in seq_along(cases)){
     expect_identical(size(cases[[i]]$rows), cases[[i]]$size, info = i)
   }
   # criteria that are not set add nothing; a zero target is met
-  expect_identical(size(diagnostics(ESS = 10, Rhat = 2), min_ESS = NULL, max_Rhat = NULL), 1000L)
+  expect_identical(size(diagnostics(ESS = 10, Rhat = 2), min_ESS = NULL, max_Rhat = NULL), 1000)
   expect_identical(size(diagnostics(MCMC_error = 1, MCMC_SD_error = 1), max_error = NULL,
-    max_SD_error = NULL), 1000L)
-  expect_identical(size(diagnostics(ESS = 0), min_ESS = 0), 1000L)
+    max_SD_error = NULL), 1000)
+  expect_identical(size(diagnostics(ESS = 0), min_ESS = 0), 1000)
   # allow_not_assessable: the undefined diagnostics add nothing
   expect_identical(size(diagnostics(state = "not_assessable", Rhat = NA, ESS = NA,
-    MCMC_error = NA, MCMC_SD_error = NA), allow_not_assessable = TRUE), 1000L)
+    MCMC_error = NA, MCMC_SD_error = NA), allow_not_assessable = TRUE), 1000)
   # 2 n between multiples of 100 is rounded down (3050 to 3000; 1002 to 1000);
   # below the minimum, the minimum holds
-  expect_identical(size(diagnostics(ESS = 10), n = 1525), 3000L)
-  expect_identical(size(diagnostics(ESS = 10), n = 501), 1000L)
-  expect_identical(size(diagnostics(ESS = 10), n = 300), 1000L)
-  expect_identical(size(diagnostics(ESS = 0), n = 300), 1000L)
+  expect_identical(size(diagnostics(ESS = 10), n = 1525), 3000)
+  expect_identical(size(diagnostics(ESS = 10), n = 501), 1000)
+  expect_identical(size(diagnostics(ESS = 10), n = 300), 1000)
+  expect_identical(size(diagnostics(ESS = 0), n = 300), 1000)
   # below the cap, the size is rounded up before the cap applies: n = 1525
   # with f = 2 needs 1677.5 draws, 1700 (cap 3000)
-  expect_identical(size(diagnostics(ESS = 250), n = 1525), 1700L)
+  expect_identical(size(diagnostics(ESS = 250), n = 1525), 1700)
   # whole growth stays exact: 6000 * 1 * 1.1 = 6600, not 6700
-  expect_identical(size(diagnostics(ESS = 500 / 2), n = 6000), 6600L)
+  expect_identical(size(diagnostics(ESS = 500 / 2), n = 6000), 6600)
   # also when f - 1 is inexact: 500 / 450 - 1 exceeds 1 / 9, but 9000 and
   # 45000 draws need exactly 1100 and 5500
-  expect_identical(size(diagnostics(ESS = 450), n = 9000), 1100L)
-  expect_identical(size(diagnostics(ESS = 450), n = 45000), 5500L)
+  expect_identical(size(diagnostics(ESS = 450), n = 9000), 1100)
+  expect_identical(size(diagnostics(ESS = 450), n = 45000), 5500)
+  # sizes are whole doubles, also above the integer range (a saturated
+  # deficit at 1.1e9 draws per chain), until the callers cap them at the
+  # largest multiple of 100 whose draws * thin sampling iterations the backend
+  # takes as a signed integer
+  expect_identical(size(diagnostics(ESS = 10), n = 1.1e9), 2.2e9)
+  expect_identical(.bt_autofit_iteration_cap(1), 2147483600)
+  expect_identical(min(size(diagnostics(ESS = 10), n = 1.1e9), .bt_autofit_iteration_cap(1)),
+    2147483600)
+  # n = 5000 with thin = 250000: a saturated 10000 is capped at 8500
+  # (2147483647 / 250000 = 8589.9)
+  expect_identical(.bt_autofit_iteration_cap(250000), 8500)
+  expect_identical(min(size(diagnostics(ESS = 10), n = 5000), .bt_autofit_iteration_cap(250000)),
+    8500)
 })
 
 # Mocked extensions append 'sample' rows; the mocked check passes once the
@@ -1835,6 +1849,14 @@ test_that("JAGS_extend sizes each extension from the last check and stops at max
     sample_extend = c(step = "auto"), max_time = NULL))
   expect_identical(backend$samples, c(1000L, 2000L, 6000L, 3900L))
   expect_identical(nrow(named$mcmc[[1L]]), 12902L)
+  # at most the draws whose sampling iterations the backend can run, to which
+  # the minimum yields: with thin 2.5e6, 800 (2147483647 / 2.5e6 = 859.0)
+  backend <- .autofit_size_test_backend()
+  thinned <- fit
+  thinned$thin <- 2500000L
+  suppressWarnings(JAGS_extend(thinned, autofit_control = .autofit_size_test_control(
+    max_extend = 1, max_time = NULL)))
+  expect_identical(backend$samples, 800L)
 
   # an extension is sized only when it runs: max_extend = 2 sizes two
   size_from <- .bt_autofit_extension_size_from
@@ -1944,10 +1966,10 @@ test_that("JAGS_fit sizes automatic extensions from each failed check", {
     .bt_build_parameter_coordinates = function(...) NULL,
     .package = "BayesTools"
   )
-  fit_with <- function(control, sample = 1000) JAGS_fit(
+  fit_with <- function(control, sample = 1000, thin = 1) JAGS_fit(
     model_syntax = "model{ mu ~ dnorm(0, 1) }",
     prior_list = list(mu = prior("normal", list(0, 1))),
-    chains = 1, adapt = 100, burnin = 50, sample = sample,
+    chains = 1, adapt = 100, burnin = 50, sample = sample, thin = thin,
     autofit = TRUE, autofit_control = control, silent = TRUE, seed = 1
   )
   # (12500 - n) * 1.1 from 1000 draws: 2 n, 2 n, then 3850 rounded up
@@ -1957,6 +1979,13 @@ test_that("JAGS_fit sizes automatic extensions from each failed check", {
   expect_false(any(vapply(backend$checks, `[[`, logical(1), "fail_fast")))
   expect_identical(nrow(fit$mcmc[[1L]]), 12900L)
   expect_identical(attr(fit, "adaptation")$extensions$adapt, rep(100L, 3L))
+
+  # at most the draws whose sampling iterations the backend can run: 4500
+  # draws with ESS 180 need 8800, and thin 250000 allows 8500
+  backend <- .autofit_size_test_backend()
+  thinned <- suppressWarnings(fit_with(.autofit_size_test_control(max_extend = 1,
+    max_time = NULL), sample = 4500, thin = 250000))
+  expect_identical(backend$samples, 8500L)
 
   # max_time = 0 stops before the first extension, also on a clock that has
   # not advanced since the start: the time left is 0

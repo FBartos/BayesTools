@@ -69,7 +69,9 @@
 #'   unless \code{allow_not_assessable}), the
 #'   extension is \code{n * (f - 1) * 1.1} draws per chain rounded up to a
 #'   multiple of 100, then at most \code{2 * n} rounded down to a multiple of
-#'   100, then at least 1000 (the minimum wins when \code{2 * n} is smaller).
+#'   100, then at least 1000 (the minimum wins when \code{2 * n} is smaller),
+#'   and at most the largest multiple of 100 whose sampling iterations
+#'   (draws times \code{thin}) stay within the backend's integer limit.
 #'   With \code{max_time}, it is then at most the draws per chain that the
 #'   time left allows at the rate observed so far (the time on the
 #'   \code{max_time} clock divided by the retained draws per chain run since
@@ -956,7 +958,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       }
 
       sample_extend <- if(auto_extend){
-        min(.bt_autofit_extension_size_from(converged, fit, autofit_control), time_cap)
+        min(.bt_autofit_extension_size_from(converged, fit, autofit_control), time_cap,
+          .bt_autofit_iteration_cap(thin))
       }else{
         autofit_control[["sample_extend"]]
       }
@@ -1439,7 +1442,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
         failed_check <- extend_converged(fit,
           max_Rhat = if(chains > 1L) autofit_control[["max_Rhat"]])
       }
-      min(.bt_autofit_extension_size_from(failed_check, fit, autofit_control), time_cap)
+      min(.bt_autofit_extension_size_from(failed_check, fit, autofit_control), time_cap,
+        .bt_autofit_iteration_cap(fit[["thin"]]))
     }else{
       autofit_control[["sample_extend"]]
     }

@@ -115,7 +115,9 @@ the criteria that are set; at least \code{2} for an R-hat above
 unless \code{allow_not_assessable}), the
 extension is \code{n * (f - 1) * 1.1} draws per chain rounded up to a
 multiple of 100, then at most \code{2 * n} rounded down to a multiple of
-100, then at least 1000 (the minimum wins when \code{2 * n} is smaller).
+100, then at least 1000 (the minimum wins when \code{2 * n} is smaller),
+and at most the largest multiple of 100 whose sampling iterations
+(draws times \code{thin}) stay within the backend's integer limit.
 With \code{max_time}, it is then at most the draws per chain that the
 time left allows at the rate observed so far (the time on the
 \code{max_time} clock divided by the retained draws per chain run since
