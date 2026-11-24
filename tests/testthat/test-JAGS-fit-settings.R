@@ -376,9 +376,9 @@ test_that("JAGS_extend validates runtime controls before extension", {
   }
 })
 
-.jags_extend_test_fit <- function(){
+.jags_extend_test_fit <- function(chains = 1L){
 
-  fit <- contract_test_backend_fit()
+  fit <- contract_test_backend_fit(chains = chains)
   fit$thin <- 1L
   attr(fit, "prior_list") <- list()
   attr(fit, "model_syntax") <- "model{}"
@@ -847,12 +847,12 @@ test_that("JAGS_extend resets its time budget for every call", {
   expect_equal(clock_calls, 4L)
 })
 
-.jags_extend_test_fit_with_draws <- function(){
+.jags_extend_test_fit_with_draws <- function(chains = 2L){
 
   fit <- .jags_extend_test_fit()
   set.seed(71)
   draws <- cbind(mu = stats::rnorm(50), theta = stats::rnorm(50))
-  fit$mcmc <- coda::mcmc.list(coda::mcmc(draws), coda::mcmc(draws + 0.1))
+  fit$mcmc <- coda::mcmc.list(lapply(seq_len(chains), function(i) coda::mcmc(draws + 0.1 * (i - 1L))))
   fit <- add_test_chain_states(fit)
   attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)))
   attr(fit, "add_parameters") <- "theta"
@@ -1822,7 +1822,7 @@ test_that("automatic extensions are sized from the failed convergence check", {
 }
 
 .autofit_size_test_control <- function(sample_extend = "auto", max_extend = 10,
-                                       max_time = list(time = 60, unit = "secs")){
+                                       max_time = NULL){
   list(max_Rhat = 1.05, min_ESS = 500, max_error = NULL, max_SD_error = NULL,
     max_time = max_time, sample_extend = sample_extend, restarts = 1, max_extend = max_extend)
 }
@@ -1846,7 +1846,7 @@ test_that("JAGS_extend sizes each extension from the last check and stops at max
   # a named "auto" runs as "auto"
   backend <- .autofit_size_test_backend()
   named <- JAGS_extend(fit, autofit_control = .autofit_size_test_control(
-    sample_extend = c(step = "auto"), max_time = NULL))
+    sample_extend = c(step = "auto")))
   expect_identical(backend$samples, c(1000L, 2000L, 6000L, 3900L))
   expect_identical(nrow(named$mcmc[[1L]]), 12902L)
   # at most the draws whose sampling iterations the backend can run, to which
@@ -1855,7 +1855,7 @@ test_that("JAGS_extend sizes each extension from the last check and stops at max
   thinned <- fit
   thinned$thin <- 2500000L
   suppressWarnings(JAGS_extend(thinned, autofit_control = .autofit_size_test_control(
-    max_extend = 1, max_time = NULL)))
+    max_extend = 1)))
   expect_identical(backend$samples, 800L)
 
   # an extension is sized only when it runs: max_extend = 2 sizes two
@@ -1949,6 +1949,82 @@ test_that("JAGS_extend sizes each extension from the last check and stops at max
     "The automatic model fitting was terminated due to the 'max_extend' constraint.")
 })
 
+test_that("JAGS_extend sizes the first automatic extension of a multi-chain fit with R-hat", {
+
+  # two chains of 1525 draws, an R-hat above max_Rhat and the other criteria
+  # met: the check of the supplied fit requests R-hat, so the first extension
+  # is 1.1 n = 1677.5 rounded up to 1700 (without R-hat, the minimum of 1000)
+  fit <- .jags_extend_test_fit(chains = 2L)
+  fit$mcmc <- coda::mcmc.list(lapply(1:2, function(i){
+    coda::mcmc(matrix(0, nrow = 1525L, ncol = 1L, dimnames = list(NULL, "x")))
+  }))
+  fit <- .bt_attach_fit_contract(.bt_attach_draw_geometry(fit))
+  samples <- integer()
+  checks <- list()
+  testthat::local_mocked_bindings(
+    .bt_rjags_extend = function(fit, sample, ...){
+      samples <<- c(samples, as.integer(sample))
+      fit$mcmc <- coda::mcmc.list(lapply(fit$mcmc, function(chain){
+        coda::mcmc(rbind(as.matrix(chain),
+          matrix(0, nrow = sample, ncol = ncol(chain), dimnames = list(NULL, colnames(chain)))))
+      }))
+      fit
+    },
+    .bt_check_convergence = function(fit, ..., max_Rhat, fail_fast){
+      n <- nrow(fit$mcmc[[1L]])
+      checks[[length(checks) + 1L]] <<- list(n = n, Rhat = !is.null(max_Rhat))
+      rows <- data.frame(parameter = "x", state = "assessable",
+        Rhat = if(is.null(max_Rhat)) NA_real_ else 1.2, ESS = 1e6,
+        MCMC_error = NA_real_, MCMC_SD_error = NA_real_)
+      structure(n > 1525L, diagnostics = rows)
+    },
+    .package = "BayesTools"
+  )
+  extended <- JAGS_extend(fit, autofit_control = .autofit_size_test_control())
+  expect_identical(samples, 1700L)
+  expect_identical(vapply(checks, `[[`, integer(1), "n"), c(1525L, 3225L))
+  expect_identical(vapply(checks, `[[`, logical(1), "Rhat"), c(TRUE, TRUE))
+  expect_identical(nrow(extended$mcmc[[2L]]), 3225L)
+})
+
+test_that("an automatic JAGS_extend gives the one-chain warning as often as the fixed step", {
+
+  # the real convergence check of a one-chain fit warns that R-hat cannot be
+  # computed; the check of the supplied fit, which only sizes the first
+  # "auto" extension, does not repeat it, so two extensions give two
+  # warnings with either step
+  fit <- .jags_extend_test_fit_with_draws(chains = 1L)
+  testthat::local_mocked_bindings(
+    .bt_rjags_extend = function(fit, sample, ...){
+      fit$mcmc <- coda::mcmc.list(lapply(fit$mcmc, function(chain){
+        draws <- matrix(stats::rnorm(sample * ncol(chain)), ncol = ncol(chain),
+          dimnames = list(NULL, colnames(chain)))
+        coda::mcmc(rbind(as.matrix(chain), draws))
+      }))
+      fit
+    },
+    .package = "BayesTools"
+  )
+  one_chain_warnings <- function(sample_extend){
+    count <- 0L
+    withCallingHandlers(
+      JAGS_extend(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 1e6,
+        max_error = NULL, max_SD_error = NULL, max_time = NULL,
+        sample_extend = sample_extend, restarts = 1, max_extend = 2), silent = FALSE),
+      warning = function(w){
+        if(grepl("Only one chain was run", conditionMessage(w), fixed = TRUE)){
+          count <<- count + 1L
+        }
+        invokeRestart("muffleWarning")
+      }
+    )
+    count
+  }
+  set.seed(1)
+  expect_identical(one_chain_warnings(1000), 2L)
+  expect_identical(one_chain_warnings("auto"), 2L)
+})
+
 test_that("JAGS_fit sizes automatic extensions from each failed check", {
 
   backend <- .autofit_size_test_backend()
@@ -1983,8 +2059,8 @@ test_that("JAGS_fit sizes automatic extensions from each failed check", {
   # at most the draws whose sampling iterations the backend can run: 4500
   # draws with ESS 180 need 8800, and thin 250000 allows 8500
   backend <- .autofit_size_test_backend()
-  thinned <- suppressWarnings(fit_with(.autofit_size_test_control(max_extend = 1,
-    max_time = NULL), sample = 4500, thin = 250000))
+  thinned <- suppressWarnings(fit_with(.autofit_size_test_control(max_extend = 1),
+    sample = 4500, thin = 250000))
   expect_identical(backend$samples, 8500L)
 
   # max_time = 0 stops before the first extension, also on a clock that has
