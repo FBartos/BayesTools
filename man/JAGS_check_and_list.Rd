@@ -113,8 +113,9 @@ required growth over the parameters (\code{min_ESS / ESS},
 the criteria that are set; at least \code{2} for an R-hat above
 \code{max_Rhat}, and for a parameter whose diagnostics are not assessable
 unless \code{allow_not_assessable}), the
-extension is \code{n * (f - 1) * 1.1} draws per chain, at least 1000 and
-at most \code{2 * n}, rounded up to a multiple of 100. In
+extension is \code{n * (f - 1) * 1.1} draws per chain rounded up to a
+multiple of 100, then at most \code{2 * n} rounded down to a multiple of
+100, then at least 1000 (the minimum wins when \code{2 * n} is smaller). In
 \code{JAGS_extend()}, the first extension is sized from the check of the
 supplied fit. \code{max_time} and \code{max_extend} stop the extensions
 as with a fixed size.}

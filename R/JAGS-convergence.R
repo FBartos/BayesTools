@@ -769,9 +769,10 @@ JAGS_check_convergence <- function(
 # largest required growth factor: min_ESS / ESS, (error / max_error)^2 and
 # (SD_error / max_SD_error)^2; at least 2 for an R-hat above max_Rhat; and at
 # least 2 for a quantity whose diagnostics are not assessable, unless
-# allow_not_assessable. With n retained draws per chain, the
-# extension is n * (f - 1) * 1.1 draws, at least 1000 and at most 2 n (the
-# lower limit wins when 2 n < 1000), rounded up to a multiple of 100.
+# allow_not_assessable. With n retained draws per chain, the extension is
+# n * (f - 1) * 1.1 draws rounded up to a multiple of 100; then at most 2 n
+# rounded down to a multiple of 100; then at least 1000, which wins when 2 n is
+# smaller.
 .bt_autofit_extension_size <- function(diagnostics, n, max_Rhat, min_ESS, max_error,
                                        max_SD_error, allow_not_assessable = FALSE){
 
@@ -800,9 +801,10 @@ JAGS_check_convergence <- function(
   f <- max(c(1, growth[checked]))
 
   # n * (f - 1) * 1.1, written with 11 / 10 so that whole products stay exact
-  draws <- min(2 * n, ceiling(n * (f - 1) * 11 / 10))
-  draws <- max(1000, draws)
-  as.integer(ceiling(draws / 100) * 100)
+  draws <- ceiling(ceiling(n * (f - 1) * 11 / 10) / 100) * 100
+  draws <- min(draws, floor(2 * n / 100) * 100)
+  draws <- max(draws, 1000)
+  as.integer(draws)
 }
 
 # The extension after the failed convergence 'check' of 'fit' under the

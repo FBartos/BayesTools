@@ -1707,8 +1707,8 @@ test_that("automatic extensions are sized from the failed convergence check", {
     .bt_autofit_extension_size(rows, n, max_Rhat, min_ESS, max_error, max_SD_error,
       allow_not_assessable)
   }
-  # n = 4000 draws per chain: n * (f - 1) * 1.1, at least 1000, at most 8000,
-  # rounded up to a multiple of 100
+  # n = 4000 draws per chain: n * (f - 1) * 1.1 rounded up to a multiple of
+  # 100, then at most 8000, then at least 1000
   cases <- list(
     # each criterion alone: f = 2 (ESS 250 of 500), 2.25 ((0.015 / 0.01)^2),
     # 1.44 ((0.06 / 0.05)^2: 1936 draws, rounded up), 1.5625 (ESS 320: 2475)
@@ -1755,8 +1755,15 @@ test_that("automatic extensions are sized from the failed convergence check", {
   # allow_not_assessable: the undefined diagnostics add nothing
   expect_identical(size(diagnostics(state = "not_assessable", Rhat = NA, ESS = NA,
     MCMC_error = NA, MCMC_SD_error = NA), allow_not_assessable = TRUE), 1000L)
-  # 2 n below the minimum: the minimum holds
+  # 2 n between multiples of 100 is rounded down (3050 to 3000; 1002 to 1000);
+  # below the minimum, the minimum holds
+  expect_identical(size(diagnostics(ESS = 10), n = 1525), 3000L)
+  expect_identical(size(diagnostics(ESS = 10), n = 501), 1000L)
   expect_identical(size(diagnostics(ESS = 10), n = 300), 1000L)
+  expect_identical(size(diagnostics(ESS = 0), n = 300), 1000L)
+  # below the cap, the size is rounded up before the cap applies: n = 1525
+  # with f = 2 needs 1677.5 draws, 1700 (cap 3000)
+  expect_identical(size(diagnostics(ESS = 250), n = 1525), 1700L)
   # whole growth stays exact: 6000 * 1 * 1.1 = 6600, not 6700
   expect_identical(size(diagnostics(ESS = 500 / 2), n = 6000), 6600L)
 })
@@ -1802,12 +1809,13 @@ test_that("automatic extensions are sized from the failed convergence check", {
 test_that("JAGS_extend sizes each extension from the last check and stops at max_time", {
 
   # (12500 - n) * 1.1 draws for n draws per chain: from the supplied fit's 2
-  # draws the minimum, then 2 n (2004 rounded up), 2 n, and 3407.8 rounded up
+  # draws the minimum, then 2 n rounded down (2004 to 2000, 6004 to 6000), and
+  # 3847.8 rounded up
   backend <- .autofit_size_test_backend()
   fit <- .jags_extend_test_fit()
   extended <- JAGS_extend(fit, autofit_control = .autofit_size_test_control())
-  expect_identical(backend$samples, c(1000L, 2100L, 6300L, 3500L))
-  expect_identical(vapply(backend$checks, `[[`, integer(1), "n"), c(2L, 1002L, 3102L, 9402L, 12902L))
+  expect_identical(backend$samples, c(1000L, 2000L, 6000L, 3900L))
+  expect_identical(vapply(backend$checks, `[[`, integer(1), "n"), c(2L, 1002L, 3002L, 9002L, 12902L))
   expect_false(any(vapply(backend$checks, `[[`, logical(1), "fail_fast")))
   expect_identical(nrow(extended$mcmc[[1L]]), 12902L)
   expect_null(attr(extended, "warnings"))
@@ -1826,7 +1834,7 @@ test_that("JAGS_extend sizes each extension from the last check and stops at max
   backend <- .autofit_size_test_backend()
   stopped <- JAGS_extend(fit, autofit_control = .autofit_size_test_control(
     max_time = list(time = 2, unit = "secs")))
-  expect_identical(backend$samples, c(1000L, 2100L))
+  expect_identical(backend$samples, c(1000L, 2000L))
   expect_identical(attr(stopped, "warnings"),
     "The automatic model fitting was terminated due to the 'max_time' constraint.")
 
