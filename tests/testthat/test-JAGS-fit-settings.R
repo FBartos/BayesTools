@@ -1926,10 +1926,10 @@ test_that("JAGS_fit sizes automatic extensions from each failed check", {
     .bt_build_parameter_coordinates = function(...) NULL,
     .package = "BayesTools"
   )
-  fit_with <- function(control) JAGS_fit(
+  fit_with <- function(control, sample = 1000) JAGS_fit(
     model_syntax = "model{ mu ~ dnorm(0, 1) }",
     prior_list = list(mu = prior("normal", list(0, 1))),
-    chains = 1, adapt = 100, burnin = 50, sample = 1000,
+    chains = 1, adapt = 100, burnin = 50, sample = sample,
     autofit = TRUE, autofit_control = control, silent = TRUE, seed = 1
   )
   # (12500 - n) * 1.1 from 1000 draws: 2 n, 2 n, then 3850 rounded up
@@ -1982,6 +1982,22 @@ test_that("JAGS_fit sizes automatic extensions from each failed check", {
   expect_identical(calls, 5L)
   expect_identical(attr(fixed, "warnings"),
     "The automatic model fitting was terminated due to the 'max_time' constraint.")
+
+  # equivalent limits give the same cap: 3500 draws in 3500 s leave 100 s for
+  # exactly 100 draws under 3600 secs, 60 mins and 1 hours; those run, and
+  # the limit has passed at the next gate
+  clock <- as.POSIXct("2026-01-01 00:00:00", tz = "UTC") + c(0, 3500, 3601)
+  for(limit_unit in list(list(time = 3600, unit = "secs"), list(time = 60, unit = "mins"),
+                         list(time = 1, unit = "hours"))){
+    calls <- 0L
+    backend <- .autofit_size_test_backend()
+    boundary <- fit_with(.autofit_size_test_control(max_time = limit_unit), sample = 3500)
+    expect_identical(backend$samples, 100L, info = limit_unit$unit)
+    expect_identical(calls, 3L, info = limit_unit$unit)
+    expect_identical(attr(boundary, "warnings"),
+      "The automatic model fitting was terminated due to the 'max_time' constraint.",
+      info = limit_unit$unit)
+  }
 })
 
 test_that("the time cap of automatic extensions follows the observed rate", {
@@ -1990,8 +2006,14 @@ test_that("the time cap of automatic extensions follows the observed rate", {
   # 1000 draws in 10 s leave 50 s for 5000; 999 draws leave 4995, rounded down
   expect_identical(.bt_autofit_time_cap(limit, elapsed = 10, draws = 1000), 5000)
   expect_identical(.bt_autofit_time_cap(limit, elapsed = 10, draws = 999), 4900)
-  # elapsed is in the unit of max_time
-  expect_identical(.bt_autofit_time_cap(list(time = 2, unit = "mins"), elapsed = 0.5, draws = 1000), 3000)
+  # elapsed is in seconds, and the limit is converted to seconds: equivalent
+  # limits give the same cap (3500 draws in 3500 s leave 100 s for 100)
+  expect_identical(.bt_autofit_time_cap(list(time = 2, unit = "mins"), elapsed = 30, draws = 1000), 3000)
+  for(limit_unit in list(list(time = 3600, unit = "secs"), list(time = 60, unit = "mins"),
+                         list(time = 1, unit = "hours"))){
+    expect_identical(.bt_autofit_time_cap(limit_unit, elapsed = 3500, draws = 3500), 100,
+      info = limit_unit$unit)
+  }
   # no limit, no draws or no time on the clock yet: no cap
   expect_identical(.bt_autofit_time_cap(NULL, elapsed = 10, draws = 1000), Inf)
   expect_identical(.bt_autofit_time_cap(limit, elapsed = 10, draws = 0), Inf)

@@ -824,17 +824,20 @@ JAGS_check_convergence <- function(
 
 # The longest automatic extension, in retained draws per chain, that the time
 # left under 'max_time' allows at the rate observed so far: 'elapsed' is the
-# time on the max_time clock (in max_time's unit) and 'draws' the retained draws
-# per chain that the runs on that clock produced, so the rate also charges the
+# time in seconds on the max_time clock and 'draws' the retained draws per
+# chain that the runs on that clock produced, so the rate also charges the
 # draws with the adaptation, burn-in, failed attempts and convergence checks
-# on that clock. Rounded down to a multiple of 100; Inf without max_time or
-# before any draws or time were recorded.
+# on that clock. The limit is converted to seconds, so that equivalent limits
+# give the same cap. Rounded down to a multiple of 100; Inf without max_time
+# or before any draws or time were recorded.
 .bt_autofit_time_cap <- function(max_time, elapsed, draws){
 
   if(is.null(max_time) || draws <= 0 || elapsed <= 0){
     return(Inf)
   }
-  floor((max_time[["time"]] - elapsed) * draws / elapsed / 100) * 100
+  unit_seconds <- c(secs = 1, mins = 60, hours = 3600, days = 86400, weeks = 604800)
+  limit <- max_time[["time"]] * unit_seconds[[max_time[["unit"]]]]
+  floor((limit - elapsed) * draws / elapsed / 100) * 100
 }
 
 # The sentence that names the parameters failing a criterion; the first few

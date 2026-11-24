@@ -931,7 +931,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     while(!converged){
 
       elapsed <- .bt_autofit_elapsed(start_time, autofit_control[["max_time"]])
-      stop_constraint <- if(!is.null(elapsed) && elapsed > autofit_control[["max_time"]][["time"]]){
+      stop_constraint <- if(!is.null(elapsed) && elapsed[["time"]] > autofit_control[["max_time"]][["time"]]){
         "max_time"
       }else if(!is.null(autofit_control[["max_extend"]]) && itteration > autofit_control[["max_extend"]]){
         "max_extend"
@@ -940,7 +940,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         # at most what the time left allows at the rate of the draws so far;
         # the clock started before the initial run, so the rate includes its
         # adaptation and burn-in
-        time_cap <- .bt_autofit_time_cap(autofit_control[["max_time"]], elapsed,
+        time_cap <- .bt_autofit_time_cap(autofit_control[["max_time"]], elapsed[["secs"]],
           draws = NROW(fit[["mcmc"]][[1L]]))
         if(time_cap < 100){
           stop_constraint <- "max_time"
@@ -1409,7 +1409,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   while(!converged){
 
     elapsed <- .bt_autofit_elapsed(start_time, autofit_control[["max_time"]])
-    stop_constraint <- if(!is.null(elapsed) && elapsed > autofit_control[["max_time"]][["time"]]){
+    stop_constraint <- if(!is.null(elapsed) && elapsed[["time"]] > autofit_control[["max_time"]][["time"]]){
       "max_time"
     }else if(!is.null(autofit_control[["max_extend"]]) && iteration >= autofit_control[["max_extend"]]){
       "max_extend"
@@ -1417,7 +1417,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     if(is.null(stop_constraint) && auto_extend){
       # at most what the time left allows at the rate of the draws of this
       # call; its first extension has no rate yet and is not capped
-      time_cap <- .bt_autofit_time_cap(autofit_control[["max_time"]], elapsed,
+      time_cap <- .bt_autofit_time_cap(autofit_control[["max_time"]], elapsed[["secs"]],
         draws = NROW(fit[["mcmc"]][[1L]]) - supplied_draws)
       if(time_cap < 100){
         stop_constraint <- "max_time"
@@ -1532,12 +1532,18 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   Sys.time()
 }
 
-# The time on that clock since 'start_time', in the unit of 'max_time'; NULL
-# without a limit, and the clock is then not read.
+# The time on that clock since 'start_time', from one reading: 'time' in the
+# unit of 'max_time', which its limit is compared with, and 'secs' in
+# seconds, which the time cap of automatic extensions uses; NULL without a
+# limit, and the clock is then not read.
 .bt_autofit_elapsed <- function(start_time, max_time){
 
   if(is.null(max_time)){
     return(NULL)
   }
-  as.numeric(difftime(.bt_autofit_clock(), start_time, units = max_time[["unit"]]))
+  now <- .bt_autofit_clock()
+  c(
+    time = as.numeric(difftime(now, start_time, units = max_time[["unit"]])),
+    secs = as.numeric(difftime(now, start_time, units = "secs"))
+  )
 }
