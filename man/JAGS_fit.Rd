@@ -22,7 +22,7 @@ JAGS_fit(
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
     0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
     max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable =
-    FALSE),
+    FALSE, burnin_max_Rhat = 1.5, burnin_extend = 500, burnin_max_extend = 10),
   parallel = FALSE,
   cores = chains,
   silent = TRUE,
@@ -95,7 +95,11 @@ when the backend builds the sampler from the stored chain states; the default
 \code{JAGS_extend()} applies to that call only: the returned fit keeps the
 initial setting, which later calls without \code{adapt} use again.}
 
-\item{burnin}{number of burnin iterations of the MCMC chains, defaults to \code{1000}}
+\item{burnin}{number of burnin iterations of the MCMC chains, defaults to
+\code{1000}. Its last iterations are checked for agreement of the chains
+before sampling starts, and with \code{autofit} burn-in can be extended (see
+\code{burnin_max_Rhat} in \code{autofit_control}); \code{fit$burnin} holds
+the burn-in that was run.}
 
 \item{sample}{number of draws to retain per chain, defaults to \code{4000}.
 Each chain runs \code{sample * thin} sampling iterations.}
@@ -177,6 +181,38 @@ every fitted coordinate is stored in the \code{convergence_role} column
 of \code{\link[=parameter_coordinates]{parameter_coordinates()}}.}
 \item{allow_not_assessable}{whether undefined diagnostics for requested
 sampled parameters may be ignored. Defaults to \code{FALSE}.}
+\item{burnin_max_Rhat}{the threshold of the readiness check between
+burn-in and sampling, which runs in every fit, also without
+\code{autofit}. Defaults to \code{1.5}; an omitted element takes its
+default and \code{NULL} turns the check off. The last
+\code{burnin_extend} iterations of burn-in (all of it when shorter) run
+with the monitors on; their draws are checked and then dropped. Each
+chain's block is split into halves, and the chains are ready when the
+point estimate of the potential scale reduction factor over the
+half-chains (\code{coda::gelman.diag()}) is at most \code{burnin_max_Rhat}
+for every quantity that the convergence check assesses (the selection of
+\code{monitor} and \code{check_indicators}). The check needs at least two
+chains and a block of at least 100 iterations. When the chains are not
+ready, a fit with \code{autofit} extends burn-in by blocks of
+\code{burnin_extend} iterations, each checked alone, until they are
+ready, \code{burnin_max_extend} blocks were added, or \code{max_time} is
+exceeded (checked before each block); a fit without \code{autofit} keeps
+its burn-in. Chains that are still not ready start sampling with a
+warning of class \code{BayesTools_burnin_not_converged} (also
+\code{BayesTools_fit_diagnostic}), issued whatever \code{silent} is and
+kept in the fit's \code{warnings} attribute. When no monitored node lacks
+observed descendants, a fit whose chains are ready at once has the same
+draws, final states and samplers as with the check off: monitoring changes
+no sampler, but JAGS samples a monitored node without observed
+descendants (such as a predictive quantity) from the chain's random-number
+stream. The check cannot detect chains that are all in the same wrong
+state.}
+\item{burnin_extend}{the number of final burn-in iterations that the
+readiness check assesses and of each extension of burn-in; at least
+\code{100}. Defaults to \code{500}.}
+\item{burnin_max_extend}{the largest number of extensions of burn-in, with
+\code{autofit} only. Defaults to \code{10}. Extensions also stop where the
+iteration numbers of the draws would leave the integer range.}
 }}
 
 \item{parallel}{whether to distribute chains over PSOCK worker processes.
@@ -367,8 +403,6 @@ only its own runs (the values of the extended fit are not carried over).
 Callback packages must be listed in \code{required_packages}. Passing
 \code{NULL} disables the report.}
 
-\item{...}{additional hidden arguments}
-
 \item{sampler_joint}{optional package callback accepting \code{prior_list},
 \code{formula_design} and \code{data}. It receives the combined bound prior list,
 the finalized formula designs and the combined model and formula data,
@@ -382,7 +416,7 @@ literals. Multiple entries in one argument are combined with \code{c()}.
 References can come from the existing model and data or the callback's
 numeric constants. Marker names are reserved to the declarations.
 A \code{tag} is a registered deterministic JAGS function with a name prefixed
-with \code{<lowercased-module>_} for a provider listed in \code{jags_modules}. It must
+with \verb{<lowercased-module>_} for a provider listed in \code{jags_modules}. It must
 return a fixed finite value for admissible arguments. Use a dedicated
 function without aliases. The model must reserve that function for tags
 to prevent JAGS from reusing a scientific node. The tag creates an
@@ -391,7 +425,7 @@ The BayesTools finite readout functions are reserved for \code{sampler_probabili
 A \code{distribution} must be a normalized point mass at zero for every
 admissible parent value. Its marker is observed at zero.
 Use a distribution name prefixed with
-\code{d<lowercased-module>_} for a provider listed in \code{jags_modules}, or use
+\verb{d<lowercased-module>_} for a provider listed in \code{jags_modules}, or use
 the BayesTools block marker \code{dbt_block}. Declare BayesTools blocks through
 one of \code{sampler_joint} or \code{sampler_blocks}. Use \code{sampler_gates} for model-verified
 gates, which take precedence over \code{dbt_block} when both mark a node.
@@ -427,6 +461,8 @@ and mixtures whose private weight nodes are explicitly used or monitored
 keep their ordinary parameterization. The \code{nested_weights} entry in
 \code{attr(fit, "sampler_declarations")} records the two branch indices when
 sharing was used or the reason it was declined. Defaults to \code{FALSE}.}
+
+\item{...}{additional hidden arguments}
 
 \item{fit}{a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 extended. A derived-draw view signals
@@ -465,6 +501,25 @@ extensions of \code{JAGS_extend()}) giving the \code{adapt} passed to the
 backend and whether the backend \code{rebuilt} the sampler, the only case in
 which it adapts. Warnings of the backend that adaptation was incomplete are
 issued and also kept in the fit's \code{warnings} attribute.
+
+The \code{burnin_check} attribute of a fit records the readiness check
+between burn-in and sampling (see \code{burnin_max_Rhat} in
+\code{autofit_control}); it is \code{NULL} when the check did not run. It
+runs in the initial fit of \code{JAGS_fit()} only, afresh in each restart
+attempt, and not in \code{JAGS_extend()} or the automatic extensions after
+sampling. The record holds \code{burnin_max_Rhat}, \code{block} (the
+iterations of the checked end of the requested burn-in),
+\code{burnin_extend}, \code{blocks} (one row per checked block, with the
+iterations \code{sweeps} it ran and its largest value \code{Rhat} and
+\code{parameter}), \code{extension} (the iterations added to burn-in),
+\code{status} (\code{"ready"}, \code{"not_ready"}, or
+\code{"not_assessable"} when no quantity could be assessed, which makes no
+claim of readiness and extends nothing), \code{stop_reason}
+(\code{"ready"}, \code{"max_extend"}, \code{"max_time"},
+\code{"no_autofit"}, or \code{"not_assessable"}), and \code{failing} (the
+quantities of the last block above the threshold, with their values).
+\code{fit$burnin} is the burn-in that was run, and the iteration numbers
+of the draws and of \code{sampler_probabilities} count it.
 }
 \description{
 Compiles JAGS model syntax, data, formulas and priors into

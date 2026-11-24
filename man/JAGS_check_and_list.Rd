@@ -32,7 +32,11 @@ JAGS_check_and_list_autofit_settings(
 
 \item{adapt}{number of samples used for adapting the MCMC chains, defaults to \code{500}}
 
-\item{burnin}{number of burnin iterations of the MCMC chains, defaults to \code{1000}}
+\item{burnin}{number of burnin iterations of the MCMC chains, defaults to
+\code{1000}. Its last iterations are checked for agreement of the chains
+before sampling starts, and with \code{autofit} burn-in can be extended (see
+\code{burnin_max_Rhat} in \code{autofit_control}); \code{fit$burnin} holds
+the burn-in that was run.}
 
 \item{sample}{number of draws to retain per chain, defaults to \code{4000}.
 Each chain runs \code{sample * thin} sampling iterations.}
@@ -158,6 +162,38 @@ every fitted coordinate is stored in the \code{convergence_role} column
 of \code{\link[=parameter_coordinates]{parameter_coordinates()}}.}
 \item{allow_not_assessable}{whether undefined diagnostics for requested
 sampled parameters may be ignored. Defaults to \code{FALSE}.}
+\item{burnin_max_Rhat}{the threshold of the readiness check between
+burn-in and sampling, which runs in every fit, also without
+\code{autofit}. Defaults to \code{1.5}; an omitted element takes its
+default and \code{NULL} turns the check off. The last
+\code{burnin_extend} iterations of burn-in (all of it when shorter) run
+with the monitors on; their draws are checked and then dropped. Each
+chain's block is split into halves, and the chains are ready when the
+point estimate of the potential scale reduction factor over the
+half-chains (\code{coda::gelman.diag()}) is at most \code{burnin_max_Rhat}
+for every quantity that the convergence check assesses (the selection of
+\code{monitor} and \code{check_indicators}). The check needs at least two
+chains and a block of at least 100 iterations. When the chains are not
+ready, a fit with \code{autofit} extends burn-in by blocks of
+\code{burnin_extend} iterations, each checked alone, until they are
+ready, \code{burnin_max_extend} blocks were added, or \code{max_time} is
+exceeded (checked before each block); a fit without \code{autofit} keeps
+its burn-in. Chains that are still not ready start sampling with a
+warning of class \code{BayesTools_burnin_not_converged} (also
+\code{BayesTools_fit_diagnostic}), issued whatever \code{silent} is and
+kept in the fit's \code{warnings} attribute. When no monitored node lacks
+observed descendants, a fit whose chains are ready at once has the same
+draws, final states and samplers as with the check off: monitoring changes
+no sampler, but JAGS samples a monitored node without observed
+descendants (such as a predictive quantity) from the chain's random-number
+stream. The check cannot detect chains that are all in the same wrong
+state.}
+\item{burnin_extend}{the number of final burn-in iterations that the
+readiness check assesses and of each extension of burn-in; at least
+\code{100}. Defaults to \code{500}.}
+\item{burnin_max_extend}{the largest number of extensions of burn-in, with
+\code{autofit} only. Defaults to \code{10}. Extensions also stop where the
+iteration numbers of the draws would leave the integer range.}
 }}
 
 \item{skip_sample_extend}{whether \code{sample_extend}

@@ -2178,7 +2178,13 @@ test_that("an automatic fit of a slowly mixing model reaches its ESS target in f
 
   fixed <- fit_with(1000)
   auto <- fit_with("auto")
-  expect_false(reached(fit_with(1000, max_time = list(time = 0, unit = "secs"))))
+  # without time, the readiness check also stops extending burn-in, and the
+  # chains (which disagree after 100 sweeps) start sampling with its warning
+  expect_warning(
+    stopped_fixed <- fit_with(1000, max_time = list(time = 0, unit = "secs")),
+    class = "BayesTools_burnin_not_converged"
+  )
+  expect_false(reached(stopped_fixed))
   expect_true(reached(fixed))
   expect_true(reached(auto))
   expect_null(attr(fixed, "warnings"))
@@ -2189,9 +2195,15 @@ test_that("an automatic fit of a slowly mixing model reaches its ESS target in f
   expect_lt(extensions(auto), extensions(fixed))
 
   # max_time stops "auto" as it stops the fixed step: here before any extension
-  stopped <- fit_with("auto", max_time = list(time = 0, unit = "secs"))
+  expect_warning(
+    stopped <- fit_with("auto", max_time = list(time = 0, unit = "secs")),
+    "Increase 'burnin' or 'max_time'.", fixed = TRUE, class = "BayesTools_burnin_not_converged"
+  )
   expect_identical(extensions(stopped), 0L)
   expect_identical(nrow(stopped$mcmc[[1L]]), 1000L)
-  expect_identical(attr(stopped, "warnings"),
-    "The automatic model fitting was terminated due to the 'max_time' constraint.")
+  expect_identical(attr(stopped, "burnin_check")$stop_reason, "max_time")
+  expect_identical(attr(stopped, "warnings"), c(
+    "The automatic model fitting was terminated due to the 'max_time' constraint.",
+    BayesTools:::.bt_burnin_warning(attr(stopped, "burnin_check"))
+  ))
 })

@@ -204,6 +204,39 @@ chain whose `draws * thin` sampling iterations fit rjags' signed-integer
 `n.iter`; sizes stay whole doubles until these caps apply. The fixed step
 keeps `fail_fast` and its size.
 
+The readiness check between burn-in and sampling (`R/JAGS-burnin-check.R`)
+runs in the initial run of every `JAGS_fit()` with `burnin_max_Rhat` set, at
+least two chains and a block `W = min(burnin_extend, burnin)` of at least 100
+sweeps; never in `JAGS_extend()` or automatic extensions, and afresh in every
+restart attempt. The omitted `autofit_control` elements take their defaults
+(`.bt_burnin_check_settings()`); the validator does not fill them in, so that
+an explicit `burnin_max_Rhat = NULL` (off) differs from an omission. Each
+process runs `burnin - W` unmonitored sweeps, then the `W` sweeps of the block
+with the fit's monitors on (unthinned, no probability read-outs, never in the
+retained chunks) through the shared `.bt_rjags_samples()`, and keeps its live
+model; the coordinator checks the blocks of all chains in the original order
+and, under `autofit`, asks for further blocks of `burnin_extend` sweeps (each
+checked alone) until ready, `burnin_max_extend` blocks, `max_time` on the
+fit's clock (read before a block), or the integer range of the public
+iteration numbers. Sampling then continues on the same models; serial, PSOCK
+and JASP runs share this staged structure, and only a JASP fit with `autofit`
+keeps its workers' models after sampling. After a failure of a staged
+parallel run the coordinator releases the workers' models unless the
+connection failed. The statistic is the split-chain Gelman-Rubin point
+estimate over `2 x chains` half-chains for the selection of
+`.bt_convergence_select()` (indicators as state occupancies), with the
+degenerate cases decided before coda: all values equal or not finite, not
+assessed; every half-chain constant at different values, `Inf`; varying
+half-chains with equal means, 1. No assessable quantity records
+`not_assessable` and neither extends nor warns. An error of the check itself
+is not retried as a sampler failure. Only the kept attempt signals
+`BayesTools_burnin_not_converged` (whatever `silent` is) and stores it once in
+the fit's warnings. `attr(fit, "burnin_check")` records the check, and
+`fit$burnin` and the public iteration numbers count the extension sweeps. A
+passing check leaves the draws, end states, samplers and warnings identical
+to the check off unless a monitored node has no observed descendants: JAGS
+forward-samples such a node only while it is monitored.
+
 Worker connection failures stop fitting retries; new initial values cannot
 repair the existing cluster. Preserve the original backend condition. Classify
 parallel worker transport by connection/socket wording rather than a closed

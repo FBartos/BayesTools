@@ -27,6 +27,7 @@
 - `JAGS_fit()` supports package-declared joint samplers and optional traces of conditional indicator probabilities
 - Nested one-sided cumulative selection priors can share their common weights during fitting
 - `autofit_control$sample_extend = "auto"` sizes each automatic extension from the failed convergence check
+- `JAGS_fit()` checks that the chains agree at the end of burn-in, extends burn-in with `autofit`, and warns when they do not (`burnin_max_Rhat`, `burnin_extend` and `burnin_max_extend` in `autofit_control`)
 
 ### Fixes
 - on Apple silicon, numeric constants in generated JAGS models and the values of compiled hypotheses are exact

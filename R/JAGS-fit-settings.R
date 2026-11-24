@@ -72,7 +72,8 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
     check_names = c(
       "max_Rhat", "min_ESS", "max_error", "max_SD_error", "max_time",
       "sample_extend", "restarts", "max_extend", "check_indicators",
-      "monitor", "allow_not_assessable"
+      "monitor", "allow_not_assessable",
+      "burnin_max_Rhat", "burnin_extend", "burnin_max_extend"
     ),
     call = call
   )
@@ -147,5 +148,36 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
   check_int(autofit_control[["restarts"]], "restarts", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
   check_int(autofit_control[["max_extend"]], "max_extend", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
 
+  # The readiness check between burn-in and sampling: an omitted element takes
+  # its default (.bt_burnin_check_settings()) and an explicit
+  # 'burnin_max_Rhat = NULL' turns the check off, so these elements are
+  # validated where present and never filled in.
+  supplied <- function(name) name %in% names(autofit_control)
+  check_real(autofit_control[["burnin_max_Rhat"]], "burnin_max_Rhat", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
+  if(!is.null(autofit_control[["burnin_max_Rhat"]]) && !is.finite(autofit_control[["burnin_max_Rhat"]])){
+    stop(
+      paste0(call, "The 'burnin_max_Rhat' argument must contain only finite values."),
+      call. = FALSE
+    )
+  }
+  check_int(autofit_control[["burnin_extend"]], "burnin_extend", lower = 100, upper = .Machine$integer.max,
+    allow_NULL = !supplied("burnin_extend"), allow_NA = FALSE, call = call)
+  check_int(autofit_control[["burnin_max_extend"]], "burnin_max_extend", lower = 0,
+    allow_NULL = !supplied("burnin_max_extend"), allow_NA = FALSE, call = call)
+
   return(invisible(autofit_control))
+}
+
+# The settings of the readiness check between burn-in and sampling. Unlike the
+# convergence criteria, an omitted element takes its default; an explicit
+# 'burnin_max_Rhat = NULL' turns the check off.
+.bt_burnin_check_settings <- function(autofit_control){
+
+  settings <- list(burnin_max_Rhat = 1.5, burnin_extend = 500, burnin_max_extend = 10)
+  for(name in names(settings)){
+    if(name %in% names(autofit_control)){
+      settings[name] <- list(autofit_control[[name]])
+    }
+  }
+  settings
 }
