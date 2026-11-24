@@ -800,8 +800,10 @@ JAGS_check_convergence <- function(
   checked <- diagnostics[["state"]] == "assessable" | not_assessable
   f <- max(c(1, growth[checked]))
 
-  # n * (f - 1) * 1.1, written with 11 / 10 so that whole products stay exact
-  draws <- ceiling(ceiling(n * (f - 1) * 11 / 10) / 100) * 100
+  # n * (f - 1) * 1.1 rounded up to a multiple of 100; f - 1 is inexact (as
+  # in min_ESS / ESS - 1), and rounding to 6 decimals removes the excess of
+  # products that are whole (9000 * (500 / 450 - 1) * 1.1 is 1100, not 1200)
+  draws <- ceiling(round(n * (f - 1) * 11 / 10, 6) / 100) * 100
   draws <- min(draws, floor(2 * n / 100) * 100)
   draws <- max(draws, 1000)
   as.integer(draws)

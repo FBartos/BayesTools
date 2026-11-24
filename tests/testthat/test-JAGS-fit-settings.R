@@ -1768,6 +1768,10 @@ test_that("automatic extensions are sized from the failed convergence check", {
   expect_identical(size(diagnostics(ESS = 250), n = 1525), 1700L)
   # whole growth stays exact: 6000 * 1 * 1.1 = 6600, not 6700
   expect_identical(size(diagnostics(ESS = 500 / 2), n = 6000), 6600L)
+  # also when f - 1 is inexact: 500 / 450 - 1 exceeds 1 / 9, but 9000 and
+  # 45000 draws need exactly 1100 and 5500
+  expect_identical(size(diagnostics(ESS = 450), n = 9000), 1100L)
+  expect_identical(size(diagnostics(ESS = 450), n = 45000), 5500L)
 })
 
 # Mocked extensions append 'sample' rows; the mocked check passes once the
