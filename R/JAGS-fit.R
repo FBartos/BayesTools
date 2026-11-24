@@ -59,7 +59,19 @@
 #'   corresponds to the \code{units} argument of \link[base]{difftime}.}
 #'   \item{max_extend}{number of times after which the automatic fitting function is stopped.}
 #'   \item{sample_extend}{number of samples between each convergence check. Defaults to
-#'   \code{1000}.}
+#'   \code{1000}. With \code{"auto"}, each extension is sized from the
+#'   convergence check that failed, which then assesses every selected
+#'   parameter: with \code{n} retained draws per chain and \code{f} the largest
+#'   required growth over the parameters (\code{min_ESS / ESS},
+#'   \code{(error / max_error)^2}, and \code{(SD_error / max_SD_error)^2} for
+#'   the criteria that are set; \code{2} for an R-hat above \code{max_Rhat}
+#'   when the parameter meets the other criteria, and for a parameter whose
+#'   diagnostics are not assessable unless \code{allow_not_assessable}), the
+#'   extension is \code{n * (f - 1) * 1.1} draws per chain, at least 1000 and
+#'   at most \code{2 * n}, rounded up to a multiple of 100. In
+#'   \code{JAGS_extend()}, the first extension is sized from the check of the
+#'   supplied fit. \code{max_time} and \code{max_extend} stop the extensions
+#'   as with a fixed size.}
 #'   \item{restarts}{maximum number of fitting attempts when the model fails
 #'   to initialize; every failed attempt but the last is retried with new
 #'   initial values (\code{restarts = 1} fits once, without a retry). A
@@ -881,6 +893,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       }
       convergence_coordinates
     }
+    # sample_extend = "auto" sizes each extension from the diagnostics of the
+    # failed check, which then assesses every selected quantity
+    auto_extend <- identical(autofit_control[["sample_extend"]], "auto")
     autofit_converged <- function(fit){
       convergence_fit <- fit
       attr(convergence_fit, "prior_list") <- prior_list
@@ -891,7 +906,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         min_ESS = autofit_control[["min_ESS"]],
         max_error = autofit_control[["max_error"]],
         max_SD_error = autofit_control[["max_SD_error"]],
-        fail_fast = TRUE,
+        fail_fast = !auto_extend,
         check_indicators = autofit_control[["check_indicators"]],
         monitor = autofit_control[["monitor"]],
         allow_not_assessable = autofit_control[["allow_not_assessable"]]
@@ -923,7 +938,12 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         break
       }
 
-      run <- .bt_run_extension(fit, sample = autofit_control[["sample_extend"]],
+      sample_extend <- if(auto_extend){
+        .bt_autofit_extension_size_from(converged, fit, autofit_control)
+      }else{
+        autofit_control[["sample_extend"]]
+      }
+      run <- .bt_run_extension(fit, sample = sample_extend,
         adapt = adapt, cl = cl, silent = silent)
       extension <- run$extension
       report_run(extension)
@@ -1346,6 +1366,31 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   last_valid_capture_warnings <- character()
   captured_after_success <- FALSE
   reports <- .bt_runtime_reports_empty()
+  # sample_extend = "auto" sizes each extension from the diagnostics of the
+  # failed check (assessing every selected quantity), the first one from the
+  # check of the supplied fit
+  auto_extend <- identical(autofit_control[["sample_extend"]], "auto")
+  extend_converged <- function(fit){
+    convergence_fit <- fit
+    attr(convergence_fit, "prior_list") <- prior_list
+    .bt_check_convergence(
+      fit = convergence_fit,
+      coordinates = coordinates,
+      max_Rhat = autofit_control[["max_Rhat"]],
+      min_ESS = autofit_control[["min_ESS"]],
+      max_error = autofit_control[["max_error"]],
+      max_SD_error = autofit_control[["max_SD_error"]],
+      fail_fast = !auto_extend,
+      check_indicators = autofit_control[["check_indicators"]],
+      monitor = autofit_control[["monitor"]],
+      allow_not_assessable = autofit_control[["allow_not_assessable"]]
+    )
+  }
+  sample_extend <- if(auto_extend){
+    .bt_autofit_extension_size_from(extend_converged(fit), fit, autofit_control)
+  }else{
+    autofit_control[["sample_extend"]]
+  }
 
   while(!converged){
 
@@ -1366,7 +1411,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       break
     }
 
-    run <- .bt_run_extension(fit, sample = autofit_control[["sample_extend"]],
+    run <- .bt_run_extension(fit, sample = sample_extend,
       adapt = adapt, cl = cl, silent = silent)
     extension <- run$extension
     reports <- .bt_runtime_report_after_run(reports, runtime_report, extension,
@@ -1401,23 +1446,13 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     last_valid_runtime_state <- captured$state
     last_valid_capture_warnings <- captured$warnings
     captured_after_success <- TRUE
-    convergence_fit <- fit
-    attr(convergence_fit, "prior_list") <- prior_list
-    converged <- .bt_check_convergence(
-      fit = convergence_fit,
-      coordinates = coordinates,
-      max_Rhat = autofit_control[["max_Rhat"]],
-      min_ESS = autofit_control[["min_ESS"]],
-      max_error = autofit_control[["max_error"]],
-      max_SD_error = autofit_control[["max_SD_error"]],
-      fail_fast = TRUE,
-      check_indicators = autofit_control[["check_indicators"]],
-      monitor = autofit_control[["monitor"]],
-      allow_not_assessable = autofit_control[["allow_not_assessable"]]
-    )
+    converged <- extend_converged(fit)
 
     if(!converged){
       iteration <- iteration + 1
+      if(auto_extend){
+        sample_extend <- .bt_autofit_extension_size_from(converged, fit, autofit_control)
+      }
     }
   }
 

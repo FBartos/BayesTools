@@ -124,7 +124,19 @@ when the automatic fitting function is stopped. The \code{unit} value
 corresponds to the \code{units} argument of \link[base]{difftime}.}
 \item{max_extend}{number of times after which the automatic fitting function is stopped.}
 \item{sample_extend}{number of samples between each convergence check. Defaults to
-\code{1000}.}
+\code{1000}. With \code{"auto"}, each extension is sized from the
+convergence check that failed, which then assesses every selected
+parameter: with \code{n} retained draws per chain and \code{f} the largest
+required growth over the parameters (\code{min_ESS / ESS},
+\code{(error / max_error)^2}, and \code{(SD_error / max_SD_error)^2} for
+the criteria that are set; \code{2} for an R-hat above \code{max_Rhat}
+when the parameter meets the other criteria, and for a parameter whose
+diagnostics are not assessable unless \code{allow_not_assessable}), the
+extension is \code{n * (f - 1) * 1.1} draws per chain, at least 1000 and
+at most \code{2 * n}, rounded up to a multiple of 100. In
+\code{JAGS_extend()}, the first extension is sized from the check of the
+supplied fit. \code{max_time} and \code{max_extend} stop the extensions
+as with a fixed size.}
 \item{restarts}{maximum number of fitting attempts when the model fails
 to initialize; every failed attempt but the last is retried with new
 initial values (\code{restarts = 1} fits once, without a retry). A

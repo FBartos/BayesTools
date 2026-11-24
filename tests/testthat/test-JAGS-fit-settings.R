@@ -1652,3 +1652,274 @@ test_that("JAGS_fit forwards its adaptation to automatic extensions", {
     .jags_adaptation_test_record(750, c(750, 750), c(FALSE, FALSE)))
 
 })
+
+# ---------------------------------------------------------------------------- #
+# sample_extend = "auto"
+# ---------------------------------------------------------------------------- #
+test_that("sample_extend accepts a positive whole number or 'auto'", {
+
+  control <- function(sample_extend){
+    list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05,
+      max_time = list(time = 60, unit = "mins"), sample_extend = sample_extend,
+      restarts = 10, max_extend = 10)
+  }
+  expect_identical(JAGS_check_and_list_autofit_settings(control("auto"))$sample_extend, "auto")
+  expect_identical(JAGS_check_and_list_autofit_settings(control(1000))$sample_extend, 1000)
+  invalid <- list(
+    list(value = "Auto",            message = "The 'Auto' values are not recognized by the 'sample_extend' argument."),
+    list(value = c("auto", "auto"), message = "The 'sample_extend' argument must have length '1'."),
+    list(value = NA_character_,     message = "The 'sample_extend' argument cannot contain NA/NaN values."),
+    list(value = 0,                 message = "The 'sample_extend' must be equal or higher than 1."),
+    list(value = 1.5,               message = "The 'sample_extend' argument must be an integer vector."),
+    list(value = TRUE,              message = "The 'sample_extend' argument must be a numeric vector."),
+    list(value = NULL,              message = "The 'sample_extend' argument cannot be NULL.")
+  )
+  fit <- .jags_extend_test_fit()
+  extension_calls <- 0L
+  testthat::local_mocked_bindings(
+    .bt_rjags_extend = function(fit, ...){
+      extension_calls <<- extension_calls + 1L
+      fit
+    },
+    .package = "BayesTools"
+  )
+  for(case in invalid){
+    expect_error(JAGS_check_and_list_autofit_settings(control(case$value)), case$message,
+      fixed = TRUE, info = deparse(case$value))
+    expect_error(JAGS_extend(fit, autofit_control = control(case$value)), case$message,
+      fixed = TRUE, info = deparse(case$value))
+  }
+  expect_identical(extension_calls, 0L)
+  expect_null(JAGS_check_and_list_autofit_settings(control(NULL), skip_sample_extend = TRUE)$sample_extend)
+})
+
+test_that("automatic extensions are sized from the failed convergence check", {
+
+  # one row per checked quantity, as .bt_check_convergence() reports them
+  diagnostics <- function(state = "assessable", Rhat = 1.01, ESS = 1000,
+                          MCMC_error = 0.005, MCMC_SD_error = 0.02){
+    data.frame(parameter = paste0("p", seq_along(state)), state = state, Rhat = Rhat,
+      ESS = ESS, MCMC_error = MCMC_error, MCMC_SD_error = MCMC_SD_error,
+      stringsAsFactors = FALSE)
+  }
+  size <- function(rows, n = 4000, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01,
+                   max_SD_error = 0.05, allow_not_assessable = FALSE){
+    .bt_autofit_extension_size(rows, n, max_Rhat, min_ESS, max_error, max_SD_error,
+      allow_not_assessable)
+  }
+  # n = 4000 draws per chain: n * (f - 1) * 1.1, at least 1000, at most 8000,
+  # rounded up to a multiple of 100
+  cases <- list(
+    # each criterion alone: f = 2 (ESS 250 of 500), 2.25 ((0.015 / 0.01)^2),
+    # 1.44 ((0.06 / 0.05)^2: 1936 draws, rounded up), 1.5625 (ESS 320: 2475)
+    list(rows = diagnostics(ESS = 250),                               size = 4400L),
+    list(rows = diagnostics(MCMC_error = 0.015),                      size = 5500L),
+    list(rows = diagnostics(MCMC_SD_error = 0.06),                    size = 2000L),
+    list(rows = diagnostics(ESS = 320),                               size = 2500L),
+    # several at once, in one quantity and across quantities: the largest
+    list(rows = diagnostics(ESS = 250, MCMC_error = 0.015, MCMC_SD_error = 0.06), size = 5500L),
+    list(rows = diagnostics(state = c("assessable", "assessable"), ESS = c(250, 1000),
+      MCMC_error = c(0.005, 0.015)),                                   size = 5500L),
+    # R-hat: 2 when the quantity meets the other criteria, otherwise the
+    # growth those criteria require
+    list(rows = diagnostics(Rhat = 1.2),                              size = 4400L),
+    list(rows = diagnostics(Rhat = 1.2, ESS = 400),                   size = 1100L),
+    list(rows = diagnostics(state = c("assessable", "assessable"), Rhat = c(1.2, 1.01),
+      ESS = c(1000, 400)),                                             size = 4400L),
+    # caps: a small shortfall takes the minimum, a large one (or ESS 0) 2 n
+    list(rows = diagnostics(ESS = 450),                               size = 1000L),
+    list(rows = diagnostics(ESS = 10),                                size = 8000L),
+    list(rows = diagnostics(ESS = 0),                                 size = 8000L),
+    list(rows = diagnostics(MCMC_error = Inf, MCMC_SD_error = Inf),   size = 8000L),
+    # not assessable: f = 2, or what its computed diagnostics require
+    list(rows = diagnostics(state = "not_assessable", Rhat = NA, ESS = NA,
+      MCMC_error = NA, MCMC_SD_error = NA),                            size = 4400L),
+    list(rows = diagnostics(state = "not_assessable", Rhat = NA, ESS = 100),
+                                                                       size = 8000L),
+    # quantities that were not checked and constants add nothing
+    list(rows = diagnostics(state = c("not_checked", "structural_constant", "not_requested"),
+      ESS = c(10, NA, 10)),                                             size = 1000L),
+    list(rows = diagnostics()[0L, ],                                   size = 1000L)
+  )
+  for(i in seq_along(cases)){
+    expect_identical(size(cases[[i]]$rows), cases[[i]]$size, info = i)
+  }
+  # criteria that are not set add nothing; a zero target is met
+  expect_identical(size(diagnostics(ESS = 10, Rhat = 2), min_ESS = NULL, max_Rhat = NULL), 1000L)
+  expect_identical(size(diagnostics(MCMC_error = 1, MCMC_SD_error = 1), max_error = NULL,
+    max_SD_error = NULL), 1000L)
+  expect_identical(size(diagnostics(ESS = 0), min_ESS = 0), 1000L)
+  # allow_not_assessable: the undefined diagnostics add nothing
+  expect_identical(size(diagnostics(state = "not_assessable", Rhat = NA, ESS = NA,
+    MCMC_error = NA, MCMC_SD_error = NA), allow_not_assessable = TRUE), 1000L)
+  # 2 n below the minimum: the minimum holds
+  expect_identical(size(diagnostics(ESS = 10), n = 300), 1000L)
+  # whole growth stays exact: 6000 * 1 * 1.1 = 6600, not 6700
+  expect_identical(size(diagnostics(ESS = 500 / 2), n = 6000), 6600L)
+})
+
+# Mocked extensions append 'sample' rows; the mocked check passes once the
+# ESS, 4% of the draws per chain, reaches 500.
+.autofit_size_test_backend <- function(env = parent.frame()){
+
+  state <- new.env(parent = emptyenv())
+  state$samples <- integer()
+  state$checks <- list()
+  grow <- function(fit, sample){
+    fit$mcmc <- coda::mcmc.list(lapply(fit$mcmc, function(chain){
+      coda::mcmc(rbind(as.matrix(chain),
+        matrix(0, nrow = sample, ncol = ncol(chain), dimnames = list(NULL, colnames(chain)))))
+    }))
+    fit
+  }
+  testthat::local_mocked_bindings(
+    .bt_rjags_extend = function(fit, sample, ...){
+      state$samples <- c(state$samples, as.integer(sample))
+      grow(fit, sample)
+    },
+    .bt_check_convergence = function(fit, ..., fail_fast){
+      n <- nrow(fit$mcmc[[1L]])
+      state$checks[[length(state$checks) + 1L]] <- list(n = n, fail_fast = fail_fast)
+      rows <- data.frame(parameter = "mu", state = "assessable", Rhat = NA_real_,
+        ESS = 0.04 * n, MCMC_error = NA_real_, MCMC_SD_error = NA_real_)
+      structure(0.04 * n >= 500, diagnostics = rows)
+    },
+    .package = "BayesTools",
+    .env = env
+  )
+  state
+}
+
+.autofit_size_test_control <- function(sample_extend = "auto", max_extend = 10,
+                                       max_time = list(time = 60, unit = "secs")){
+  list(max_Rhat = 1.05, min_ESS = 500, max_error = NULL, max_SD_error = NULL,
+    max_time = max_time, sample_extend = sample_extend, restarts = 1, max_extend = max_extend)
+}
+
+test_that("JAGS_extend sizes each extension from the last check and stops at max_time", {
+
+  # (12500 - n) * 1.1 draws for n draws per chain: from the supplied fit's 2
+  # draws the minimum, then 2 n (2004 rounded up), 2 n, and 3407.8 rounded up
+  backend <- .autofit_size_test_backend()
+  fit <- .jags_extend_test_fit()
+  extended <- JAGS_extend(fit, autofit_control = .autofit_size_test_control())
+  expect_identical(backend$samples, c(1000L, 2100L, 6300L, 3500L))
+  expect_identical(vapply(backend$checks, `[[`, integer(1), "n"), c(2L, 1002L, 3102L, 9402L, 12902L))
+  expect_false(any(vapply(backend$checks, `[[`, logical(1), "fail_fast")))
+  expect_identical(nrow(extended$mcmc[[1L]]), 12902L)
+  expect_null(attr(extended, "warnings"))
+
+  # max_time stops the loop as with a fixed size: a started extension is
+  # finished, the next one is not started
+  clock <- as.POSIXct("2026-01-01 00:00:00", tz = "UTC") + c(0, 0.5, 1.5, 2.5)
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    .bt_jags_extend_time = function(){
+      calls <<- calls + 1L
+      clock[[calls]]
+    },
+    .package = "BayesTools"
+  )
+  backend <- .autofit_size_test_backend()
+  stopped <- JAGS_extend(fit, autofit_control = .autofit_size_test_control(
+    max_time = list(time = 2, unit = "secs")))
+  expect_identical(backend$samples, c(1000L, 2100L))
+  expect_identical(attr(stopped, "warnings"),
+    "The automatic model fitting was terminated due to the 'max_time' constraint.")
+
+  # the fixed step is unchanged: no check of the supplied fit, fail_fast checks
+  calls <- 0L
+  clock <- rep(clock[[1L]], 20L)
+  backend <- .autofit_size_test_backend()
+  fixed <- suppressWarnings(JAGS_extend(fit, autofit_control = .autofit_size_test_control(
+    sample_extend = 1000, max_extend = 3)))
+  expect_identical(backend$samples, c(1000L, 1000L, 1000L))
+  expect_identical(vapply(backend$checks, `[[`, integer(1), "n"), c(1002L, 2002L, 3002L))
+  expect_true(all(vapply(backend$checks, `[[`, logical(1), "fail_fast")))
+  expect_identical(attr(fixed, "warnings"),
+    "The automatic model fitting was terminated due to the 'max_extend' constraint.")
+})
+
+test_that("JAGS_fit sizes automatic extensions from each failed check", {
+
+  backend <- .autofit_size_test_backend()
+  testthat::local_mocked_bindings(
+    .bt_rjags_fit = function(sample, ...){
+      structure(list(
+        mcmc = coda::mcmc.list(coda::mcmc(matrix(0, nrow = sample, ncol = 1, dimnames = list(NULL, "mu")))),
+        live_model = structure(list(), class = "jags")
+      ), class = "BayesTools_fit")
+    },
+    .JAGS_require_packages = function(...) invisible(NULL),
+    .JAGS_load_modules = function(...) invisible(NULL),
+    .bt_attach_parameter_map = function(fit, ...) fit,
+    .bt_attach_draw_geometry = function(fit, ...) fit,
+    .bt_build_parameter_coordinates = function(...) NULL,
+    .package = "BayesTools"
+  )
+  fit_with <- function(control) JAGS_fit(
+    model_syntax = "model{ mu ~ dnorm(0, 1) }",
+    prior_list = list(mu = prior("normal", list(0, 1))),
+    chains = 1, adapt = 100, burnin = 50, sample = 1000,
+    autofit = TRUE, autofit_control = control, silent = TRUE, seed = 1
+  )
+  # (12500 - n) * 1.1 from 1000 draws: 2 n, 2 n, then 3850 rounded up
+  fit <- fit_with(.autofit_size_test_control())
+  expect_identical(backend$samples, c(2000L, 6000L, 3900L))
+  expect_identical(vapply(backend$checks, `[[`, integer(1), "n"), c(1000L, 3000L, 9000L, 12900L))
+  expect_false(any(vapply(backend$checks, `[[`, logical(1), "fail_fast")))
+  expect_identical(nrow(fit$mcmc[[1L]]), 12900L)
+  expect_identical(attr(fit, "adaptation")$extensions$adapt, rep(100L, 3L))
+
+  # max_time stops before the first extension as with a fixed size
+  backend <- .autofit_size_test_backend()
+  stopped <- fit_with(.autofit_size_test_control(max_time = list(time = 0, unit = "secs")))
+  expect_length(backend$samples, 0L)
+  expect_identical(attr(stopped, "warnings"),
+    "The automatic model fitting was terminated due to the 'max_time' constraint.")
+
+  # the fixed step is unchanged
+  backend <- .autofit_size_test_backend()
+  fixed <- fit_with(.autofit_size_test_control(sample_extend = 1000, max_extend = 2))
+  expect_identical(backend$samples, c(1000L, 1000L))
+  expect_true(all(vapply(backend$checks, `[[`, logical(1), "fail_fast")))
+})
+
+test_that("an automatic fit of a slowly mixing model reaches its ESS target in fewer extensions with 'auto'", {
+
+  skip_if_not_installed("rjags")
+  # y[i] ~ N(a + b, 1) with 100 observations: the posterior correlation of a
+  # and b is -100 / 101, and their Gibbs updates mix slowly (an ESS of about
+  # 1% of the draws per chain)
+  set.seed(2)
+  data <- list(y = stats::rnorm(100, 0.5), N = 100L)
+  fit_with <- function(sample_extend, max_time = NULL){
+    JAGS_fit("model{ for(i in 1:N){ y[i] ~ dnorm(a + b, 1) } }", data = data,
+      prior_list = list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1))),
+      chains = 2, adapt = 100, burnin = 100, sample = 1000, seed = 3, silent = TRUE,
+      autofit = TRUE, autofit_control = list(max_Rhat = NULL, min_ESS = 500, max_error = NULL,
+        max_SD_error = NULL, max_time = max_time, sample_extend = sample_extend, max_extend = 50))
+  }
+  extensions <- function(fit) nrow(attr(fit, "adaptation")$extensions)
+  reached <- function(fit) isTRUE(JAGS_check_convergence(fit, max_Rhat = NULL, min_ESS = 500,
+    max_error = NULL, max_SD_error = NULL))
+
+  fixed <- fit_with(1000)
+  auto <- fit_with("auto")
+  expect_false(reached(fit_with(1000, max_time = list(time = 0, unit = "secs"))))
+  expect_true(reached(fixed))
+  expect_true(reached(auto))
+  expect_null(attr(fixed, "warnings"))
+  expect_null(attr(auto, "warnings"))
+  # the fixed step needs about 24 extensions, "auto" about four
+  expect_gt(extensions(fixed), 10L)
+  expect_lte(extensions(auto), 5L)
+  expect_lt(extensions(auto), extensions(fixed))
+
+  # max_time stops "auto" as it stops the fixed step: here before any extension
+  stopped <- fit_with("auto", max_time = list(time = 0, unit = "secs"))
+  expect_identical(extensions(stopped), 0L)
+  expect_identical(nrow(stopped$mcmc[[1L]]), 1000L)
+  expect_identical(attr(stopped, "warnings"),
+    "The automatic model fitting was terminated due to the 'max_time' constraint.")
+})

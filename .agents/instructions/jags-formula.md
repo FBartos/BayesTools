@@ -187,6 +187,11 @@ auxiliary. `JAGS_check_convergence()` reports one message per failed
 criterion with the most extreme value, as 0.3.0 did, followed by the sentence
 that names the failing parameters (the first five and the number of the
 others); the `diagnostics` attribute holds the per-parameter values.
+With `autofit_control$sample_extend = "auto"` the check runs without
+`fail_fast`, so that every selected quantity is assessed, and
+`.bt_autofit_extension_size()` sizes the next extension from those same
+diagnostics (`JAGS_extend()` checks the supplied fit first); it computes no
+diagnostics of its own. The fixed step keeps `fail_fast`.
 
 Worker connection failures stop fitting retries; new initial values cannot
 repair the existing cluster. Preserve the original backend condition. Classify

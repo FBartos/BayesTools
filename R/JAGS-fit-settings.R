@@ -135,7 +135,12 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
     }
     check_char(autofit_control[["max_time"]][["unit"]], "max_time:unit", allow_values = c("secs", "mins", "hours", "days", "weeks"), allow_NA = FALSE, call = call)
   }
-  check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, allow_NA = FALSE, call = call)
+  # a positive whole number of draws, or "auto" (.bt_autofit_extension_size())
+  if(is.character(autofit_control[["sample_extend"]])){
+    check_char(autofit_control[["sample_extend"]], "sample_extend", allow_values = "auto", allow_NA = FALSE, call = call)
+  }else{
+    check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, allow_NA = FALSE, call = call)
+  }
   check_int(autofit_control[["restarts"]], "restarts", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
   check_int(autofit_control[["max_extend"]], "max_extend", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
 

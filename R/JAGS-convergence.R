@@ -762,6 +762,64 @@ JAGS_check_convergence <- function(
   fails
 }
 
+# The next extension of automatic fitting with sample_extend = "auto", in draws
+# per chain, sized from the 'diagnostics' of the convergence check that failed
+# (run with fail_fast = FALSE, so that every selected quantity is checked) and
+# its criteria (NULL when not set). Over the checked quantities, f is the
+# largest required growth factor: min_ESS / ESS, (error / max_error)^2 and
+# (SD_error / max_SD_error)^2; 2 for an R-hat above max_Rhat when the quantity
+# meets every other criterion; and 2 for a quantity whose diagnostics are not
+# assessable, unless allow_not_assessable. With n retained draws per chain, the
+# extension is n * (f - 1) * 1.1 draws, at least 1000 and at most 2 n (the
+# lower limit wins when 2 n < 1000), rounded up to a multiple of 100.
+.bt_autofit_extension_size <- function(diagnostics, n, max_Rhat, min_ESS, max_error,
+                                       max_SD_error, allow_not_assessable = FALSE){
+
+  rows <- nrow(diagnostics)
+  criterion <- function(growth, threshold){
+    if(is.null(threshold)){
+      return(rep(-Inf, rows))
+    }
+    # an unavailable diagnostic adds nothing here; a zero target (0 / 0) is met
+    growth[is.na(growth)] <- -Inf
+    growth
+  }
+  others <- pmax(
+    criterion(min_ESS / diagnostics[["ESS"]], min_ESS),
+    criterion((diagnostics[["MCMC_error"]] / max_error)^2, max_error),
+    criterion((diagnostics[["MCMC_SD_error"]] / max_SD_error)^2, max_SD_error)
+  )
+  Rhat_failed <- if(is.null(max_Rhat)) rep(FALSE, rows) else
+    !is.na(diagnostics[["Rhat"]]) & diagnostics[["Rhat"]] > max_Rhat
+  growth <- pmax(others, ifelse(Rhat_failed & others <= 1, 2, -Inf))
+  not_assessable <- diagnostics[["state"]] == "not_assessable"
+  if(!allow_not_assessable){
+    growth[not_assessable] <- pmax(growth[not_assessable], 2)
+  }
+  checked <- diagnostics[["state"]] == "assessable" | not_assessable
+  f <- max(c(1, growth[checked]))
+
+  # n * (f - 1) * 1.1, written with 11 / 10 so that whole products stay exact
+  draws <- min(2 * n, ceiling(n * (f - 1) * 11 / 10))
+  draws <- max(1000, draws)
+  as.integer(ceiling(draws / 100) * 100)
+}
+
+# The extension after the failed convergence 'check' of 'fit' under the
+# automatic fitting settings.
+.bt_autofit_extension_size_from <- function(check, fit, autofit_control){
+
+  .bt_autofit_extension_size(
+    diagnostics = attr(check, "diagnostics", exact = TRUE),
+    n = NROW(fit[["mcmc"]][[1L]]),
+    max_Rhat = autofit_control[["max_Rhat"]],
+    min_ESS = autofit_control[["min_ESS"]],
+    max_error = autofit_control[["max_error"]],
+    max_SD_error = autofit_control[["max_SD_error"]],
+    allow_not_assessable = autofit_control[["allow_not_assessable"]]
+  )
+}
+
 # The sentence that names the parameters failing a criterion; the first few
 # are listed and the 'diagnostics' attribute of the result holds all of them.
 .bt_convergence_failing_parameters <- function(parameters, limit = 5L){
