@@ -134,10 +134,18 @@ the criteria that are set; at least \code{2} for an R-hat above
 unless \code{allow_not_assessable}), the
 extension is \code{n * (f - 1) * 1.1} draws per chain rounded up to a
 multiple of 100, then at most \code{2 * n} rounded down to a multiple of
-100, then at least 1000 (the minimum wins when \code{2 * n} is smaller). In
-\code{JAGS_extend()}, the first extension is sized from the check of the
-supplied fit. \code{max_time} and \code{max_extend} stop the extensions
-as with a fixed size.}
+100, then at least 1000 (the minimum wins when \code{2 * n} is smaller).
+With \code{max_time}, it is then at most the draws per chain that the
+time left allows at the rate observed so far (the time on the
+\code{max_time} clock divided by the retained draws per chain run since
+that clock started; in \code{JAGS_fit()} the clock starts before the
+initial run, so the rate includes its adaptation and burn-in), rounded
+down to a multiple of 100; when that is below 100, the fitting stops with
+the \code{max_time} warning. In \code{JAGS_extend()}, the first extension
+is sized from the check of the supplied fit and, with no rate observed
+yet, is not shortened. Without \code{max_time}, the extensions of a fit
+that cannot converge roughly double the draws each time, up to
+\code{max_extend}.}
 \item{restarts}{maximum number of fitting attempts when the model fails
 to initialize; every failed attempt but the last is retried with new
 initial values (\code{restarts = 1} fits once, without a retry). A

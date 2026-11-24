@@ -772,7 +772,7 @@ JAGS_check_convergence <- function(
 # allow_not_assessable. With n retained draws per chain, the extension is
 # n * (f - 1) * 1.1 draws rounded up to a multiple of 100; then at most 2 n
 # rounded down to a multiple of 100; then at least 1000, which wins when 2 n is
-# smaller.
+# smaller. The caller then applies the time cap (.bt_autofit_time_cap()).
 .bt_autofit_extension_size <- function(diagnostics, n, max_Rhat, min_ESS, max_error,
                                        max_SD_error, allow_not_assessable = FALSE){
 
@@ -820,6 +820,21 @@ JAGS_check_convergence <- function(
     max_SD_error = autofit_control[["max_SD_error"]],
     allow_not_assessable = autofit_control[["allow_not_assessable"]]
   )
+}
+
+# The longest automatic extension, in retained draws per chain, that the time
+# left under 'max_time' allows at the rate observed so far: 'elapsed' is the
+# time on the max_time clock (in max_time's unit) and 'draws' the retained draws
+# per chain that the runs on that clock produced, so the rate also charges the
+# draws with the adaptation, burn-in, failed attempts and convergence checks
+# on that clock. Rounded down to a multiple of 100; Inf without max_time or
+# before any draws or time were recorded.
+.bt_autofit_time_cap <- function(max_time, elapsed, draws){
+
+  if(is.null(max_time) || draws <= 0 || elapsed <= 0){
+    return(Inf)
+  }
+  floor((max_time[["time"]] - elapsed) * draws / elapsed / 100) * 100
 }
 
 # The sentence that names the parameters failing a criterion; the first few

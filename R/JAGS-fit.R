@@ -69,10 +69,18 @@
 #'   unless \code{allow_not_assessable}), the
 #'   extension is \code{n * (f - 1) * 1.1} draws per chain rounded up to a
 #'   multiple of 100, then at most \code{2 * n} rounded down to a multiple of
-#'   100, then at least 1000 (the minimum wins when \code{2 * n} is smaller). In
-#'   \code{JAGS_extend()}, the first extension is sized from the check of the
-#'   supplied fit. \code{max_time} and \code{max_extend} stop the extensions
-#'   as with a fixed size.}
+#'   100, then at least 1000 (the minimum wins when \code{2 * n} is smaller).
+#'   With \code{max_time}, it is then at most the draws per chain that the
+#'   time left allows at the rate observed so far (the time on the
+#'   \code{max_time} clock divided by the retained draws per chain run since
+#'   that clock started; in \code{JAGS_fit()} the clock starts before the
+#'   initial run, so the rate includes its adaptation and burn-in), rounded
+#'   down to a multiple of 100; when that is below 100, the fitting stops with
+#'   the \code{max_time} warning. In \code{JAGS_extend()}, the first extension
+#'   is sized from the check of the supplied fit and, with no rate observed
+#'   yet, is not shortened. Without \code{max_time}, the extensions of a fit
+#'   that cannot converge roughly double the draws each time, up to
+#'   \code{max_extend}.}
 #'   \item{restarts}{maximum number of fitting attempts when the model fails
 #'   to initialize; every failed attempt but the last is retried with new
 #'   initial values (\code{restarts = 1} fits once, without a retry). A
@@ -777,7 +785,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     set.seed(seed)
   }
 
-  start_time <- Sys.time()
+  start_time <- .bt_autofit_clock()
   restart_warnings <- character()
   # incomplete-adaptation warnings of the backend runs that the fit keeps
   adaptation_warnings <- character()
@@ -922,16 +930,24 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
     while(!converged){
 
-      if(!is.null(autofit_control[["max_time"]]) && difftime(Sys.time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
-        warning_message <- "The automatic model fitting was terminated due to the 'max_time' constraint."
-        fit <- .bt_append_fit_warnings(fit, warning_message)
-        if(!silent){
-          warning(warning_message, immediate. = TRUE)
-        }
-        break
+      elapsed <- .bt_autofit_elapsed(start_time, autofit_control[["max_time"]])
+      stop_constraint <- if(!is.null(elapsed) && elapsed > autofit_control[["max_time"]][["time"]]){
+        "max_time"
+      }else if(!is.null(autofit_control[["max_extend"]]) && itteration > autofit_control[["max_extend"]]){
+        "max_extend"
       }
-      if(!is.null(autofit_control[["max_extend"]]) && itteration > autofit_control[["max_extend"]]){
-        warning_message <- "The automatic model fitting was terminated due to the 'max_extend' constraint."
+      if(is.null(stop_constraint) && auto_extend){
+        # at most what the time left allows at the rate of the draws so far;
+        # the clock started before the initial run, so the rate includes its
+        # adaptation and burn-in
+        time_cap <- .bt_autofit_time_cap(autofit_control[["max_time"]], elapsed,
+          draws = NROW(fit[["mcmc"]][[1L]]))
+        if(time_cap < 100){
+          stop_constraint <- "max_time"
+        }
+      }
+      if(!is.null(stop_constraint)){
+        warning_message <- paste0("The automatic model fitting was terminated due to the '", stop_constraint, "' constraint.")
         fit <- .bt_append_fit_warnings(fit, warning_message)
         if(!silent){
           warning(warning_message, immediate. = TRUE)
@@ -940,7 +956,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       }
 
       sample_extend <- if(auto_extend){
-        .bt_autofit_extension_size_from(converged, fit, autofit_control)
+        min(.bt_autofit_extension_size_from(converged, fit, autofit_control), time_cap)
       }else{
         autofit_control[["sample_extend"]]
       }
@@ -1359,7 +1375,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     runtime_state <- NULL
   }
 
-  start_time <- .bt_jags_extend_time()
+  start_time <- .bt_autofit_clock()
+  supplied_draws <- NROW(fit[["mcmc"]][[1L]])
   iteration  <- 0
   converged  <- FALSE
   last_valid_fit <- fit
@@ -1391,16 +1408,23 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 
   while(!converged){
 
-    if(!is.null(autofit_control[["max_time"]]) && difftime(.bt_jags_extend_time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
-      warning_message <- "The automatic model fitting was terminated due to the 'max_time' constraint."
-      fit <- .bt_append_fit_warnings(fit, warning_message)
-      if(!silent){
-        warning(warning_message, immediate. = TRUE)
-      }
-      break
+    elapsed <- .bt_autofit_elapsed(start_time, autofit_control[["max_time"]])
+    stop_constraint <- if(!is.null(elapsed) && elapsed > autofit_control[["max_time"]][["time"]]){
+      "max_time"
+    }else if(!is.null(autofit_control[["max_extend"]]) && iteration >= autofit_control[["max_extend"]]){
+      "max_extend"
     }
-    if(!is.null(autofit_control[["max_extend"]]) && iteration >= autofit_control[["max_extend"]]){
-      warning_message <- "The automatic model fitting was terminated due to the 'max_extend' constraint."
+    if(is.null(stop_constraint) && auto_extend){
+      # at most what the time left allows at the rate of the draws of this
+      # call; its first extension has no rate yet and is not capped
+      time_cap <- .bt_autofit_time_cap(autofit_control[["max_time"]], elapsed,
+        draws = NROW(fit[["mcmc"]][[1L]]) - supplied_draws)
+      if(time_cap < 100){
+        stop_constraint <- "max_time"
+      }
+    }
+    if(!is.null(stop_constraint)){
+      warning_message <- paste0("The automatic model fitting was terminated due to the '", stop_constraint, "' constraint.")
       fit <- .bt_append_fit_warnings(fit, warning_message)
       if(!silent){
         warning(warning_message, immediate. = TRUE)
@@ -1415,7 +1439,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
         failed_check <- extend_converged(fit,
           max_Rhat = if(chains > 1L) autofit_control[["max_Rhat"]])
       }
-      .bt_autofit_extension_size_from(failed_check, fit, autofit_control)
+      min(.bt_autofit_extension_size_from(failed_check, fit, autofit_control), time_cap)
     }else{
       autofit_control[["sample_extend"]]
     }
@@ -1503,6 +1527,17 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   return(fit)
 }
 
-.bt_jags_extend_time <- function(){
+# The clock of the 'max_time' limit of automatic fitting.
+.bt_autofit_clock <- function(){
   Sys.time()
+}
+
+# The time on that clock since 'start_time', in the unit of 'max_time'; NULL
+# without a limit, and the clock is then not read.
+.bt_autofit_elapsed <- function(start_time, max_time){
+
+  if(is.null(max_time)){
+    return(NULL)
+  }
+  as.numeric(difftime(.bt_autofit_clock(), start_time, units = max_time[["unit"]]))
 }

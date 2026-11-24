@@ -829,7 +829,7 @@ test_that("JAGS_extend resets its time budget for every call", {
     .package = "BayesTools"
   )
   testthat::local_mocked_bindings(
-    .bt_jags_extend_time = function(){
+    .bt_autofit_clock = function(){
       clock_calls <<- clock_calls + 1L
       clock_values[[clock_calls]]
     },
@@ -1843,13 +1843,17 @@ test_that("JAGS_extend sizes each extension from the last check and stops at max
   expect_identical(attr(limited, "warnings"),
     "The automatic model fitting was terminated due to the 'max_extend' constraint.")
 
-  # max_time stops the loop as with a fixed size: a started extension is
-  # finished, the next one is not started; past the limit at the first
-  # extension, the supplied fit is neither checked nor sized
-  clock <- as.POSIXct("2026-01-01 00:00:00", tz = "UTC") + c(0, 0.5, 1.5, 2.5)
+  # max_time: an extension is at most the draws per chain that the time left
+  # allows at the rate of this call's draws so far, rounded down to a multiple
+  # of 100 (also below the minimum of 1000), and a cap below 100 stops the
+  # fitting with the max_time warning. The first extension has no rate yet.
+  # Clock from 0 with a 25.55 s limit: 1000 draws in 10 s leave 15.55 s for
+  # 1555 draws, so 1500 instead of 2000; 2500 draws in 24 s leave 1.55 s for
+  # 161 draws, so 100 instead of 5000; 2600 draws in 25.5 s leave 5: stop
+  clock <- as.POSIXct("2026-01-01 00:00:00", tz = "UTC") + c(0, 1, 10, 24, 25.5)
   calls <- 0L
   testthat::local_mocked_bindings(
-    .bt_jags_extend_time = function(){
+    .bt_autofit_clock = function(){
       calls <<- calls + 1L
       clock[[calls]]
     },
@@ -1857,10 +1861,21 @@ test_that("JAGS_extend sizes each extension from the last check and stops at max
   )
   backend <- .autofit_size_test_backend()
   stopped <- JAGS_extend(fit, autofit_control = .autofit_size_test_control(
-    max_time = list(time = 2, unit = "secs")))
-  expect_identical(backend$samples, c(1000L, 2000L))
+    max_time = list(time = 25.55, unit = "secs")))
+  expect_identical(backend$samples, c(1000L, 1500L, 100L))
+  expect_identical(vapply(backend$checks, `[[`, integer(1), "n"), c(2L, 1002L, 2502L, 2602L))
+  expect_identical(calls, 5L)
   expect_identical(attr(stopped, "warnings"),
     "The automatic model fitting was terminated due to the 'max_time' constraint.")
+  # the same in minutes
+  calls <- 0L
+  backend <- .autofit_size_test_backend()
+  stopped <- JAGS_extend(fit, autofit_control = .autofit_size_test_control(
+    max_time = list(time = 25.55 / 60, unit = "mins")))
+  expect_identical(backend$samples, c(1000L, 1500L, 100L))
+
+  # past the limit at the first extension, the supplied fit is neither
+  # checked nor sized
   calls <- 0L
   clock <- clock[[1L]] + c(0, 2.5)
   sized <- 0L
@@ -1929,6 +1944,53 @@ test_that("JAGS_fit sizes automatic extensions from each failed check", {
   fixed <- fit_with(.autofit_size_test_control(sample_extend = 1000, max_extend = 2))
   expect_identical(backend$samples, c(1000L, 1000L))
   expect_true(all(vapply(backend$checks, `[[`, logical(1), "fail_fast")))
+
+  # max_time caps each extension at the draws per chain that the time left
+  # allows at the rate of all draws so far, on the clock that starts before
+  # the initial run. With a 40 s limit: 1000 draws in 10 s leave 30 s for
+  # 3000, so 2000 runs; 3000 draws in 30 s leave 10 s for 1000 (instead of
+  # 6000); 4000 draws in 39.5 s leave 0.5 s for 50: stop
+  clock <- as.POSIXct("2026-01-01 00:00:00", tz = "UTC") + c(0, 10, 30, 39.5, 41)
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    .bt_autofit_clock = function(){
+      calls <<- calls + 1L
+      clock[[calls]]
+    },
+    .package = "BayesTools"
+  )
+  backend <- .autofit_size_test_backend()
+  capped <- fit_with(.autofit_size_test_control(max_time = list(time = 40, unit = "secs")))
+  expect_identical(backend$samples, c(2000L, 1000L))
+  expect_identical(calls, 4L)
+  expect_identical(attr(capped, "warnings"),
+    "The automatic model fitting was terminated due to the 'max_time' constraint.")
+  # the fixed step under the same clock: 1000 each, until the limit passes
+  calls <- 0L
+  backend <- .autofit_size_test_backend()
+  fixed <- fit_with(.autofit_size_test_control(sample_extend = 1000,
+    max_time = list(time = 40, unit = "secs")))
+  expect_identical(backend$samples, c(1000L, 1000L, 1000L))
+  expect_identical(calls, 5L)
+  expect_identical(attr(fixed, "warnings"),
+    "The automatic model fitting was terminated due to the 'max_time' constraint.")
+})
+
+test_that("the time cap of automatic extensions follows the observed rate", {
+
+  limit <- list(time = 60, unit = "secs")
+  # 1000 draws in 10 s leave 50 s for 5000; 999 draws leave 4995, rounded down
+  expect_identical(.bt_autofit_time_cap(limit, elapsed = 10, draws = 1000), 5000)
+  expect_identical(.bt_autofit_time_cap(limit, elapsed = 10, draws = 999), 4900)
+  # elapsed is in the unit of max_time
+  expect_identical(.bt_autofit_time_cap(list(time = 2, unit = "mins"), elapsed = 0.5, draws = 1000), 3000)
+  # no limit, no draws or no time on the clock yet: no cap
+  expect_identical(.bt_autofit_time_cap(NULL, elapsed = 10, draws = 1000), Inf)
+  expect_identical(.bt_autofit_time_cap(limit, elapsed = 10, draws = 0), Inf)
+  expect_identical(.bt_autofit_time_cap(limit, elapsed = 0, draws = 1000), Inf)
+  # less than 100 draws left (or the limit passed): below 100, so the caller stops
+  expect_lt(.bt_autofit_time_cap(limit, elapsed = 59.5, draws = 1000), 100)
+  expect_lt(.bt_autofit_time_cap(limit, elapsed = 61, draws = 1000), 100)
 })
 
 test_that("an automatic fit of a slowly mixing model reaches its ESS target in fewer extensions with 'auto'", {
