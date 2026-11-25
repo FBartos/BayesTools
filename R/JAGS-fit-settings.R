@@ -173,7 +173,7 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
 # 'burnin_max_Rhat = NULL' turns the check off.
 .bt_burnin_check_settings <- function(autofit_control){
 
-  settings <- list(burnin_max_Rhat = 1.5, burnin_extend = 500, burnin_max_extend = 10)
+  settings <- list(burnin_max_Rhat = 2, burnin_extend = 500, burnin_max_extend = 10)
   for(name in names(settings)){
     if(name %in% names(autofit_control)){
       settings[name] <- list(autofit_control[[name]])

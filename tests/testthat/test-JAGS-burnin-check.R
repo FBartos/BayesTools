@@ -337,7 +337,7 @@ test_that("the readiness settings default when omitted and validate when given",
   settings <- function(...) BayesTools:::.bt_burnin_check_settings(
     JAGS_check_and_list_autofit_settings(utils::modifyList(base, list(...), keep.null = TRUE)))
 
-  expect_identical(settings(), list(burnin_max_Rhat = 1.5, burnin_extend = 500, burnin_max_extend = 10))
+  expect_identical(settings(), list(burnin_max_Rhat = 2, burnin_extend = 500, burnin_max_extend = 10))
   # the validator does not add the elements, so that an omission stays one
   expect_false(any(grepl("^burnin_", names(JAGS_check_and_list_autofit_settings(base)))))
   expect_null(settings(burnin_max_Rhat = NULL)$burnin_max_Rhat)

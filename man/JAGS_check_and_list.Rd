@@ -166,7 +166,7 @@ of \code{\link[=parameter_coordinates]{parameter_coordinates()}}.}
 \item{allow_not_assessable}{whether undefined diagnostics for requested
 sampled parameters may be ignored. Defaults to \code{FALSE}.}
 \item{burnin_max_Rhat}{the threshold of the readiness check between
-burn-in and sampling. Defaults to \code{1.5}; an omitted element takes
+burn-in and sampling. Defaults to \code{2}; an omitted element takes
 its default and \code{NULL} turns the check off. The check runs, also
 without \code{autofit}, in the initial fit of \code{JAGS_fit()} (afresh
 in each restart attempt; not in \code{JAGS_extend()} or the automatic
@@ -202,7 +202,12 @@ draws, final states and samplers as with the check off: monitoring changes
 no sampler, but JAGS samples a monitored node without observed
 descendants (such as a predictive quantity) from the chain's random-number
 stream. The check cannot detect chains that are all in the same wrong
-state.}
+state. The default is chosen for three or four chains: one deviating
+chain raises the statistic of a continuous quantity less the more chains
+are run, so a fit with many chains (eight or more) may set a lower value.
+A slowly mixing fit can exceed the threshold although its chains agree;
+more burn-in then does not help, and the convergence check of the
+retained draws reports the slow mixing.}
 \item{burnin_extend}{the number of final burn-in iterations that the
 readiness check assesses and of each extension of burn-in; at least
 \code{100}. Defaults to \code{500}.}

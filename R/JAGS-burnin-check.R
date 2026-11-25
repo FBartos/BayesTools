@@ -227,7 +227,7 @@
 }
 
 # Values above the threshold with two decimals, or as many more as it takes
-# for the printed value to exceed the threshold (1.50001 above 1.5).
+# for the printed value to exceed the threshold (2.00001 above 2).
 .bt_burnin_format_Rhat <- function(values, threshold){
 
   vapply(values, function(value){

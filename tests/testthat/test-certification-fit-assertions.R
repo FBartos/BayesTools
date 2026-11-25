@@ -6825,7 +6825,7 @@ test_that("a requested indicator state that first appears after burn-in does not
       ))), chains = 2L, adapt = 100L, burnin = 100L, sample = 2000L, seed = 11L, autofit = TRUE,
       autofit_control = .readiness_control(max_Rhat = NULL, min_ESS = NULL, max_error = NULL,
         max_SD_error = NULL, sample_extend = 100, max_extend = 1, monitor = "mu_indicator (state 3)",
-        burnin_max_Rhat = if(check) 1.5))
+        burnin_max_Rhat = if(check) 2))
   }
   on  <- fit_with(TRUE)
   off <- fit_with(FALSE)
@@ -6857,7 +6857,7 @@ test_that("chains in separated modes warn without autofit and extend burn-in up 
   expect_warning(
     fit <- fit_with(FALSE),
     paste0("The chains had not reached agreement at the end of burn-in: the split-chain R-hat of the ",
-      "last 300 burn-in iterations was [0-9.]+ for 'm' [(]above 'burnin_max_Rhat' of 1.5[)]. ",
+      "last 300 burn-in iterations was [0-9.]+ for 'm' [(]above 'burnin_max_Rhat' of 2[)]. ",
       "Increase 'burnin', or fit with 'autofit = TRUE'."),
     class = "BayesTools_burnin_not_converged"
   )
