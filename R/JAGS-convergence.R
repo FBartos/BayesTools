@@ -53,18 +53,20 @@
 #' parameters.
 #' @param allow_not_assessable whether requested sampled parameters with
 #' undefined diagnostics may be ignored. Defaults to \code{FALSE}. A sampled
-#' column that never changes when its chains are pooled, including a constant
-#' model indicator, is not evidence of convergence and remains not assessable,
-#' as does a diagnostic whose computation failed. A diagnostic computed on
+#' column that does not change in the pooled draws of its chains, including a
+#' constant model indicator, is not evidence of convergence and is not
+#' assessable, as is a diagnostic whose computation failed; draws that later
+#' visit another value make it assessable. A diagnostic computed on
 #' draws that vary is a value, not an undefined result, and is assessed even
 #' when it is infinite or zero: chains that are each constant but at different
 #' values give an R-hat of \code{Inf} and an ESS of 0, which fail
 #' \code{max_Rhat} and \code{min_ESS} whatever this argument is. Their MCMC
 #' error (the standard error SD / sqrt(ESS) of an ESS of 0) is \code{Inf}, so
 #' \code{max_error} and \code{max_SD_error} fail as well. Automatic fitting in
-#' [JAGS_fit()] and [JAGS_extend()] does not extend a fit for diagnostics that
-#' are not assessable: it stops once every assessable diagnostic satisfies the
-#' criteria.
+#' [JAGS_fit()] and [JAGS_extend()] judges assessability from the draws at
+#' each check and does not extend a fit for diagnostics that are not
+#' assessable then: it stops once every diagnostic that can be assessed
+#' satisfies the criteria.
 #'
 #' @details \code{JAGS_fit()} assigns every fitted coordinate one convergence
 #' role, stored in the \code{convergence_role} column of
@@ -666,6 +668,43 @@ JAGS_check_convergence <- function(
   output
 }
 
+# One message per quantity of 'diagnostics' that is not assessable, naming
+# the diagnostics of the enabled criteria (NULL when not set) that could not
+# be computed.
+.bt_convergence_not_assessable <- function(diagnostics, max_Rhat, min_ESS,
+                                           max_error, max_SD_error){
+
+  enabled <- c(
+    Rhat = !is.null(max_Rhat),
+    ESS = !is.null(min_ESS),
+    MCMC_error = !is.null(max_error),
+    MCMC_SD_error = !is.null(max_SD_error)
+  )
+  labels <- c(
+    Rhat = "R-hat",
+    ESS = "ESS",
+    MCMC_error = "MCMC error",
+    MCMC_SD_error = "MCMC SD error"
+  )
+  messages <- character()
+  for(row in which(diagnostics[["state"]] == "not_assessable")){
+    unavailable <- names(enabled)[
+      enabled & is.na(unlist(diagnostics[row, names(enabled)]))
+    ]
+    messages <- c(
+      messages,
+      paste0(
+        paste(labels[unavailable], collapse = ", "),
+        if(length(unavailable) == 1L) " diagnostic is" else " diagnostics are",
+        " not assessable for '",
+        diagnostics[["parameter"]][[row]],
+        "'."
+      )
+    )
+  }
+  messages
+}
+
 .bt_convergence_failures <- function(
     diagnostics,
     max_Rhat,
@@ -675,35 +714,9 @@ JAGS_check_convergence <- function(
     allow_not_assessable){
 
   fails <- character()
-  not_assessable <- diagnostics[["state"]] == "not_assessable"
-  if(any(not_assessable) && !allow_not_assessable){
-    enabled <- c(
-      Rhat = !is.null(max_Rhat),
-      ESS = !is.null(min_ESS),
-      MCMC_error = !is.null(max_error),
-      MCMC_SD_error = !is.null(max_SD_error)
-    )
-    labels <- c(
-      Rhat = "R-hat",
-      ESS = "ESS",
-      MCMC_error = "MCMC error",
-      MCMC_SD_error = "MCMC SD error"
-    )
-    for(row in which(not_assessable)){
-      unavailable <- names(enabled)[
-        enabled & is.na(unlist(diagnostics[row, names(enabled)]))
-      ]
-      fails <- c(
-        fails,
-        paste0(
-          paste(labels[unavailable], collapse = ", "),
-          if(length(unavailable) == 1L) " diagnostic is" else " diagnostics are",
-          " not assessable for '",
-          diagnostics[["parameter"]][[row]],
-          "'."
-        )
-      )
-    }
+  if(!allow_not_assessable){
+    fails <- .bt_convergence_not_assessable(diagnostics, max_Rhat, min_ESS,
+      max_error, max_SD_error)
   }
   # A diagnostic that was computed is a value that fails its criterion or not,
   # also in a row where another diagnostic could not be computed: only the
@@ -767,19 +780,26 @@ JAGS_check_convergence <- function(
 
 # The convergence check of automatic fitting in JAGS_fit() and JAGS_extend():
 # TRUE when every diagnostic that can be assessed meets the enabled criteria of
-# 'autofit_control', and automatic fitting then stops. A diagnostic that is not
-# assessable (draws that are constant when pooled, or a computation that
-# failed) does not change with more draws, so it neither extends the fit nor
-# sizes an extension; automatic fitting has no setting for it, and the
-# 'allow_not_assessable' argument of JAGS_check_convergence() only decides
-# what that check reports. A fit with nothing assessable
-# stops. With sample_extend = "auto" the check runs without fail_fast, so that
-# the extension is sized from every selected quantity.
+# 'autofit_control', and automatic fitting then stops. Assessability is judged
+# from the draws of this check: a diagnostic that is not assessable now
+# (draws that are constant when pooled, such as a mixture component or
+# indicator state that no chain has visited yet, or a computation that
+# failed) neither extends the fit nor sizes an extension, so a quantity that
+# only more draws would reveal is not waited for. Every diagnostic that is
+# assessable counts, also when another diagnostic of the same quantity is not.
+# Automatic fitting has no setting for this; the 'allow_not_assessable'
+# argument of JAGS_check_convergence() only decides what that check reports. A
+# fit with nothing assessable stops. A check that passes carries the messages
+# of its diagnostics that are not assessable, in the wording of
+# JAGS_check_convergence() (without R-hat for one chain, as that check), as
+# its 'not_assessable' attribute for .bt_autofit_warn_not_assessable(). With
+# sample_extend = "auto" the check runs without fail_fast, so that the
+# extension is sized from every selected quantity.
 .bt_autofit_check <- function(fit, coordinates, prior_list, autofit_control,
                               max_Rhat = autofit_control[["max_Rhat"]]){
 
   attr(fit, "prior_list") <- prior_list
-  .bt_check_convergence(
+  check <- .bt_check_convergence(
     fit = fit,
     coordinates = coordinates,
     max_Rhat = max_Rhat,
@@ -791,6 +811,37 @@ JAGS_check_convergence <- function(
     monitor = autofit_control[["monitor"]],
     allow_not_assessable = TRUE
   )
+  if(isTRUE(check)){
+    attr(check, "not_assessable") <- .bt_convergence_not_assessable(
+      attr(check, "diagnostics", exact = TRUE),
+      max_Rhat = if(length(fit[["mcmc"]]) >= 2L) max_Rhat,
+      min_ESS = autofit_control[["min_ESS"]],
+      max_error = autofit_control[["max_error"]],
+      max_SD_error = autofit_control[["max_SD_error"]]
+    )
+  }
+  check
+}
+
+# The warning of an automatic fit that stopped because its convergence check
+# passed (.bt_autofit_check()) while diagnostics were not assessable. It is
+# signalled only, not stored in the fit's 'warnings' attribute: callers that
+# check the returned fit, such as RoBMA, report these diagnostics themselves.
+.bt_autofit_warn_not_assessable <- function(check, silent){
+
+  messages <- attr(check, "not_assessable", exact = TRUE)
+  if(silent || !isTRUE(check) || length(messages) == 0L){
+    return(invisible(NULL))
+  }
+  warning(warningCondition(
+    paste0(
+      paste(messages, collapse = " "),
+      " Automatic fitting did not extend the fit for these diagnostics;",
+      " check the fit with 'JAGS_check_convergence()'."
+    ),
+    class = c("BayesTools_autofit_not_assessable", "BayesTools_fit_diagnostic")
+  ))
+  invisible(NULL)
 }
 
 # The next extension of automatic fitting with sample_extend = "auto", in draws

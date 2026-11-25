@@ -40,13 +40,19 @@
 #' @param thin thinning interval for the MCMC samples, defaults to \code{1}
 #' @param autofit whether the models should be refitted until convergence criteria
 #' specified in \code{autofit_control}. Automatic fitting stops once every
-#' requested quantity whose diagnostics can be assessed meets the criteria,
-#' or at \code{max_time} or \code{max_extend}. More draws do not make
-#' undefined diagnostics assessable, so automatic fitting never extends a fit
-#' for them, and a fit in which nothing can be assessed stops after its
-#' initial sampling (in \code{JAGS_extend()}, after its first extension).
-#' Check the returned fit with [JAGS_check_convergence()] to report them.
-#' Defaults to \code{FALSE}.
+#' diagnostic that can be assessed meets its criterion, or at \code{max_time}
+#' or \code{max_extend}. Assessability is judged from the draws available at
+#' each check. Automatic fitting does not extend a fit for diagnostics that
+#' cannot be assessed then (a mixture component or indicator state that no
+#' chain has visited, draws that are constant), so a quantity that only more
+#' draws would reveal is not waited for; every diagnostic that can be assessed
+#' still extends the fit. A fit in which nothing can be assessed stops after
+#' its initial sampling (in \code{JAGS_extend()}, after its first extension).
+#' When automatic fitting stops with diagnostics that cannot be assessed, a
+#' warning of class \code{BayesTools_autofit_not_assessable} (also
+#' \code{BayesTools_fit_diagnostic}) names them unless \code{silent = TRUE};
+#' it is not stored in the fit's \code{warnings} attribute. Check the returned
+#' fit with [JAGS_check_convergence()]. Defaults to \code{FALSE}.
 #' @param autofit_control a list of arguments controlling the autofit function.
 #' Convergence thresholds and \code{max_time$time} must be finite and non-missing.
 #' Set a convergence threshold or \code{max_time} to \code{NULL} to disable that check.
@@ -388,7 +394,7 @@
 #' it for \code{adapt} iterations when needed, then appends draws without
 #' further burn-in. A saved and reloaded fit extends from the same state.
 #' Its extensions continue, as automatic fitting in \code{JAGS_fit()}, until
-#' every quantity whose diagnostics can be assessed meets the criteria of
+#' every diagnostic that can be assessed meets the criteria of
 #' \code{autofit_control} after an extension, or until \code{max_time} or
 #' \code{max_extend} stops them. Within one call, automatic extensions
 #' continue the serial sampler. JASP fits
@@ -913,10 +919,11 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       }
       convergence_coordinates
     }
-    # Fitting stops once every assessable quantity meets the criteria, also
-    # when others are not assessable (.bt_autofit_check()). sample_extend =
-    # "auto" sizes each extension from the diagnostics of the failed check,
-    # which then assesses every selected quantity.
+    # Fitting stops once every diagnostic that can be assessed meets the
+    # criteria, also when others are not assessable, and then warns about
+    # those (.bt_autofit_check()). sample_extend = "auto" sizes each extension
+    # from the diagnostics of the failed check, which then assesses every
+    # selected quantity.
     auto_extend <- identical(autofit_control[["sample_extend"]], "auto")
     autofit_converged <- function(fit){
       .bt_autofit_check(fit, autofit_coordinates(fit), prior_list, autofit_control)
@@ -998,6 +1005,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       if(isTRUE(dots[["is_JASP"]]))
         .JASP_progress_bar_tick()
     }
+    .bt_autofit_warn_not_assessable(converged, silent)
   }
 
   # add information to the fitted object
@@ -1385,8 +1393,9 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   last_valid_capture_warnings <- character()
   captured_after_success <- FALSE
   reports <- .bt_runtime_reports_empty()
-  # After each extension, fitting stops once every assessable quantity meets
-  # the criteria, also when others are not assessable (.bt_autofit_check()).
+  # After each extension, fitting stops once every diagnostic that can be
+  # assessed meets the criteria, also when others are not assessable, and then
+  # warns about those (.bt_autofit_check()).
   # sample_extend = "auto" sizes each extension when the loop is about to run
   # it, from the diagnostics of the last failed check (assessing every
   # selected quantity); the first one from a check of the supplied fit
@@ -1476,6 +1485,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       failed_check <- converged
     }
   }
+  .bt_autofit_warn_not_assessable(converged, silent)
 
   # add information to the fitted object
   fit[["live_model"]] <- NULL
