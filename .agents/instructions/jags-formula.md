@@ -210,7 +210,13 @@ least two chains and a block `W = min(burnin_extend, burnin)` of at least 100
 sweeps; never in `JAGS_extend()` or automatic extensions, and afresh in every
 restart attempt. The omitted `autofit_control` elements take their defaults
 (`.bt_burnin_check_settings()`); the validator does not fill them in, so that
-an explicit `burnin_max_Rhat = NULL` (off) differs from an omission. Each
+an explicit `burnin_max_Rhat = NULL` (off) differs from an omission. A model
+whose compiled graph has no sampler (`rjags::list.samplers()` empty after
+adaptation, decided in each process before any burn-in sweep; the processes
+must agree, else an internal error) is not checked: JAGS draws every monitored
+node afresh in each sweep, so the check could only pass and monitoring would
+change the stream. It runs its whole burn-in unmonitored, as with the check
+off, and records no check. Each
 process runs `burnin - W` unmonitored sweeps, then the `W` sweeps of the block
 with the fit's monitors on (unthinned, no probability read-outs, never in the
 retained chunks) through the shared `.bt_rjags_samples()`, and keeps its live

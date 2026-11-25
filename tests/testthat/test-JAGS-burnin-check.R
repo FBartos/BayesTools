@@ -377,6 +377,36 @@ test_that("the check runs on the last block of burn-in when it can and the fit r
   }
 })
 
+test_that("a model without samplers is not checked", {
+
+  # the chain group returns no block when the compiled model has no sampler
+  state <- .readiness_backend(list(NULL))
+  fit <- .readiness_fit(autofit = TRUE)
+  expect_identical(state$groups[[1L]][c("block", "prepare")], list(block = 500L, prepare = TRUE))
+  expect_length(state$sweeps, 0L)
+  expect_null(attr(fit, "burnin_check"))
+  expect_identical(fit$burnin, 600)
+  expect_identical(stats::start(fit$mcmc[[1L]]), 701)
+
+  # the processes of a parallel fit compile the same graph and must agree
+  testthat::local_mocked_bindings(
+    clusterApply = function(cl, x, fun, ...) lapply(x, fun, ...),
+    clusterCall = function(cl, fun, ...) lapply(cl, function(worker) fun(...)),
+    .package = "parallel"
+  )
+  testthat::local_mocked_bindings(
+    .bt_rjags_group = function(inits, ...){
+      if(length(inits) == 2L) .readiness_chains(chains = 2L, n = 200L) else NULL
+    },
+    .package = "BayesTools"
+  )
+  readiness <- list(block = 200L, burnin_max_Rhat = 1.5, burnin_extend = 500, max_extensions = 0,
+    autofit = FALSE, time_exceeded = function() FALSE, assess = function(draws) c(mu = 1))
+  expect_error(BayesTools:::.bt_rjags_run("", list(), list(1L, 2L, 3L), "mu", 100L, 300L, 100L, 1L,
+    cl = list(1L, 2L), silent = TRUE, readiness = readiness),
+    "Internal error: the JAGS processes disagree on whether the model has samplers.", fixed = TRUE)
+})
+
 test_that("chains that disagree without autofit sample after one warning", {
 
   set.seed(2)

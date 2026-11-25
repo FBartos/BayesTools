@@ -3,7 +3,8 @@
 # fits and PSOCK workers, including workers that own multiple chains.
 # With 'prepare', the compiled model stays in 'session' for later calls;
 # a positive 'block' then runs the last 'block' sweeps of burn-in with the
-# monitors on and returns their draws for the readiness check.
+# monitors on and returns their draws for the readiness check, or NULL for a
+# model without samplers.
 .bt_rjags_group <- function(inits, model, data, monitor, adapt, burnin, sample,
                             thin, silent, keep_live, live_model = NULL, probability_plan = NULL,
                             prepare = FALSE, block = 0L, session = .bt_rjags_worker_session){
@@ -34,6 +35,13 @@
         class = "BayesTools_adaptation_incomplete"
       ))
     }
+  }
+  # A model without samplers draws every monitored node afresh in each sweep:
+  # its chains cannot disagree, and monitoring a block would change their
+  # random-number stream. Its whole burn-in runs unmonitored, as with the
+  # readiness check off.
+  if(block > 0L && length(rjags::list.samplers(live_model)) == 0L){
+    block <- 0L
   }
   # rjags refuses an update of zero iterations
   if(burnin - block > 0){
@@ -300,7 +308,13 @@
       thin = thin, silent = silent, keep_live = local, live_model = live_model,
       probability_plan = probability_plan, prepare = staged, block = block)
     record <- NULL
-    if(block > 0L){
+    # A process without samplers returns no block; every process compiles the
+    # same graph, so the processes agree.
+    checked <- !vapply(out, is.null, logical(1))
+    if(block > 0L && any(checked) && !all(checked)){
+      stop("Internal error: the JAGS processes disagree on whether the model has samplers.", call. = FALSE)
+    }
+    if(block > 0L && all(checked)){
       record <- .bt_burnin_readiness(
         first = .bt_rjags_merge_blocks(out, groups),
         run_block = function(sweeps){

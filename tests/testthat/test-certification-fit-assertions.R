@@ -6743,6 +6743,31 @@ test_that("a passing readiness check leaves the draws as they are with the check
   }
 })
 
+test_that("a model without samplers runs as with the readiness check off", {
+
+  skip_on_cran()
+  # without data JAGS assigns no sampler and draws every node afresh in each
+  # sweep: the check is skipped and the whole burn-in runs unmonitored
+  fit_with <- function(check, ...){
+    JAGS_fit("model{}", data = NULL, prior_list = list(mu = prior("normal", list(0, 1)),
+        sigma = prior("normal", list(0, 1), list(0, Inf))),
+      chains = 3L, cores = 2L, adapt = 100L, burnin = 700L, sample = 150L, seed = 31L,
+      autofit_control = if(check) .readiness_control(burnin_extend = 200) else
+        .readiness_control(burnin_max_Rhat = NULL), ...)
+  }
+  for(parallel in c(FALSE, TRUE)) for(jasp in c(FALSE, TRUE)){
+    info <- paste("parallel", parallel, "JASP", jasp)
+    on  <- fit_with(TRUE, parallel = parallel, is_JASP = jasp)
+    off <- fit_with(FALSE, parallel = parallel, is_JASP = jasp)
+    expect_identical(nrow(on$samplers), 0L, info = info)
+    expect_null(attr(on, "burnin_check"), info = info)
+    expect_identical(on$mcmc, off$mcmc, info = info)
+    expect_identical(on$end_state, off$end_state, info = info)
+    expect_identical(attr(on, "warnings"), attr(off, "warnings"), info = info)
+    expect_identical(on$burnin, 700L, info = info)
+  }
+})
+
 test_that("a monitored predictive node changes the stream of a passing check, not the model", {
 
   skip_on_cran()

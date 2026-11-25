@@ -173,7 +173,10 @@ point estimate of the potential scale reduction factor over the
 half-chains (\code{coda::gelman.diag()}) is at most \code{burnin_max_Rhat}
 for every quantity that the convergence check assesses (the selection of
 \code{monitor} and \code{check_indicators}). The check needs at least two
-chains and a block of at least 100 iterations. When the chains are not
+chains and a block of at least 100 iterations. It is skipped in a model
+to which JAGS assigns no sampler (every node is drawn directly given its
+parents, as in a model without data): its chains cannot disagree, and its
+whole burn-in runs unmonitored, as with the check off. When the chains are not
 ready, a fit with \code{autofit} extends burn-in by blocks of
 \code{burnin_extend} iterations, each checked alone, until they are
 ready, \code{burnin_max_extend} blocks were added, or \code{max_time} is
