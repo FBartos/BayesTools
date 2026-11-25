@@ -658,7 +658,7 @@ test_that("no extension numbers the draws beyond the integer range", {
   # second would pass it and is not started; the fit keeps its draws
   message <- paste0("The automatic model fitting was terminated due to the iteration limit: an extension of ",
     "200 draws per chain would number the draws beyond the largest iteration number (2147483647). ",
-    "Refit with a smaller 'adapt', 'burnin', or 'sample' times 'thin' to leave room for extensions.")
+    "Use a smaller 'adapt', 'burnin', or 'sample' times 'thin' to leave room for extensions.")
   state <- .readiness_backend(list(.readiness_chains()))
   fit <- .readiness_fit(autofit = TRUE, adapt = limit - 1000, burnin = 600, min_ESS = 1e6,
     sample_extend = 200, max_extend = 5)

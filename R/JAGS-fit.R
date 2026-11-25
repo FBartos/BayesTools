@@ -547,7 +547,7 @@ NULL
 
   paste0("The automatic model fitting was terminated due to the iteration limit: an extension of ",
     sample, " draws per chain would number the draws beyond the largest iteration number (",
-    .Machine$integer.max, "). Refit with a smaller 'adapt', 'burnin', or 'sample' times 'thin' ",
+    .Machine$integer.max, "). Use a smaller 'adapt', 'burnin', or 'sample' times 'thin' ",
     "to leave room for extensions.")
 }
 
