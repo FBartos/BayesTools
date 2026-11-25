@@ -6717,29 +6717,45 @@ test_that("a passing readiness check leaves the draws as they are with the check
 
   skip_on_cran()
   # every monitored node has an observed descendant, so monitoring the last
-  # block of burn-in changes no sampler and no random number
-  fit_with <- function(check, ...){
+  # block of burn-in changes no sampler and no random number; the burn-in is
+  # either the block itself or longer than it, so that its first part runs
+  # unmonitored (the default path)
+  fit_with <- function(check, burnin, burnin_extend, ...){
     JAGS_fit("model{ gate ~ dbern(0.4); y ~ dnorm(mu + gate, pow(sigma, -2)) }",
       data = list(y = 1.3), prior_list = list(mu = prior("normal", list(0, 1)),
         sigma = prior("normal", list(0, 1), list(0, Inf))),
-      add_parameters = "gate", chains = 3L, cores = 2L, adapt = 200L, burnin = 400L, sample = 150L,
+      add_parameters = "gate", chains = 3L, cores = 2L, adapt = 200L, burnin = burnin, sample = 150L,
       thin = 2L, seed = 2024L,
-      autofit_control = if(check) .readiness_control() else .readiness_control(burnin_max_Rhat = NULL), ...)
+      autofit_control = if(check) .readiness_control(burnin_extend = burnin_extend) else
+        .readiness_control(burnin_max_Rhat = NULL), ...)
   }
+  for(setting in list(list(burnin = 400L, burnin_extend = 500, block = 400L),
+                     list(burnin = 700L, burnin_extend = 200, block = 200L)))
   for(parallel in c(FALSE, TRUE)) for(probabilities in list(NULL, c("gate", "mu"))) for(jasp in c(FALSE, TRUE)){
-    info <- paste("parallel", parallel, "probabilities", !is.null(probabilities), "JASP", jasp)
-    on  <- fit_with(TRUE, parallel = parallel, sampler_probabilities = probabilities, is_JASP = jasp)
-    off <- fit_with(FALSE, parallel = parallel, sampler_probabilities = probabilities, is_JASP = jasp)
+    info <- paste("burnin", setting$burnin, "parallel", parallel, "probabilities", !is.null(probabilities),
+      "JASP", jasp)
+    on  <- fit_with(TRUE, setting$burnin, setting$burnin_extend, parallel = parallel,
+      sampler_probabilities = probabilities, is_JASP = jasp)
+    off <- fit_with(FALSE, setting$burnin, setting$burnin_extend, parallel = parallel,
+      sampler_probabilities = probabilities, is_JASP = jasp)
     expect_identical(attr(on, "burnin_check")$status, "ready", info = info)
-    expect_identical(attr(on, "burnin_check")$block, 400L, info = info)
+    expect_identical(attr(on, "burnin_check")$block, setting$block, info = info)
+    expect_identical(attr(on, "burnin_check")$extension, 0, info = info)
     expect_null(attr(off, "burnin_check"), info = info)
     expect_identical(on$mcmc, off$mcmc, info = info)
     expect_identical(on$end_state, off$end_state, info = info)
     expect_identical(on$samplers, off$samplers, info = info)
     expect_identical(on$sampler_probabilities, off$sampler_probabilities, info = info)
     expect_identical(attr(on, "warnings"), attr(off, "warnings"), info = info)
+    expect_identical(on$burnin, setting$burnin, info = info)
     expect_identical(on$burnin, off$burnin, info = info)
-    expect_identical(stats::start(on$mcmc[[1L]]), 601, info = info)
+    expect_identical(stats::start(on$mcmc[[1L]]), 200 + setting$burnin + 1, info = info)
+    for(node in names(on$sampler_probabilities)){
+      if(!is.null(on$sampler_probabilities[[node]])){
+        expect_identical(stats::start(on$sampler_probabilities[[node]][[1L]]), 200 + setting$burnin + 1,
+          info = info)
+      }
+    }
   }
 })
 

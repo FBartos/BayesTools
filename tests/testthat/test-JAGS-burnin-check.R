@@ -540,6 +540,36 @@ test_that("the readiness warning follows the kept attempt's sampling and precede
   expect_identical(state$events, c("block", "sampling", "block", "sampling", "warning"))
 })
 
+test_that("automatic extensions and JAGS_extend() never run the check", {
+
+  set.seed(9)
+  state <- .readiness_backend(list(.readiness_chains()))
+  assessed <- 0L
+  block_Rhat <- BayesTools:::.bt_burnin_block_Rhat
+  testthat::local_mocked_bindings(
+    .bt_burnin_block_Rhat = function(...){
+      assessed <<- assessed + 1L
+      block_Rhat(...)
+    },
+    .package = "BayesTools"
+  )
+  # the convergence check after sampling fails: two automatic extensions
+  fit <- .readiness_fit(autofit = TRUE, min_ESS = 1e6, max_extend = 2)
+  expect_identical(assessed, 1L)
+  expect_identical(state$events, c("block", "sampling", "sampling", "sampling"))
+  expect_identical(vapply(state$groups, function(group) group$block, integer(1)), c(500L, 0L, 0L))
+  expect_identical(attr(fit, "burnin_check")$status, "ready")
+
+  extended <- JAGS_extend(fit, autofit_control = list(max_Rhat = NULL, min_ESS = 1e6, max_error = NULL,
+    max_SD_error = NULL, max_time = NULL, sample_extend = 100, max_extend = 2))
+  expect_identical(assessed, 1L)
+  expect_identical(state$events, c("block", rep("sampling", 5L)))
+  expect_identical(lapply(state$groups[2:5], `[`, c("block", "burnin", "prepare")),
+    rep(list(list(block = 0L, burnin = 0L, prepare = FALSE)), 4L))
+  expect_identical(NROW(extended$mcmc[[1L]]), 600L)
+  expect_identical(attr(extended, "burnin_check"), attr(fit, "burnin_check"))
+})
+
 test_that("autofit extends burn-in in blocks and the iteration numbers count them", {
 
   set.seed(3)
