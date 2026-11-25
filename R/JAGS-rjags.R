@@ -277,9 +277,17 @@
   local <- is.null(cl)
   groups <- if(local) list(seq_along(inits)) else split(seq_along(inits), rep_len(seq_along(cl), length(inits)))
   session <- new.env(parent = emptyenv())
+  # Whether the workers can be contacted: not while a worker call is in
+  # flight (an interrupt leaves its reply pending) or after it failed. A
+  # failure of the call itself, as opposed to an error a worker returns, is a
+  # transport failure: new initial values cannot repair the connection.
+  reachable <- TRUE
   run_groups <- function(step, inputs, ...){
     if(local) return(list(step(inputs[[1L]], ..., session = session)))
-    results <- parallel::clusterApply(cl, inputs, .bt_rjags_worker, step, ...)
+    reachable <<- FALSE
+    results <- tryCatch(parallel::clusterApply(cl, inputs, .bt_rjags_worker, step, ...),
+      error = function(e) stop(.JAGS_worker_connection_error(e)))
+    reachable <<- TRUE
     for(result in results){
       for(w in result$warnings) warning(w)
       if(inherits(result$value, "error")) stop(result$value)
@@ -352,15 +360,17 @@
     }
     list(out = out, record = record)
   }
-  run <- if(local || !staged) run_staged() else tryCatch(run_staged(), error = function(e){
-    # A worker keeps its compiled model between the calls of a staged run.
-    # After a failure, release it (unless the connection itself failed), so
-    # that a model whose run failed is never reused or kept by a restart.
-    if(!.JAGS_transport_failure(e)){
+  # A worker keeps its compiled model between the calls of a staged run. On
+  # every exit before the run is complete (an error, an interrupt, a JASP
+  # cancellation), release it while the workers can be contacted, so that a
+  # model whose run failed is never reused or kept by a restart.
+  completed <- FALSE
+  if(!local && staged){
+    on.exit(if(!completed && reachable){
       try(parallel::clusterCall(cl, .bt_rjags_release_worker), silent = TRUE)
-    }
-    stop(e)
-  })
+    }, add = TRUE)
+  }
+  run <- run_staged()
   out <- run$out
   if(local){
     out <- out[[1L]]
@@ -369,6 +379,7 @@
     if((jasp && retain_workers) || isTRUE(live_model)) out$live_model <- TRUE
   }
   out$burnin_check <- run$record
+  completed <- TRUE
   out
 }
 

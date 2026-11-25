@@ -670,14 +670,103 @@ test_that("parallel blocks return to the chain order and workers are released af
     cl = list(1L, 2L), silent = TRUE, readiness = readiness), "worker failed")
   expect_identical(released, 1L)
 
-  # a lost connection is not followed by a release call
+  # an error that a worker returns is not a transport failure, whatever its
+  # wording: it keeps its class and the models are released
   testthat::local_mocked_bindings(
     .bt_rjags_batch = function(...) stop("error reading from connection"),
     .package = "BayesTools"
   )
-  expect_error(BayesTools:::.bt_rjags_run("", list(), list(1L, 2L, 3L), "mu", 100L, 300L, 100L, 1L,
-    cl = list(1L, 2L), silent = TRUE, readiness = readiness), "connection")
+  failed <- tryCatch(BayesTools:::.bt_rjags_run("", list(), list(1L, 2L, 3L), "mu", 100L, 300L, 100L, 1L,
+    cl = list(1L, 2L), silent = TRUE, readiness = readiness), error = identity)
+  expect_false(inherits(failed, "BayesTools_JAGS_worker_connection_error"))
+  expect_identical(conditionMessage(failed), "error reading from connection")
+  expect_identical(released, 2L)
+})
+
+test_that("a staged parallel run releases the workers' models on every exit while they can be reached", {
+
+  live <- BayesTools:::.bt_rjags_worker_session
+  on.exit(live$model <- NULL, add = TRUE)
+  released <- calls <- 0L
+  failing_call <- interrupted_call <- 0L
+  cancel <- FALSE
+  interrupt <- function(...){
+    signalCondition(structure(class = c("interrupt", "condition"), list(message = "interrupted", call = NULL)))
+  }
+  testthat::local_mocked_bindings(
+    clusterApply = function(cl, x, fun, ...){
+      calls <<- calls + 1L
+      if(calls == failing_call) stop("error reading from connection")
+      if(calls == interrupted_call) interrupt()
+      lapply(x, fun, ...)
+    },
+    clusterCall = function(cl, fun, ...){
+      released <<- released + 1L
+      lapply(cl, function(worker) fun(...))
+    },
+    .package = "parallel"
+  )
+  testthat::local_mocked_bindings(
+    .bt_rjags_group = function(inits, ...){
+      live$model <- "compiled"
+      .readiness_chains(chains = length(inits), n = 200L)
+    },
+    .bt_rjags_batch = function(...){
+      list(mcmc = .readiness_chains(chains = 1L, n = 10L), end_state = list(), samplers = data.frame())
+    },
+    .JASP_progress_bar_start = function(...) NULL,
+    .JASP_progress_bar_tick = function() if(cancel) stop("JASP cancelled", call. = FALSE),
+    .package = "BayesTools"
+  )
+  run <- function(assess, jasp_prefix = NULL){
+    live$model <- NULL
+    released <<- calls <<- 0L
+    readiness <- list(block = 200L, burnin_max_Rhat = 1.5, burnin_extend = 500, max_extensions = 0,
+      autofit = FALSE, time_exceeded = function() FALSE, assess = assess)
+    tryCatch(withRestarts(
+      BayesTools:::.bt_rjags_run("", list(), list(1L, 2L, 3L), "mu", 100L, 300L, 100L, 1L,
+        cl = list(1L, 2L), silent = TRUE, jasp_prefix = jasp_prefix, readiness = readiness),
+      BayesTools_jasp_progress_error = function(e, ran) stop(e)),
+      error = identity, interrupt = identity)
+  }
+
+  # an interrupt on the coordinator between worker calls
+  result <- run(interrupt)
+  expect_s3_class(result, "interrupt")
   expect_identical(released, 1L)
+  expect_null(live$model)
+
+  # a JASP cancellation after the check
+  cancel <- TRUE
+  result <- run(function(draws) c(mu = 1), jasp_prefix = "")
+  cancel <- FALSE
+  expect_identical(conditionMessage(result), "JASP cancelled")
+  expect_identical(released, 1L)
+  expect_null(live$model)
+
+  # a coordinator error that names a parameter 'connection[2]' keeps its class
+  selector <- errorCondition(
+    "The requested convergence monitor 'connection[2]' is not available in the fitted model.",
+    class = "BayesTools_parameter_not_found")
+  result <- run(function(draws) stop(selector))
+  expect_identical(result, selector)
+  expect_identical(BayesTools:::.JAGS_run_backend(function() stop(result), list()), selector)
+  expect_identical(released, 1L)
+  expect_null(live$model)
+
+  # the worker call itself fails (the transport), or is interrupted while in
+  # flight (its reply is pending): the workers are not contacted again; the
+  # owner of the cluster stops it
+  failing_call <- 2L
+  result <- run(function(draws) c(mu = 1))
+  expect_s3_class(result, "BayesTools_JAGS_worker_connection_error")
+  expect_identical(conditionMessage(result$parent), "error reading from connection")
+  expect_identical(released, 0L)
+  failing_call <- 0L
+  interrupted_call <- 2L
+  result <- run(function(draws) c(mu = 1))
+  expect_s3_class(result, "interrupt")
+  expect_identical(released, 0L)
 })
 
 test_that("the JASP warm-up bar ticks after the check and its extensions", {

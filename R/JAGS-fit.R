@@ -550,8 +550,7 @@ NULL
   rebuilt <- if(is.null(cl)) is.null(fit[["live_model"]]) else !isTRUE(fit[["live_model"]])
   run <- .bt_collect_adaptation_warnings(.JAGS_run_backend(
     .bt_rjags_extend,
-    list(fit = fit, sample = sample, adapt = as.integer(adapt), cl = cl, silent = silent),
-    parallel = !is.null(cl)
+    list(fit = fit, sample = sample, adapt = as.integer(adapt), cl = cl, silent = silent)
   ))
   list(
     extension = run$value,
@@ -908,7 +907,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   run_initial <- function(call){
     assessing <<- FALSE
     run <- withRestarts(
-      .bt_collect_adaptation_warnings(.JAGS_run_backend(.bt_rjags_fit, call, parallel)),
+      .bt_collect_adaptation_warnings(.JAGS_run_backend(.bt_rjags_fit, call)),
       BayesTools_jasp_progress_error = function(e, ran){
         if(ran) report_run(e)
         stop(e)

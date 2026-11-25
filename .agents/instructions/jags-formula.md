@@ -231,9 +231,10 @@ checked the same way before it starts (`.bt_extension_fits_iterations()`);
 one that does not fit is not run, and the fitting stops with the last valid
 fit and its own warning. Sampling then continues on the same models; serial, PSOCK
 and JASP runs share this staged structure, and only a JASP fit with `autofit`
-keeps its workers' models after sampling. After a failure of a staged
-parallel run the coordinator releases the workers' models unless the
-connection failed. The statistic is the split-chain Gelman-Rubin point
+keeps its workers' models after sampling. On every exit before a staged
+parallel run completes (an error, an interrupt, a JASP cancellation) its
+unwind path releases the workers' models, unless a worker call is in flight
+(an interrupt leaves its reply pending) or failed. The statistic is the split-chain Gelman-Rubin point
 estimate over `2 x chains` half-chains for the selection of
 `.bt_convergence_select()` (indicators as state occupancies; a requested
 state of a categorical indicator is resolved against its declared states,
@@ -257,9 +258,11 @@ forward-samples such a node only while it is monitored.
 
 Worker connection failures stop fitting retries; new initial values cannot
 repair the existing cluster. Preserve the original backend condition. Classify
-parallel worker transport by connection/socket wording rather than a closed
-phrase list; unmatched wording in that class is fail-closed (no retry), not a
-restartable sampler error. If cluster shutdown fails, attempt every remaining worker and close failed
+a transport failure where the worker call fails: an error raised by the
+cluster call itself (whatever its wording, fail-closed) becomes
+`BayesTools_JAGS_worker_connection_error` with the original as its parent;
+an error that a worker returns, or one raised on the coordinator, keeps its
+class whatever its message says. If cluster shutdown fails, attempt every remaining worker and close failed
 connections before reporting cleanup failure; do not run the runtime finish
 callback when worker shutdown failed. Explicit worker-output paths are
 call-specific and must not be replayed from a serialized fit.
