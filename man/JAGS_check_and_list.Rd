@@ -42,8 +42,11 @@ Each chain runs \code{sample * thin} sampling iterations.}
 \item{autofit}{whether the models should be refitted until convergence criteria
 specified in \code{autofit_control}. Automatic fitting stops once every
 requested quantity whose diagnostics can be assessed meets the criteria,
-also when the diagnostics of others are not assessable (see
-\code{allow_not_assessable}), or at \code{max_time} or \code{max_extend}.
+or at \code{max_time} or \code{max_extend}. More draws do not make
+undefined diagnostics assessable, so automatic fitting never extends a fit
+for them, and a fit in which nothing can be assessed stops after its
+initial sampling (in \code{JAGS_extend()}, after its first extension).
+Check the returned fit with \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}} to report them.
 Defaults to \code{FALSE}.}
 
 \item{parallel}{whether to distribute chains over PSOCK worker processes.
@@ -159,14 +162,6 @@ formulas monitor (such as random-effect correlation matrices and their
 Cholesky factors) are derived and not checked by default. The role of
 every fitted coordinate is stored in the \code{convergence_role} column
 of \code{\link[=parameter_coordinates]{parameter_coordinates()}}.}
-\item{allow_not_assessable}{whether undefined diagnostics for requested
-sampled parameters may be ignored by \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}}. Defaults
-to \code{FALSE}. More draws do not make them assessable, so automatic
-fitting never extends a fit for them, whatever this setting: it stops
-when every quantity that can be assessed meets the criteria, and a fit in
-which nothing can be assessed stops after its initial sampling (in
-\code{JAGS_extend()}, after its first extension). Check the returned fit
-with \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}} to report them.}
 }}
 
 \item{skip_sample_extend}{whether \code{sample_extend}

@@ -190,8 +190,10 @@ others); the `diagnostics` attribute holds the per-parameter values.
 Both automatic-fitting loops check through `.bt_autofit_check()`, with
 `allow_not_assessable = TRUE`: fitting stops once every assessable diagnostic
 meets the criteria, and a diagnostic that is not assessable neither extends
-the fit nor sizes an extension, since more draws do not change it;
-`allow_not_assessable` only decides what `JAGS_check_convergence()` reports.
+the fit nor sizes an extension, since more draws do not change it.
+`autofit_control` has no `allow_not_assessable` element (removed after
+0.4.0); the argument of `JAGS_check_convergence()` only decides what that
+check reports.
 With `autofit_control$sample_extend = "auto"` the check runs without
 `fail_fast`, so that every selected quantity is assessed, and
 `.bt_autofit_extension_size()` sizes the next extension from those same

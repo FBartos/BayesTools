@@ -63,8 +63,8 @@
 #' error (the standard error SD / sqrt(ESS) of an ESS of 0) is \code{Inf}, so
 #' \code{max_error} and \code{max_SD_error} fail as well. Automatic fitting in
 #' [JAGS_fit()] and [JAGS_extend()] does not extend a fit for diagnostics that
-#' are not assessable, whatever this argument: it stops once every assessable
-#' diagnostic satisfies the criteria.
+#' are not assessable: it stops once every assessable diagnostic satisfies the
+#' criteria.
 #'
 #' @details \code{JAGS_fit()} assigns every fitted coordinate one convergence
 #' role, stored in the \code{convergence_role} column of
@@ -770,8 +770,9 @@ JAGS_check_convergence <- function(
 # 'autofit_control', and automatic fitting then stops. A diagnostic that is not
 # assessable (draws that are constant when pooled, or a computation that
 # failed) does not change with more draws, so it neither extends the fit nor
-# sizes an extension, whatever allow_not_assessable says; that setting only
-# decides what JAGS_check_convergence() reports. A fit with nothing assessable
+# sizes an extension; automatic fitting has no setting for it, and the
+# 'allow_not_assessable' argument of JAGS_check_convergence() only decides
+# what that check reports. A fit with nothing assessable
 # stops. With sample_extend = "auto" the check runs without fail_fast, so that
 # the extension is sized from every selected quantity.
 .bt_autofit_check <- function(fit, coordinates, prior_list, autofit_control,
