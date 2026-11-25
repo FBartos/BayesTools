@@ -297,7 +297,7 @@ test_that("the warning names the quantities with the largest values and the reme
     BayesTools:::.bt_burnin_warning(record),
     paste0("The chains had not reached agreement at the end of burn-in: the split-chain R-hat of the ",
       "last 400 burn-in iterations was Inf for 'p1', 3.14 for 'p2', 2.50 for 'p3', 2.00 for 'p4', ",
-      "1.80 for 'p5' and 1 more (above 'burnin_max_Rhat' of 1.5). Increase 'burnin', or fit with ",
+      "1.80 for 'p5' and 1 more (above 'burnin_max_Rhat' of 1.5). Increase 'adapt' and 'burnin', or fit with ",
       "'autofit = TRUE'.")
   )
   # a value just above the threshold does not print as the threshold
@@ -306,17 +306,17 @@ test_that("the warning names the quantities with the largest values and the reme
     BayesTools:::.bt_burnin_warning(record),
     paste0("The chains had not reached agreement at the end of burn-in: the split-chain R-hat of the ",
       "last 400 burn-in iterations was 1.51 for 'nu', 1.505 for 'tau', 1.50001 for 'mu' (above ",
-      "'burnin_max_Rhat' of 1.5). Increase 'burnin', or fit with 'autofit = TRUE'.")
+      "'burnin_max_Rhat' of 1.5). Increase 'adapt' and 'burnin', or fit with 'autofit = TRUE'.")
   )
   record <- .burnin_loop(list(c(mu = 2)), max_extensions = 1)$record
   expect_identical(
     BayesTools:::.bt_burnin_warning(record),
     paste0("The chains had not reached agreement at the end of burn-in after 1 extension of 500 ",
       "iterations: the split-chain R-hat of the last 500 burn-in iterations was 2.00 for 'mu' (above ",
-      "'burnin_max_Rhat' of 1.5). Increase 'burnin' or 'burnin_max_extend'.")
+      "'burnin_max_Rhat' of 1.5). Increase 'adapt', 'burnin' or 'burnin_max_extend'.")
   )
   record <- .burnin_loop(list(c(mu = 2)), time_exceeded = function() TRUE)$record
-  expect_match(BayesTools:::.bt_burnin_warning(record), "Increase 'burnin' or 'max_time'.", fixed = TRUE)
+  expect_match(BayesTools:::.bt_burnin_warning(record), "Increase 'adapt', 'burnin' or 'max_time'.", fixed = TRUE)
   record <- .burnin_loop(list(c(mu = 2)), extension_room = 700)$record
   expect_identical(
     BayesTools:::.bt_burnin_warning(record),
@@ -628,7 +628,7 @@ test_that("autofit extends burn-in in blocks and the iteration numbers count the
   state <- .readiness_backend(list(.readiness_chains(shift = 10)))
   expect_warning(
     fit <- .readiness_fit(autofit = TRUE, max_time = list(time = 100, unit = "secs")),
-    "Increase 'burnin' or 'max_time'.",
+    "Increase 'adapt', 'burnin' or 'max_time'.",
     fixed = TRUE
   )
   expect_identical(attr(fit, "burnin_check")$stop_reason, "max_time")

@@ -6858,7 +6858,7 @@ test_that("chains in separated modes warn without autofit and extend burn-in up 
     fit <- fit_with(FALSE),
     paste0("The chains had not reached agreement at the end of burn-in: the split-chain R-hat of the ",
       "last 300 burn-in iterations was [0-9.]+ for 'm' [(]above 'burnin_max_Rhat' of 2[)]. ",
-      "Increase 'burnin', or fit with 'autofit = TRUE'."),
+      "Increase 'adapt' and 'burnin', or fit with 'autofit = TRUE'."),
     class = "BayesTools_burnin_not_converged"
   )
   signs <- vapply(fit$mcmc, function(chain) unique(sign(chain[, "m"])), numeric(1))

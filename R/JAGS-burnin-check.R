@@ -216,9 +216,9 @@
     ": the split-chain R-hat of the last ", last_block, " burn-in iterations was ", values,
     " (above 'burnin_max_Rhat' of ", record$burnin_max_Rhat, "). ",
     switch(record$stop_reason,
-      no_autofit = "Increase 'burnin', or fit with 'autofit = TRUE'.",
-      max_extend = "Increase 'burnin' or 'burnin_max_extend'.",
-      max_time   = "Increase 'burnin' or 'max_time'.",
+      no_autofit = "Increase 'adapt' and 'burnin', or fit with 'autofit = TRUE'.",
+      max_extend = "Increase 'adapt', 'burnin' or 'burnin_max_extend'.",
+      max_time   = "Increase 'adapt', 'burnin' or 'max_time'.",
       iteration_limit = paste0("A further extension would number the draws beyond the largest ",
         "iteration number (", .Machine$integer.max, "); reduce 'adapt' or the sampling iterations ",
         "('sample' times 'thin') to leave room for it.")
