@@ -235,9 +235,12 @@ state of a categorical indicator is resolved against its declared states,
 not the states the block visits, and an unvisited one is constant and not
 assessable, while a selector naming no indicator or an impossible state stays
 a terminal error), with the
-degenerate cases decided before coda: all values equal or not finite, not
-assessed; every half-chain constant at different values, `Inf`; varying
-half-chains with equal means, 1. No assessable quantity records
+degenerate cases decided on the half-chains (so that the middle draw an odd
+block drops cannot decide them) before coda: a value that is not finite in
+every half-chain, or all values equal, not assessed; a value that is not
+finite in some half-chains only, `Inf` (the chains do not agree); every
+half-chain constant at different values, `Inf`; varying half-chains with
+equal means, 1. No assessable quantity records
 `not_assessable` and neither extends nor warns. An error of the check itself
 is not retried as a sampler failure. Only the kept attempt signals
 `BayesTools_burnin_not_converged` (whatever `silent` is) and stores it once in

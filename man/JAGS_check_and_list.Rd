@@ -174,7 +174,9 @@ half-chains (\code{coda::gelman.diag()}) is at most \code{burnin_max_Rhat}
 for every quantity that the convergence check assesses (the selection of
 \code{monitor} and \code{check_indicators}; a requested state of an
 indicator, such as \code{"mu_indicator (state 3)"}, that the block does
-not visit is not assessable there). The check needs at least two
+not visit is not assessable there). A quantity that is constant over the
+half-chains, or not finite in each of them, is not assessable; one that
+is not finite in some half-chains only fails the check. The check needs at least two
 chains and a block of at least 100 iterations. It is skipped in a model
 to which JAGS assigns no sampler (every node is drawn directly given its
 parents, as in a model without data): its chains cannot disagree, and its

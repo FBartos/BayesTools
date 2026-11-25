@@ -6,20 +6,28 @@
 # quantity over a block: each chain's block is split into its first and last
 # half (the middle draw of an odd block is left out), and the Gelman-Rubin point
 # estimate is computed over the 2 x chains half-chains. Degenerate blocks are
-# decided before coda, which returns NaN for some of them: NA (not assessed)
-# when all values are equal or a value is not finite, Inf when every
-# half-chain is constant but they differ, and 1 when the half-chains vary and
-# have equal means.
+# decided on the half-chains before coda, which returns NaN for some of them:
+# NA (not assessed) when every half-chain has a value that is not finite or
+# all values are equal, Inf when only some half-chains have a value that is
+# not finite (the chains do not agree) or every half-chain is constant but
+# they differ, and 1 when the half-chains vary and have equal means.
 .bt_burnin_split_Rhat <- function(values, chain_id, n_chains){
 
-  if(any(!is.finite(values)) || length(unique(values)) < 2L){
-    return(NA_real_)
-  }
   halves <- unlist(lapply(seq_len(n_chains), function(chain){
     draws <- values[chain_id == chain]
     half  <- length(draws) %/% 2L
     list(draws[seq_len(half)], draws[length(draws) - half + seq_len(half)])
   }), recursive = FALSE)
+  finite <- vapply(halves, function(half) all(is.finite(half)), logical(1))
+  if(!any(finite)){
+    return(NA_real_)
+  }
+  if(!all(finite)){
+    return(Inf)
+  }
+  if(length(unique(unlist(halves))) < 2L){
+    return(NA_real_)
+  }
   if(all(vapply(halves, function(half) all(half == half[[1L]]), logical(1)))){
     return(Inf)
   }

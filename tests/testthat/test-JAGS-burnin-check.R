@@ -53,10 +53,16 @@ test_that("degenerate blocks are decided before coda", {
   }), recursive = FALSE))))
   expect_identical(.burnin_rhat(equal), 1)
 
-  # nothing to assess: constant everywhere, or a value that is not finite
+  # nothing to assess: constant everywhere
   expect_identical(.burnin_rhat(list(rep(2, 100), rep(2, 100))), NA_real_)
-  expect_identical(.burnin_rhat(list(c(stats::rnorm(99), NA), stats::rnorm(100))), NA_real_)
-  expect_identical(.burnin_rhat(list(c(stats::rnorm(99), Inf), stats::rnorm(100))), NA_real_)
+
+  # a value that is not finite in some half-chains only: the chains do not
+  # agree; in every half-chain: not assessed
+  expect_identical(.burnin_rhat(list(c(stats::rnorm(99), NA), stats::rnorm(100))), Inf)
+  expect_identical(.burnin_rhat(list(c(stats::rnorm(99), Inf), stats::rnorm(100))), Inf)
+  expect_identical(.burnin_rhat(list(c(-Inf, stats::rnorm(99)), rep(NaN, 100))), Inf)
+  expect_identical(.burnin_rhat(list(rep(Inf, 100), rep(Inf, 100))), NA_real_)
+  expect_identical(.burnin_rhat(list(rep(c(1, NA), 50), rep(c(NaN, 2), 50))), NA_real_)
 })
 
 test_that("an odd block leaves the middle draw out of both halves", {
@@ -65,6 +71,14 @@ test_that("an odd block leaves the middle draw out of both halves", {
   chains <- list(stats::rnorm(101), stats::rnorm(101) + 1)
   halves <- unlist(lapply(chains, function(chain) list(chain[1:50], chain[52:101])), recursive = FALSE)
   expect_equal(.burnin_rhat(chains), .burnin_unsplit_point(halves), tolerance = 1e-12)
+
+  # the degenerate cases are decided on the halves: a block that varies only
+  # at its dropped middle draw is constant, and so is one that is not finite
+  # only there
+  constant <- rep(0, 101)
+  expect_identical(.burnin_rhat(list(replace(constant, 51, 1), constant)), NA_real_)
+  expect_identical(.burnin_rhat(list(replace(constant, 51, NA), constant)), NA_real_)
+  expect_identical(.burnin_rhat(list(replace(constant, 51, 1), constant + 1)), Inf)
 })
 
 # A block in the form the backend returns it, with the coordinates that
