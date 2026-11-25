@@ -45,13 +45,19 @@ Each chain runs \code{sample * thin} sampling iterations.}
 
 \item{autofit}{whether the models should be refitted until convergence criteria
 specified in \code{autofit_control}. Automatic fitting stops once every
-requested quantity whose diagnostics can be assessed meets the criteria,
-or at \code{max_time} or \code{max_extend}. More draws do not make
-undefined diagnostics assessable, so automatic fitting never extends a fit
-for them, and a fit in which nothing can be assessed stops after its
-initial sampling (in \code{JAGS_extend()}, after its first extension).
-Check the returned fit with \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}} to report them.
-Defaults to \code{FALSE}.}
+diagnostic that can be assessed meets its criterion, or at \code{max_time}
+or \code{max_extend}. Assessability is judged from the draws available at
+each check. Automatic fitting does not extend a fit for diagnostics that
+cannot be assessed then (a mixture component or indicator state that no
+chain has visited, draws that are constant), so a quantity that only more
+draws would reveal is not waited for; every diagnostic that can be assessed
+still extends the fit. A fit in which nothing can be assessed stops after
+its initial sampling (in \code{JAGS_extend()}, after its first extension).
+When automatic fitting stops with diagnostics that cannot be assessed, a
+warning of class \code{BayesTools_autofit_not_assessable} (also
+\code{BayesTools_fit_diagnostic}) names them unless \code{silent = TRUE};
+it is not stored in the fit's \code{warnings} attribute. Check the returned
+fit with \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}}. Defaults to \code{FALSE}.}
 
 \item{parallel}{whether to distribute chains over PSOCK worker processes.
 Defaults to \code{FALSE}, which runs all chains in the calling process.
