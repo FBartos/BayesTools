@@ -87,7 +87,10 @@
 #'   yet, is not shortened. Without \code{max_time}, each extension of a fit
 #'   that cannot converge multiplies the draws per chain by about 2.1 (a
 #'   failed R-hat or a parameter whose diagnostics are not assessable) and up
-#'   to 3 (large ESS or error deficits), up to \code{max_extend}.}
+#'   to 3 (large ESS or error deficits), up to \code{max_extend}. An
+#'   extension, of either kind, whose last draw would have an iteration
+#'   number beyond \code{.Machine$integer.max} is not started: the fitting
+#'   stops with the last fit and a warning of its own.}
 #'   \item{restarts}{maximum number of fitting attempts when the model fails
 #'   to initialize; every failed attempt but the last is retried with new
 #'   initial values (\code{restarts = 1} fits once, without a retry). A
@@ -153,8 +156,10 @@
 #'   readiness check assesses and of each extension of burn-in; at least
 #'   \code{100}. Defaults to \code{500}.}
 #'   \item{burnin_max_extend}{the largest number of extensions of burn-in, with
-#'   \code{autofit} only. Defaults to \code{10}. Extensions also stop where the
-#'   iteration numbers of the draws would leave the integer range.}
+#'   \code{autofit} only. Defaults to \code{10}. An extension after which the
+#'   last retained draw would have an iteration number beyond
+#'   \code{.Machine$integer.max} is not run; the warning then names that
+#'   limit.}
 #' }
 #' @param parallel whether to distribute chains over PSOCK worker processes.
 #' Defaults to \code{FALSE}, which runs all chains in the calling process.
@@ -454,7 +459,8 @@
 #' \code{"not_assessable"} when no quantity could be assessed, which makes no
 #' claim of readiness and extends nothing), \code{stop_reason}
 #' (\code{"ready"}, \code{"max_extend"}, \code{"max_time"},
-#' \code{"no_autofit"}, or \code{"not_assessable"}), and \code{failing} (the
+#' \code{"iteration_limit"}, \code{"no_autofit"}, or \code{"not_assessable"}),
+#' and \code{failing} (the
 #' quantities of the last block above the threshold, with their values).
 #' \code{fit$burnin} is the burn-in that was run, and the iteration numbers
 #' of the draws and of \code{sampler_probabilities} count it.
@@ -512,6 +518,30 @@ NULL
     }
   })
   list(value = value, warnings = messages)
+}
+
+# Whether 'sample' more draws per chain keep the public iteration number of
+# the fit's last draw within the integer range of the draw geometry (the
+# chains' coda timing). An extension that would leave it is not started.
+# Chains without timing have no iteration numbers to keep in range.
+.bt_extension_fits_iterations <- function(fit, sample){
+
+  timing <- lapply(fit[["mcmc"]], attr, which = "mcpar", exact = TRUE)
+  if(length(timing) == 0L || any(lengths(timing) != 3L)){
+    return(TRUE)
+  }
+  last <- max(vapply(timing, function(mcpar) as.double(mcpar[[2L]]), numeric(1)))
+  last + as.double(sample) * timing[[1L]][[3L]] <= .Machine$integer.max
+}
+
+# The warning of automatic fitting stopped by the integer range of the
+# iteration numbers.
+.bt_iteration_limit_message <- function(sample){
+
+  paste0("The automatic model fitting was terminated due to the iteration limit: an extension of ",
+    sample, " draws per chain would number the draws beyond the largest iteration number (",
+    .Machine$integer.max, "). Refit with a smaller 'adapt', 'burnin', or 'sample' times 'thin' ",
+    "to leave room for extensions.")
 }
 
 # A JASP fit keeps its compiled samplers in its private workers through autofit.
@@ -936,11 +966,11 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       block           = as.integer(readiness_block),
       burnin_max_Rhat = burnin_settings[["burnin_max_Rhat"]],
       burnin_extend   = burnin_settings[["burnin_extend"]],
-      # Extension blocks stop where the last retained iteration would leave
-      # the integer range of the public iteration numbers.
-      max_extensions  = if(autofit) max(0, min(burnin_settings[["burnin_max_extend"]], floor(
-        (.Machine$integer.max - as.double(adapt) - burnin - as.double(sample) * thin) /
-          burnin_settings[["burnin_extend"]]))) else 0,
+      max_extensions  = if(autofit) burnin_settings[["burnin_max_extend"]] else 0,
+      # the burn-in sweeps that keep the public iteration number of the last
+      # retained draw within the integer range of the draw geometry
+      extension_room  = .Machine$integer.max -
+        (as.double(adapt) + burnin + 1 + (as.double(sample) - 1) * thin),
       autofit         = autofit,
       time_exceeded   = max_time_exceeded,
       assess          = function(draws){
@@ -1080,6 +1110,14 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
           .bt_autofit_iteration_cap(thin))
       }else{
         autofit_control[["sample_extend"]]
+      }
+      if(!.bt_extension_fits_iterations(fit, sample_extend)){
+        warning_message <- .bt_iteration_limit_message(sample_extend)
+        fit <- .bt_append_fit_warnings(fit, warning_message)
+        if(!silent){
+          warning(warning_message, immediate. = TRUE)
+        }
+        break
       }
       run <- .bt_run_extension(fit, sample = sample_extend,
         adapt = adapt, cl = cl, silent = silent)
@@ -1564,6 +1602,14 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
         .bt_autofit_iteration_cap(fit[["thin"]]))
     }else{
       autofit_control[["sample_extend"]]
+    }
+    if(!.bt_extension_fits_iterations(fit, sample_extend)){
+      warning_message <- .bt_iteration_limit_message(sample_extend)
+      fit <- .bt_append_fit_warnings(fit, warning_message)
+      if(!silent){
+        warning(warning_message, immediate. = TRUE)
+      }
+      break
     }
     run <- .bt_run_extension(fit, sample = sample_extend,
       adapt = adapt, cl = cl, silent = silent)

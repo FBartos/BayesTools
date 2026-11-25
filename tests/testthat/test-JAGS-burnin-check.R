@@ -192,7 +192,8 @@ test_that("a requested indicator state is resolved whatever states the block vis
 })
 
 # The extension loop with scripted assessments.
-.burnin_loop <- function(values, autofit = TRUE, max_extensions = 10, time_exceeded = function() FALSE){
+.burnin_loop <- function(values, autofit = TRUE, max_extensions = 10, time_exceeded = function() FALSE,
+                         extension_room = Inf){
 
   calls <- new.env()
   calls$assess <- 0L
@@ -213,7 +214,8 @@ test_that("a requested indicator state is resolved whatever states the block vis
     burnin_extend = 500,
     max_extensions = max_extensions,
     autofit = autofit,
-    time_exceeded = time_exceeded
+    time_exceeded = time_exceeded,
+    extension_room = extension_room
   )
   list(record = record, calls = calls)
 }
@@ -259,6 +261,19 @@ test_that("the extension loop stops when ready, at the cap, at max_time and with
   expect_identical(run$record$extension, 500)
   expect_identical(reads, 2L)
 
+  # the integer range of the iteration numbers, checked before each block and
+  # before the clock
+  run <- .burnin_loop(list(c(a = 3)), extension_room = 1000, time_exceeded = function() FALSE)
+  expect_identical(run$record[c("status", "stop_reason", "extension")],
+    list(status = "not_ready", stop_reason = "iteration_limit", extension = 1000))
+  run <- .burnin_loop(list(c(a = 3)), extension_room = 999)
+  expect_identical(run$record[c("stop_reason", "extension")], list(stop_reason = "iteration_limit", extension = 500))
+  run <- .burnin_loop(list(c(a = 3)), extension_room = 499, time_exceeded = function() stop("clock read"))
+  expect_identical(run$record$stop_reason, "iteration_limit")
+  expect_identical(run$calls$blocks, integer())
+  expect_identical(.burnin_loop(list(c(a = 3)), max_extensions = 1, extension_room = 500)$record$stop_reason,
+    "max_extend")
+
   # without autofit: one check, no extension and no clock
   run <- .burnin_loop(list(c(a = 3)), autofit = FALSE, time_exceeded = function() stop("clock read"))
   expect_identical(run$record$status, "not_ready")
@@ -294,6 +309,15 @@ test_that("the warning names the quantities with the largest values and the reme
   )
   record <- .burnin_loop(list(c(mu = 2)), time_exceeded = function() TRUE)$record
   expect_match(BayesTools:::.bt_burnin_warning(record), "Increase 'burnin' or 'max_time'.", fixed = TRUE)
+  record <- .burnin_loop(list(c(mu = 2)), extension_room = 700)$record
+  expect_identical(
+    BayesTools:::.bt_burnin_warning(record),
+    paste0("The chains had not reached agreement at the end of burn-in after 1 extension of 500 ",
+      "iterations: the split-chain R-hat of the last 500 burn-in iterations was 2.00 for 'mu' (above ",
+      "'burnin_max_Rhat' of 1.5). A further extension would number the draws beyond the largest ",
+      "iteration number (2147483647); reduce 'adapt' or the sampling iterations ('sample' times 'thin') ",
+      "to leave room for it.")
+  )
   expect_null(BayesTools:::.bt_burnin_warning(.burnin_loop(list(c(mu = 1.2)))$record))
   expect_null(BayesTools:::.bt_burnin_warning(NULL))
 })
@@ -393,13 +417,13 @@ test_that("the readiness settings default when omitted and validate when given",
   }))
 }
 
-.readiness_fit <- function(autofit = FALSE, burnin = 600, chains = 3L, thin = 1L, ...){
+.readiness_fit <- function(autofit = FALSE, burnin = 600, chains = 3L, thin = 1L, adapt = 100, ...){
 
   control <- utils::modifyList(list(max_Rhat = NULL, min_ESS = NULL, max_error = NULL,
     max_SD_error = NULL, max_time = list(time = 60, unit = "mins"), sample_extend = 100,
     restarts = 2, max_extend = 1), list(...), keep.null = TRUE)
   JAGS_fit("model{ x ~ dnorm(mu, 1) }", data = list(x = 0),
-    prior_list = list(mu = prior("normal", list(0, 1))), chains = chains, adapt = 100,
+    prior_list = list(mu = prior("normal", list(0, 1))), chains = chains, adapt = adapt,
     burnin = burnin, sample = 200, thin = thin, seed = 1, silent = TRUE, autofit = autofit,
     autofit_control = control)
 }
@@ -537,6 +561,58 @@ test_that("autofit extends burn-in in blocks and the iteration numbers count the
   expect_identical(state$sweeps, 500)
 })
 
+test_that("no extension numbers the draws beyond the integer range", {
+
+  limit <- .Machine$integer.max
+
+  # burn-in: one block of 500 fits before the last draw (adapt + burnin +
+  # extension + 200) would pass the limit, a second does not
+  set.seed(7)
+  state <- .readiness_backend(list(.readiness_chains(shift = 10)))
+  expect_warning(
+    fit <- .readiness_fit(autofit = TRUE, adapt = limit - 1500, burnin = 600),
+    "A further extension would number the draws beyond the largest iteration number",
+    class = "BayesTools_burnin_not_converged"
+  )
+  record <- attr(fit, "burnin_check")
+  expect_identical(record[c("stop_reason", "extension")], list(stop_reason = "iteration_limit", extension = 500))
+  expect_identical(state$sweeps, 500)
+  expect_identical(fit$burnin, 1100)
+  expect_identical(JAGS_draw_geometry(fit)$chains$end, rep(limit - 200L, 3L))
+
+  # sampling: the first automatic extension reaches the limit exactly, the
+  # second would pass it and is not started; the fit keeps its draws
+  message <- paste0("The automatic model fitting was terminated due to the iteration limit: an extension of ",
+    "200 draws per chain would number the draws beyond the largest iteration number (2147483647). ",
+    "Refit with a smaller 'adapt', 'burnin', or 'sample' times 'thin' to leave room for extensions.")
+  state <- .readiness_backend(list(.readiness_chains()))
+  fit <- .readiness_fit(autofit = TRUE, adapt = limit - 1000, burnin = 600, min_ESS = 1e6,
+    sample_extend = 200, max_extend = 5)
+  expect_identical(state$batches, 2L)
+  expect_identical(NROW(fit$mcmc[[1L]]), 400L)
+  expect_identical(JAGS_draw_geometry(fit)$chains$end, rep(limit, 3L))
+  expect_identical(attr(fit, "warnings"), message)
+
+  # an "auto" extension of at least 1000 draws does not fit at all
+  state <- .readiness_backend(list(.readiness_chains()))
+  fit <- .readiness_fit(autofit = TRUE, adapt = limit - 1000, burnin = 600, min_ESS = 1e6,
+    sample_extend = "auto", max_extend = 5, max_time = NULL)
+  expect_identical(state$batches, 1L)
+  expect_identical(NROW(fit$mcmc[[1L]]), 200L)
+  expect_match(attr(fit, "warnings"), "an extension of 1000 draws per chain", fixed = TRUE)
+
+  # JAGS_extend(): an extension of 300 draws would pass the limit (the last
+  # draw is at limit - 200), so it is not started and the draws are kept
+  expect_warning(
+    extended <- JAGS_extend(fit, autofit_control = list(max_Rhat = NULL, min_ESS = 1e6, max_error = NULL,
+      max_SD_error = NULL, max_time = NULL, sample_extend = 300, max_extend = 5), silent = FALSE),
+    sub("200 draws", "300 draws", message, fixed = TRUE), fixed = TRUE
+  )
+  expect_identical(state$batches, 1L)
+  expect_identical(extended$mcmc, fit$mcmc)
+  expect_true(sub("200 draws", "300 draws", message, fixed = TRUE) %in% attr(extended, "warnings"))
+})
+
 test_that("a restart carries no state or warning of the failed attempt", {
 
   set.seed(4)
@@ -624,7 +700,7 @@ test_that("the JASP warm-up bar ticks after the check and its extensions", {
     .JASP_progress_bar_tick = function() events <<- c(events, "tick"),
     .package = "BayesTools"
   )
-  readiness <- list(block = 200L, burnin_max_Rhat = 1.5, burnin_extend = 300, max_extensions = 5,
+  readiness <- list(block = 200L, burnin_max_Rhat = 1.5, burnin_extend = 300, max_extensions = 5, extension_room = Inf,
     autofit = TRUE, time_exceeded = function() FALSE, assess = function(draws){
       c(mu = .burnin_rhat(lapply(draws, as.numeric)))
     })

@@ -223,8 +223,13 @@ retained chunks) through the shared `.bt_rjags_samples()`, and keeps its live
 model; the coordinator checks the blocks of all chains in the original order
 and, under `autofit`, asks for further blocks of `burnin_extend` sweeps (each
 checked alone) until ready, `burnin_max_extend` blocks, `max_time` on the
-fit's clock (read before a block), or the integer range of the public
-iteration numbers. Sampling then continues on the same models; serial, PSOCK
+fit's clock (read before a block), or a block that would number the last
+retained draw beyond `.Machine$integer.max` (stop reason `iteration_limit`,
+with a remedy of its own). Every extension that appends draws (an automatic
+extension after sampling and `JAGS_extend()`, fixed or `"auto"` size) is
+checked the same way before it starts (`.bt_extension_fits_iterations()`);
+one that does not fit is not run, and the fitting stops with the last valid
+fit and its own warning. Sampling then continues on the same models; serial, PSOCK
 and JASP runs share this staged structure, and only a JASP fit with `autofit`
 keeps its workers' models after sampling. After a failure of a staged
 parallel run the coordinator releases the workers' models unless the

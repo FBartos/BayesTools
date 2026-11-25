@@ -327,7 +327,8 @@
         burnin_extend   = readiness$burnin_extend,
         max_extensions  = readiness$max_extensions,
         autofit         = readiness$autofit,
-        time_exceeded   = readiness$time_exceeded
+        time_exceeded   = readiness$time_exceeded,
+        extension_room  = readiness$extension_room
       )
     }
     if(jasp){

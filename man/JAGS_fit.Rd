@@ -152,7 +152,10 @@ is sized from the check of the supplied fit and, with no rate observed
 yet, is not shortened. Without \code{max_time}, each extension of a fit
 that cannot converge multiplies the draws per chain by about 2.1 (a
 failed R-hat or a parameter whose diagnostics are not assessable) and up
-to 3 (large ESS or error deficits), up to \code{max_extend}.}
+to 3 (large ESS or error deficits), up to \code{max_extend}. An
+extension, of either kind, whose last draw would have an iteration
+number beyond \code{.Machine$integer.max} is not started: the fitting
+stops with the last fit and a warning of its own.}
 \item{restarts}{maximum number of fitting attempts when the model fails
 to initialize; every failed attempt but the last is retried with new
 initial values (\code{restarts = 1} fits once, without a retry). A
@@ -218,8 +221,10 @@ state.}
 readiness check assesses and of each extension of burn-in; at least
 \code{100}. Defaults to \code{500}.}
 \item{burnin_max_extend}{the largest number of extensions of burn-in, with
-\code{autofit} only. Defaults to \code{10}. Extensions also stop where the
-iteration numbers of the draws would leave the integer range.}
+\code{autofit} only. Defaults to \code{10}. An extension after which the
+last retained draw would have an iteration number beyond
+\code{.Machine$integer.max} is not run; the warning then names that
+limit.}
 }}
 
 \item{parallel}{whether to distribute chains over PSOCK worker processes.
@@ -523,7 +528,8 @@ iterations \code{sweeps} it ran and its largest value \code{Rhat} and
 \code{"not_assessable"} when no quantity could be assessed, which makes no
 claim of readiness and extends nothing), \code{stop_reason}
 (\code{"ready"}, \code{"max_extend"}, \code{"max_time"},
-\code{"no_autofit"}, or \code{"not_assessable"}), and \code{failing} (the
+\code{"iteration_limit"}, \code{"no_autofit"}, or \code{"not_assessable"}),
+and \code{failing} (the
 quantities of the last block above the threshold, with their values).
 \code{fit$burnin} is the burn-in that was run, and the iteration numbers
 of the draws and of \code{sampler_probabilities} count it.

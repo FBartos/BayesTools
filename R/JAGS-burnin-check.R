@@ -140,10 +140,12 @@
 # split-chain R-hat per assessable quantity. Without 'autofit' the chains are
 # not extended. With it, blocks of 'burnin_extend' sweeps are added (each
 # checked alone) until the chains are ready, 'max_extensions' blocks were
-# added, or 'time_exceeded()' (read before a block is started). Returns the
+# added, a further block would exceed 'extension_room' (the burn-in sweeps
+# that keep the iteration number of the last retained draw within the integer
+# range), or 'time_exceeded()' (read before a block is started). Returns the
 # record stored in attr(fit, "burnin_check").
 .bt_burnin_readiness <- function(first, run_block, assess, burnin_max_Rhat, block, burnin_extend,
-                                 max_extensions, autofit, time_exceeded){
+                                 max_extensions, autofit, time_exceeded, extension_room = Inf){
 
   blocks     <- list()
   draws      <- first
@@ -166,6 +168,8 @@
       "no_autofit"
     }else if(extensions >= max_extensions){
       "max_extend"
+    }else if((extensions + 1) * burnin_extend > extension_room){
+      "iteration_limit"
     }else if(time_exceeded()){
       "max_time"
     }
@@ -213,7 +217,10 @@
     switch(record$stop_reason,
       no_autofit = "Increase 'burnin', or fit with 'autofit = TRUE'.",
       max_extend = "Increase 'burnin' or 'burnin_max_extend'.",
-      max_time   = "Increase 'burnin' or 'max_time'."
+      max_time   = "Increase 'burnin' or 'max_time'.",
+      iteration_limit = paste0("A further extension would number the draws beyond the largest ",
+        "iteration number (", .Machine$integer.max, "); reduce 'adapt' or the sampling iterations ",
+        "('sample' times 'thin') to leave room for it.")
     )
   )
 }
