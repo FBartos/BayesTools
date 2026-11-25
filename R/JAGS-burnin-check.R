@@ -202,7 +202,8 @@
   }
   failing <- record$failing
   listed  <- utils::head(failing, 5L)
-  values  <- paste0(sprintf("%.2f", listed$Rhat), " for '", listed$parameter, "'", collapse = ", ")
+  values  <- paste0(.bt_burnin_format_Rhat(listed$Rhat, record$burnin_max_Rhat), " for '",
+    listed$parameter, "'", collapse = ", ")
   if(nrow(failing) > 5L){
     values <- paste0(values, " and ", nrow(failing) - 5L, " more")
   }
@@ -223,6 +224,20 @@
         "('sample' times 'thin') to leave room for it.")
     )
   )
+}
+
+# Values above the threshold with two decimals, or as many more as it takes
+# for the printed value to exceed the threshold (1.50001 above 1.5).
+.bt_burnin_format_Rhat <- function(values, threshold){
+
+  vapply(values, function(value){
+    digits <- 2L
+    while(is.finite(value) && digits < 15L &&
+          as.numeric(formatC(value, format = "f", digits = digits)) <= threshold){
+      digits <- digits + 1L
+    }
+    formatC(value, format = "f", digits = digits)
+  }, character(1))
 }
 
 # Signal the warning of chains that were not ready (whatever 'silent' is) and

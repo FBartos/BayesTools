@@ -276,6 +276,8 @@ Returned fits store the compiled model text and data, chain states and RNGs.
 An explicit `JAGS_extend()` rebuilds the sampler, uses the recorded adaptation
 length (or the call-specific override), and starts sampling with zero additional
 burn-in. Record the adaptation settings and rebuild status for each extension.
+The incomplete-adaptation warning (`BayesTools_adaptation_incomplete`) and the
+readiness warning share the parent class `BayesTools_fit_diagnostic`.
 
 The optional `runtime_report` callback (stored as `attr(fit, "runtime_report")`,
 replayed by `JAGS_extend()` like `runtime_cache`) runs with

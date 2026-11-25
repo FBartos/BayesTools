@@ -32,7 +32,7 @@
     if(!adapted){
       warning(warningCondition(
         paste0("The JAGS adaptation phase was incomplete after ", adapt, " iterations."),
-        class = "BayesTools_adaptation_incomplete"
+        class = c("BayesTools_adaptation_incomplete", "BayesTools_fit_diagnostic")
       ))
     }
   }
@@ -430,9 +430,10 @@
   record <- out$burnin_check
   out$burnin_check <- NULL
   # The burn-in actually run: the requested one and the extensions of the
-  # readiness check.
+  # readiness check, in the type the burn-in was given (the range check of
+  # the extensions keeps an integer sum within the integer range).
   if(!is.null(record) && record$extension > 0){
-    burnin <- burnin + record$extension
+    burnin <- burnin + if(is.integer(burnin)) as.integer(record$extension) else record$extension
   }
   # Public chain indices count the requested adaptation and the burn-in run,
   # even when JAGS selects only samplers that never require adaptation.

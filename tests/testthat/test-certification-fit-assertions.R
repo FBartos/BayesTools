@@ -6879,7 +6879,7 @@ test_that("chains in separated modes warn without autofit and extend burn-in up 
   expect_identical(record$stop_reason, "max_extend")
   expect_identical(record$blocks$sweeps, c(200L, 200L, 200L))
   expect_identical(record$extension, 400)
-  expect_identical(fit$burnin, 700)
+  expect_identical(fit$burnin, 700L)
   expect_identical(JAGS_draw_geometry(fit)$chains$start, rep(801L, 3L))
   expect_identical(JAGS_draw_geometry(fit)$chains$end, rep(801L + 99L * 2L, 3L))
   for(chain in seq_len(3L)){

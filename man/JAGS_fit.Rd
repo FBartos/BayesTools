@@ -185,11 +185,15 @@ of \code{\link[=parameter_coordinates]{parameter_coordinates()}}.}
 \item{allow_not_assessable}{whether undefined diagnostics for requested
 sampled parameters may be ignored. Defaults to \code{FALSE}.}
 \item{burnin_max_Rhat}{the threshold of the readiness check between
-burn-in and sampling, which runs in every fit, also without
-\code{autofit}. Defaults to \code{1.5}; an omitted element takes its
-default and \code{NULL} turns the check off. The last
-\code{burnin_extend} iterations of burn-in (all of it when shorter) run
-with the monitors on; their draws are checked and then dropped. Each
+burn-in and sampling. Defaults to \code{1.5}; an omitted element takes
+its default and \code{NULL} turns the check off. The check runs, also
+without \code{autofit}, in the initial fit of \code{JAGS_fit()} (afresh
+in each restart attempt; not in \code{JAGS_extend()} or the automatic
+extensions after sampling) when there are at least two chains, the block
+of the last \code{min(burnin_extend, burnin)} iterations of burn-in has
+at least 100 iterations, and JAGS assigns the model a sampler. The
+iterations of the block run with the monitors on; their draws are
+checked and then dropped. Each
 chain's block is split into halves, and the chains are ready when the
 point estimate of the potential scale reduction factor over the
 half-chains (\code{coda::gelman.diag()}) is at most \code{burnin_max_Rhat}
@@ -198,10 +202,9 @@ for every quantity that the convergence check assesses (the selection of
 indicator, such as \code{"mu_indicator (state 3)"}, that the block does
 not visit is not assessable there). A quantity that is constant over the
 half-chains, or not finite in each of them, is not assessable; one that
-is not finite in some half-chains only fails the check. The check needs at least two
-chains and a block of at least 100 iterations. It is skipped in a model
-to which JAGS assigns no sampler (every node is drawn directly given its
-parents, as in a model without data): its chains cannot disagree, and its
+is not finite in some half-chains only fails the check. In a model to
+which JAGS assigns no sampler (every node is drawn directly given its
+parents, as in a model without data) the chains cannot disagree, and the
 whole burn-in runs unmonitored, as with the check off. When the chains are not
 ready, a fit with \code{autofit} extends burn-in by blocks of
 \code{burnin_extend} iterations, each checked alone, until they are
@@ -513,8 +516,10 @@ The \code{adaptation} attribute of a fit records the adaptation settings:
 per backend extension (automatic extensions of \code{JAGS_fit()} and the
 extensions of \code{JAGS_extend()}) giving the \code{adapt} passed to the
 backend and whether the backend \code{rebuilt} the sampler, the only case in
-which it adapts. Warnings of the backend that adaptation was incomplete are
-issued and also kept in the fit's \code{warnings} attribute.
+which it adapts. Warnings of the backend that adaptation was incomplete
+(class \code{BayesTools_adaptation_incomplete}, also
+\code{BayesTools_fit_diagnostic}) are issued and also kept in the fit's
+\code{warnings} attribute.
 
 The \code{burnin_check} attribute of a fit records the readiness check
 between burn-in and sampling (see \code{burnin_max_Rhat} in

@@ -300,6 +300,14 @@ test_that("the warning names the quantities with the largest values and the reme
       "1.80 for 'p5' and 1 more (above 'burnin_max_Rhat' of 1.5). Increase 'burnin', or fit with ",
       "'autofit = TRUE'.")
   )
+  # a value just above the threshold does not print as the threshold
+  record <- .burnin_loop(list(c(mu = 1.50001, tau = 1.5049, nu = 1.5051)), autofit = FALSE)$record
+  expect_identical(
+    BayesTools:::.bt_burnin_warning(record),
+    paste0("The chains had not reached agreement at the end of burn-in: the split-chain R-hat of the ",
+      "last 400 burn-in iterations was 1.51 for 'nu', 1.505 for 'tau', 1.50001 for 'mu' (above ",
+      "'burnin_max_Rhat' of 1.5). Increase 'burnin', or fit with 'autofit = TRUE'.")
+  )
   record <- .burnin_loop(list(c(mu = 2)), max_extensions = 1)$record
   expect_identical(
     BayesTools:::.bt_burnin_warning(record),
@@ -589,6 +597,13 @@ test_that("autofit extends burn-in in blocks and the iteration numbers count the
   expect_identical(geometry$chains$start, rep(1301L, 3L))
   expect_identical(geometry$chains$end, rep(1301L + 199L * 2L, 3L))
   expect_null(attr(fit, "warnings"))
+
+  # 'fit$burnin' keeps the type it was given
+  state <- .readiness_backend(list(.readiness_chains(shift = 10), .readiness_chains()))
+  fit <- .readiness_fit(autofit = TRUE, burnin = 600L)
+  expect_identical(fit$burnin, 1100L)
+  state <- .readiness_backend(list(.readiness_chains()))
+  expect_identical(.readiness_fit(burnin = 600L)$burnin, 600L)
 
   # the cap: the warning names the extensions
   state <- .readiness_backend(list(.readiness_chains(shift = 10)))

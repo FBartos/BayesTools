@@ -1559,6 +1559,18 @@ test_that("JAGS_extend issues and keeps incomplete-adaptation warnings", {
   expect_identical(attr(extended, "warnings"), message)
 })
 
+test_that("the incomplete-adaptation warning belongs to the fit diagnostics", {
+
+  testthat::local_mocked_bindings(adapt = function(...) FALSE, .package = "rjags")
+  condition <- tryCatch(.bt_rjags_group(
+    inits = list(list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = 1L)),
+    model = "model{ mu ~ dnorm(0, 1)\n y ~ dnorm(mu, 1) }", data = list(y = 0.5), monitor = "mu",
+    adapt = 10L, burnin = 0L, sample = 10L, thin = 1L, silent = TRUE, keep_live = FALSE
+  ), warning = identity)
+  expect_identical(class(condition)[1:2], c("BayesTools_adaptation_incomplete", "BayesTools_fit_diagnostic"))
+  expect_identical(conditionMessage(condition), "The JAGS adaptation phase was incomplete after 10 iterations.")
+})
+
 test_that("JAGS_fit forwards its adaptation to automatic extensions", {
 
   backend_fit <- function(...){
