@@ -61,7 +61,10 @@
 #' values give an R-hat of \code{Inf} and an ESS of 0, which fail
 #' \code{max_Rhat} and \code{min_ESS} whatever this argument is. Their MCMC
 #' error (the standard error SD / sqrt(ESS) of an ESS of 0) is \code{Inf}, so
-#' \code{max_error} and \code{max_SD_error} fail as well.
+#' \code{max_error} and \code{max_SD_error} fail as well. Automatic fitting in
+#' [JAGS_fit()] and [JAGS_extend()] does not extend a fit for diagnostics that
+#' are not assessable, whatever this argument: it stops once every assessable
+#' diagnostic satisfies the criteria.
 #'
 #' @details \code{JAGS_fit()} assigns every fitted coordinate one convergence
 #' role, stored in the \code{convergence_role} column of
@@ -771,14 +774,41 @@ JAGS_check_convergence <- function(
   fails
 }
 
+# The convergence check of automatic fitting in JAGS_fit() and JAGS_extend():
+# TRUE when every diagnostic that can be assessed meets the enabled criteria of
+# 'autofit_control', and automatic fitting then stops. A diagnostic that is not
+# assessable (draws that are constant when pooled, or a computation that
+# failed) does not change with more draws, so it neither extends the fit nor
+# sizes an extension, whatever allow_not_assessable says; that setting only
+# decides what JAGS_check_convergence() reports. A fit with nothing assessable
+# stops. With sample_extend = "auto" the check runs without fail_fast, so that
+# the extension is sized from every selected quantity.
+.bt_autofit_check <- function(fit, coordinates, prior_list, autofit_control,
+                              max_Rhat = autofit_control[["max_Rhat"]]){
+
+  attr(fit, "prior_list") <- prior_list
+  .bt_check_convergence(
+    fit = fit,
+    coordinates = coordinates,
+    max_Rhat = max_Rhat,
+    min_ESS = autofit_control[["min_ESS"]],
+    max_error = autofit_control[["max_error"]],
+    max_SD_error = autofit_control[["max_SD_error"]],
+    fail_fast = !identical(autofit_control[["sample_extend"]], "auto"),
+    check_indicators = autofit_control[["check_indicators"]],
+    monitor = autofit_control[["monitor"]],
+    allow_not_assessable = TRUE
+  )
+}
+
 # The next extension of automatic fitting with sample_extend = "auto", in draws
 # per chain, sized from the 'diagnostics' of the convergence check that failed
-# (run with fail_fast = FALSE, so that every selected quantity is checked) and
-# its criteria (NULL when not set). Over the checked quantities, f is the
-# largest required growth factor: min_ESS / ESS, (error / max_error)^2 and
-# (SD_error / max_SD_error)^2; at least 2 for an R-hat above max_Rhat; and at
-# least 2 for a quantity whose diagnostics are not assessable, unless
-# allow_not_assessable. With n retained draws per chain, the extension is
+# (.bt_autofit_check(), run with fail_fast = FALSE, so that every selected
+# quantity is checked) and its criteria (NULL when not set). Over the
+# diagnostics that were computed, f is the largest required growth factor:
+# min_ESS / ESS, (error / max_error)^2 and (SD_error / max_SD_error)^2, and at
+# least 2 for an R-hat above max_Rhat. A diagnostic that is not assessable
+# adds nothing. With n retained draws per chain, the extension is
 # n * (f - 1) * 1.1 draws rounded up to a multiple of 100; then at most 2 n
 # rounded down to a multiple of 100; then at least 1000, which wins when 2 n is
 # smaller. The caller then applies the time cap (.bt_autofit_time_cap()) and
@@ -786,7 +816,7 @@ JAGS_check_convergence <- function(
 # minimum also yields; the size is a whole double, so that it stays
 # representable above the integer range until those caps apply.
 .bt_autofit_extension_size <- function(diagnostics, n, max_Rhat, min_ESS, max_error,
-                                       max_SD_error, allow_not_assessable = FALSE){
+                                       max_SD_error){
 
   rows <- nrow(diagnostics)
   criterion <- function(growth, threshold){
@@ -805,11 +835,7 @@ JAGS_check_convergence <- function(
   Rhat_failed <- if(is.null(max_Rhat)) rep(FALSE, rows) else
     !is.na(diagnostics[["Rhat"]]) & diagnostics[["Rhat"]] > max_Rhat
   growth <- pmax(others, ifelse(Rhat_failed, 2, -Inf))
-  not_assessable <- diagnostics[["state"]] == "not_assessable"
-  if(!allow_not_assessable){
-    growth[not_assessable] <- pmax(growth[not_assessable], 2)
-  }
-  checked <- diagnostics[["state"]] == "assessable" | not_assessable
+  checked <- diagnostics[["state"]] %in% c("assessable", "not_assessable")
   f <- max(c(1, growth[checked]))
 
   # n * (f - 1) * 1.1 rounded up to a multiple of 100; f - 1 is inexact (as
@@ -830,8 +856,7 @@ JAGS_check_convergence <- function(
     max_Rhat = autofit_control[["max_Rhat"]],
     min_ESS = autofit_control[["min_ESS"]],
     max_error = autofit_control[["max_error"]],
-    max_SD_error = autofit_control[["max_SD_error"]],
-    allow_not_assessable = autofit_control[["allow_not_assessable"]]
+    max_SD_error = autofit_control[["max_SD_error"]]
   )
 }
 
