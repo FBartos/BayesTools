@@ -175,6 +175,14 @@ NULL
   )
 }
 
+# The components of 'n' draws from a mixture with the given prior weights, in
+# the random-number stream of rng(): also the starting component of every
+# mixture's indicator in the JAGS initial values.
+.rng_mixture_components <- function(prior_weights, n){
+
+  sample(seq_along(prior_weights), size = n, replace = TRUE, prob = prior_weights)
+}
+
 # Raw factor coefficients take their dimension from the bound factor levels when
 # the prior itself leaves it unresolved ('K' is NA).
 .prior_factor_resolve_dimension <- function(prior){
@@ -236,8 +244,7 @@ rng.prior   <- function(x, n, ...){
 
   }else if(is.prior.mixture(prior)){
 
-    component_probabilities <- attr(prior, "prior_weights")
-    components              <- sample(seq_along(component_probabilities), size = n, replace = TRUE, prob = component_probabilities)
+    components <- .rng_mixture_components(attr(prior, "prior_weights"), n)
 
     if(sample_components)
       return(components)

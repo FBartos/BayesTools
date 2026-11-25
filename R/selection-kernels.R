@@ -331,7 +331,9 @@ phack_backend_constants <- function(form, source, destination, target = .025){
 #' p-hacking prior objects into active backend parameters. The returned object
 #' contains stable p/z geometry, JAGS prior/transform code, monitor names,
 #' initial values, and data constants. Set \code{include_init = FALSE} for
-#' deterministic metadata without drawing unused initial values.
+#' deterministic metadata without drawing unused initial values. The initial
+#' values of a mixture cover every branch, and its \code{bias_indicator}
+#' starts at a branch drawn from the prior weights.
 #'
 #' @param priors a selection prior, p-hacking prior, composed bias prior,
 #' \code{prior_none()}, \code{prior_mixture()}, or a list of those priors.

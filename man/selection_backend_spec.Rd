@@ -49,5 +49,7 @@ A list describing the compiled backend specification.
 p-hacking prior objects into active backend parameters. The returned object
 contains stable p/z geometry, JAGS prior/transform code, monitor names,
 initial values, and data constants. Set \code{include_init = FALSE} for
-deterministic metadata without drawing unused initial values.
+deterministic metadata without drawing unused initial values. The initial
+values of a mixture cover every branch, and its \code{bias_indicator}
+starts at a branch drawn from the prior weights.
 }

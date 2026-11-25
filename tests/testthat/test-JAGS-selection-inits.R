@@ -258,3 +258,88 @@ test_that("selection initial values name stochastic nodes of the matching length
   expect_false("omega_component_3" %in% names(inits))
   expect_true("log_omega_component_4" %in% names(inits))
 })
+
+selection_inits_label_mixture <- function(){
+
+  # the largest prior weight is on the last branch, which the earlier rule
+  # (the largest-weight branch) started every chain in
+  prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)), prior_weights = 2),
+    prior_phacking(form = "linear", prior_weights = 3)
+  ))
+}
+
+selection_inits_labels <- function(inits){
+
+  vapply(inits, function(chain_inits) chain_inits$bias_indicator, integer(1))
+}
+
+test_that("selection mixtures start in a branch drawn from the prior weights", {
+
+  mixture       <- selection_inits_label_mixture()
+  probabilities <- c(1, 2, 3) / 6
+
+  # One chain per seed. The label counts are multinomial: each proportion has
+  # standard error sqrt(p (1 - p) / n), and a bound of 4 standard errors is
+  # exceeded with probability 6e-5 per branch under the prior weights (the
+  # seeds are fixed, so the check is deterministic). The earlier rule gives
+  # the proportions (0, 0, 1), more than 40 standard errors away.
+  n <- 2000L
+  labels <- vapply(seq_len(n), function(seed){
+    JAGS_get_inits(list(bias = mixture), chains = 1, seed = seed)[[1L]]$bias_indicator
+  }, integer(1))
+  expect_true(all(labels %in% 1:3))
+  frequencies <- tabulate(labels, nbins = 3L) / n
+  expect_true(all(abs(frequencies - probabilities) < 4 * sqrt(probabilities * (1 - probabilities) / n)),
+              info = paste(round(frequencies, 3), collapse = ", "))
+
+  # the chains of one call draw their labels independently ...
+  inits <- JAGS_get_inits(list(bias = mixture), chains = 12, seed = 1)
+  expect_gt(length(unique(selection_inits_labels(inits))), 1L)
+  # ... reproducibly from the seed, and another seed draws other labels
+  expect_identical(JAGS_get_inits(list(bias = mixture), chains = 12, seed = 1), inits)
+  expect_false(identical(
+    selection_inits_labels(JAGS_get_inits(list(bias = mixture), chains = 12, seed = 2)),
+    selection_inits_labels(inits)
+  ))
+
+  # the draw stays inside the seeded scope: the caller's state is unchanged
+  set.seed(11)
+  caller_seed <- .Random.seed
+  JAGS_get_inits(list(bias = mixture), chains = 3, seed = 1)
+  expect_identical(.Random.seed, caller_seed)
+})
+
+test_that("only generated initial values draw the starting branch", {
+
+  mixture <- selection_inits_label_mixture()
+
+  # compiling the metadata does not touch the random-number state ...
+  set.seed(5)
+  initial_seed <- .Random.seed
+  metadata <- selection_backend_spec(mixture, include_init = FALSE)
+  expect_null(metadata$init)
+  expect_identical(.Random.seed, initial_seed)
+
+  # ... generating the initial values does, and covers every branch
+  complete <- selection_backend_spec(mixture)
+  expect_false(identical(.Random.seed, initial_seed))
+  expect_true(complete$init$bias_indicator %in% 1:3)
+  expect_setequal(names(complete$init), c("eta_component_2", "alpha_component_3", "bias_indicator"))
+})
+
+test_that("a single-branch selection prior has no starting branch to draw", {
+
+  selection <- prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)))
+  for(prior in list(selection, prior_phacking(form = "linear"), prior_bias(selection, prior_phacking(form = "linear")))){
+    set.seed(3)
+    single <- selection_backend_spec(prior_mixture(list(prior)))$init
+    single_seed <- .Random.seed
+    set.seed(3)
+    direct <- selection_backend_spec(prior)$init
+    expect_null(single$bias_indicator)
+    expect_identical(single, direct)
+    expect_identical(single_seed, .Random.seed)
+  }
+})
