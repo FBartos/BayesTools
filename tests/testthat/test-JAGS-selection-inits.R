@@ -343,3 +343,58 @@ test_that("a single-branch selection prior has no starting branch to draw", {
     expect_identical(single_seed, .Random.seed)
   }
 })
+
+selection_inits_odds_mixture <- function(weights){
+
+  prior_mixture(list(
+    prior_none(prior_weights = weights[1]),
+    prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)), prior_weights = weights[2]),
+    prior_phacking(form = "linear", prior_weights = weights[3])
+  ))
+}
+
+test_that("selection mixtures whose weights sum past the double maximum keep their odds", {
+
+  # The weights are odds: a common factor must not change the starting branch
+  # or the 'dcat()' prior. Three weights of 1e308 sum to Inf, by which sample()
+  # and JAGS normalize; such weights are divided by their largest element.
+  expect_identical(sum(rep(1e308, 3)), Inf)
+  unit  <- selection_inits_odds_mixture(c(1, 1, 1))
+  large <- selection_inits_odds_mixture(rep(1e308, 3))
+  for(seed in 1:20){
+    expect_identical(
+      JAGS_get_inits(list(bias = large), chains = 6, seed = seed),
+      JAGS_get_inits(list(bias = unit),  chains = 6, seed = seed)
+    )
+  }
+  # (the overflowing sum started every chain in the first branch)
+  expect_gt(length(unique(selection_inits_labels(JAGS_get_inits(list(bias = large), chains = 12, seed = 1)))), 1L)
+
+  # Odds 1:2:3 near the double maximum: their sum is finite at the factor 1e307
+  # (6e307) and overflows at 5e307 (3e308). One chain per seed, with the bound
+  # of 4 binomial standard errors of the test above.
+  probabilities <- c(1, 2, 3) / 6
+  n <- 2000L
+  for(factor in c(1e307, 5e307)){
+    mixture <- selection_inits_odds_mixture(c(1, 2, 3) * factor)
+    labels <- vapply(seq_len(n), function(seed){
+      JAGS_get_inits(list(bias = mixture), chains = 1, seed = seed)[[1L]]$bias_indicator
+    }, integer(1))
+    frequencies <- tabulate(labels, nbins = 3L) / n
+    expect_true(all(abs(frequencies - probabilities) < 4 * sqrt(probabilities * (1 - probabilities) / n)),
+                info = paste0(factor, ": ", paste(round(frequencies, 3), collapse = ", ")))
+  }
+
+  # the emitted weights are finite, with a finite sum and the same odds ...
+  dcat_line <- function(spec) grep("dcat(", strsplit(spec$prior_code, "\n", fixed = TRUE)[[1L]], value = TRUE, fixed = TRUE)
+  spec <- selection_backend_spec(large, include_init = FALSE)
+  expect_identical(spec$prior_weights, c(1, 1, 1))
+  expect_identical(dcat_line(spec), "bias_indicator ~ dcat(c(1, 1, 1))")
+  spec <- selection_backend_spec(selection_inits_odds_mixture(c(1, 2, 3) * 5e307), include_init = FALSE)
+  expect_true(all(is.finite(spec$prior_weights)) && is.finite(sum(spec$prior_weights)))
+  expect_equal(spec$prior_weights, c(1, 2, 3) / 3, tolerance = 1e-15)
+  # ... and weights with a finite sum are emitted as they are
+  spec <- selection_backend_spec(selection_inits_odds_mixture(c(1, 2, 3) * 1e307), include_init = FALSE)
+  expect_identical(spec$prior_weights, c(1, 2, 3) * 1e307)
+  expect_identical(dcat_line(spec), "bias_indicator ~ dcat(c(1e+307, 2e+307, 3e+307))")
+})

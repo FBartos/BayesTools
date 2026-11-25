@@ -175,12 +175,26 @@ NULL
   )
 }
 
+# Mixture weights are odds, which a common factor does not change. R's
+# sample() and JAGS's dcat() normalize them by their sum, which overflows for
+# finite weights near the double maximum (three weights of 1e308): such weights
+# are divided by their largest element. Any other weights are returned
+# unchanged, so the draws and the model syntax of ordinary weights are kept.
+.mixture_weights_finite_sum <- function(prior_weights){
+
+  if(is.finite(sum(prior_weights))){
+    return(prior_weights)
+  }
+  prior_weights / max(prior_weights)
+}
+
 # The components of 'n' draws from a mixture with the given prior weights, in
 # the random-number stream of rng(): also the starting component of every
 # mixture's indicator in the JAGS initial values.
 .rng_mixture_components <- function(prior_weights, n){
 
-  sample(seq_along(prior_weights), size = n, replace = TRUE, prob = prior_weights)
+  sample(seq_along(prior_weights), size = n, replace = TRUE,
+         prob = .mixture_weights_finite_sum(prior_weights))
 }
 
 # Raw factor coefficients take their dimension from the bound factor levels when

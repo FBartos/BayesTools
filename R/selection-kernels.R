@@ -408,7 +408,9 @@ selection_backend_spec <- function(priors,
   breaks <- omega_spec$global_cuts
   n_bins <- omega_spec$n_bins
 
-  prior_weights <- .selection_backend_prior_weights(branches)
+  # the weights of the 'dcat()' prior and of the starting branch, with a sum
+  # that does not overflow
+  prior_weights <- .mixture_weights_finite_sum(.selection_backend_prior_weights(branches))
   uses_indicator <- length(branches) > 1L
 
   prior_code <- character()

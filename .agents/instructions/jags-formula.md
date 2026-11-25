@@ -173,7 +173,10 @@ path that seeds JAGS chains uses these helpers; never derive seeds as
 Seeded functions restore the caller's `.Random.seed` and `RNGkind()`.
 Every mixture, selection and p-hacking bias mixtures included, initializes all
 components and draws its starting component from its prior weights
-(`.rng_mixture_components()`) inside this seeded scope.
+(`.rng_mixture_components()`) inside this seeded scope. Weights whose sum
+overflows are divided by their largest element in these draws and in the
+emitted `dcat()` priors (`.mixture_weights_finite_sum()`); other weights are
+used as they are.
 `JAGS_extend()` has no seed: it continues the stored generator state of every
 chain, and no extension replays the streams of the fit.
 

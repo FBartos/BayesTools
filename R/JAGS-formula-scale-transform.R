@@ -624,7 +624,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
       variable
     )
   }else if(is.prior.mixture(prior)){
-    prior_weights <- attr(prior, "prior_weights")
+    prior_weights <- .mixture_weights_finite_sum(attr(prior, "prior_weights"))
     prior_weights <- prior_weights / sum(prior_weights)
     components <- sample(seq_along(prior_weights), size = n_samples, replace = TRUE, prob = prior_weights)
     samples <- matrix(NA_real_, nrow = n_samples, ncol = K)

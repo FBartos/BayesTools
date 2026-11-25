@@ -951,6 +951,59 @@ test_that("rng() mixture returns component indicators", {
   expect_length(components, 10)
 })
 
+test_that("mixture weights whose sum overflows keep their odds", {
+
+  # Three weights of 1e308 sum to Inf, by which sample() and JAGS's dcat()
+  # normalize; such weights are divided by their largest element, and weights
+  # with a finite sum are left as they are.
+  expect_identical(.mixture_weights_finite_sum(rep(1e308, 3)), c(1, 1, 1))
+  expect_equal(.mixture_weights_finite_sum(c(1, 2, 3) * 5e307), c(1, 2, 3) / 3, tolerance = 1e-15)
+  expect_identical(.mixture_weights_finite_sum(c(1, 2, 3) * 1e307), c(1, 2, 3) * 1e307)
+
+  normal_mixture <- function(weight) prior_mixture(list(
+    prior("normal", list(0, 1), prior_weights = weight),
+    prior("normal", list(1, 1), prior_weights = weight),
+    prior("normal", list(2, 1), prior_weights = weight)
+  ))
+  bias_mixture <- function(weight) prior_mixture(list(
+    prior_none(prior_weights = weight),
+    prior_PET("normal", list(0, 1), prior_weights = weight),
+    prior_PEESE("normal", list(0, 1), prior_weights = weight)
+  ))
+  factor_mixture <- function(weight) prior_factor_levels(prior_mixture(list(
+    prior_factor("mnormal", list(0, 1), contrast = "orthonormal", prior_weights = weight),
+    prior_factor("mnormal", list(0, 3), contrast = "orthonormal", prior_weights = weight)
+  )), 3)
+  dcat_line <- function(syntax){
+    lines <- trimws(strsplit(syntax, "\n", fixed = TRUE)[[1L]])
+    lines[grepl("dcat(", lines, fixed = TRUE)]
+  }
+
+  # rng() components and the starting components of the initial values are
+  # those of unit weights (the overflowing sum always gave the first component)
+  set.seed(1)
+  unit_components <- rng(normal_mixture(1), 300, sample_components = TRUE)
+  set.seed(1)
+  expect_identical(rng(normal_mixture(1e308), 300, sample_components = TRUE), unit_components)
+  expect_identical(JAGS_get_inits(list(mu = normal_mixture(1e308)), chains = 12, seed = 1),
+                   JAGS_get_inits(list(mu = normal_mixture(1)), chains = 12, seed = 1))
+  expect_identical(JAGS_get_inits(list(bias = bias_mixture(1e308)), chains = 12, seed = 1),
+                   JAGS_get_inits(list(bias = bias_mixture(1)), chains = 12, seed = 1))
+
+  # the categorical priors in the model syntax are finite
+  expect_identical(dcat_line(JAGS_add_priors("model{}", list(mu = normal_mixture(1e308)))),
+                   "mu_indicator ~ dcat(c(1, 1, 1))")
+  expect_identical(dcat_line(JAGS_add_priors("model{}", list(bias = bias_mixture(1e308)))),
+                   "bias_indicator ~ dcat(c(1, 1, 1))")
+
+  # the prior draws of a factor mixture (formula scale transformations) are
+  # those of unit weights; the overflowing sum stopped sample()
+  expect_identical(
+    .generate_prior_sample_matrix(list(f = factor_mixture(1e308)), 200L, seed = 1),
+    .generate_prior_sample_matrix(list(f = factor_mixture(1)), 200L, seed = 1)
+  )
+})
+
 
 test_that("rng() factor_mixture with transform_factor_samples", {
   p_mix <- prior_mixture(
