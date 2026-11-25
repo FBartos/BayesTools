@@ -249,8 +249,9 @@ half-chain constant at different values, `Inf`; varying half-chains with
 equal means, 1. No assessable quantity records
 `not_assessable` and neither extends nor warns. An error of the check itself
 is not retried as a sampler failure. Only the kept attempt signals
-`BayesTools_burnin_not_converged` (whatever `silent` is) and stores it once in
-the fit's warnings. `attr(fit, "burnin_check")` records the check, and
+`BayesTools_burnin_not_converged` (whatever `silent` is), after its initial
+sampling has finished and before any automatic extension (so that a discarded
+restart attempt warns nothing), and stores it once in the fit's warnings. `attr(fit, "burnin_check")` records the check, and
 `fit$burnin` and the public iteration numbers count the extension sweeps. A
 passing check leaves the draws, end states, samplers and warnings identical
 to the check off unless a monitored node has no observed descendants: JAGS

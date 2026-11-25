@@ -142,10 +142,12 @@
 #'   \code{burnin_extend} iterations, each checked alone, until they are
 #'   ready, \code{burnin_max_extend} blocks were added, or \code{max_time} is
 #'   exceeded (checked before each block); a fit without \code{autofit} keeps
-#'   its burn-in. Chains that are still not ready start sampling with a
-#'   warning of class \code{BayesTools_burnin_not_converged} (also
-#'   \code{BayesTools_fit_diagnostic}), issued whatever \code{silent} is and
-#'   kept in the fit's \code{warnings} attribute. When no monitored node lacks
+#'   its burn-in. Chains that are still not ready start sampling; a warning
+#'   of class \code{BayesTools_burnin_not_converged} (also
+#'   \code{BayesTools_fit_diagnostic}) is issued once that initial sampling
+#'   of the attempt the fit keeps has finished (a restart attempt that is
+#'   discarded warns nothing), before any automatic extension, whatever
+#'   \code{silent} is, and kept in the fit's \code{warnings} attribute. When no monitored node lacks
 #'   observed descendants, a fit whose chains are ready at once has the same
 #'   draws, final states and samplers as with the check off: monitoring changes
 #'   no sampler, but JAGS samples a monitored node without observed

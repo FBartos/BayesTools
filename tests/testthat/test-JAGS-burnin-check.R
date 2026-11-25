@@ -366,6 +366,7 @@ test_that("the readiness settings default when omitted and validate when given",
   state$sweeps <- numeric()
   state$batches <- 0L
   state$block_index <- 0L
+  state$events <- character()
   next_block <- function(){
     state$block_index <- state$block_index + 1L
     blocks[[min(state$block_index, length(blocks))]]
@@ -384,6 +385,7 @@ test_that("the readiness settings default when omitted and validate when given",
   }
   batch <- function(sample, thin){
     state$batches <- state$batches + 1L
+    state$events <- c(state$events, "sampling")
     if(state$batches <= fail_batches) stop("sampling exploded", call. = FALSE)
     sampled(sample, thin)
   }
@@ -397,10 +399,12 @@ test_that("the readiness settings default when omitted and validate when given",
         block = block, prepare = prepare)
       if(!prepare) return(batch(sample, thin))
       session$model <- "compiled"
+      if(block > 0L) state$events <- c(state$events, "block")
       if(block > 0L) next_block() else NULL
     },
     .bt_rjags_burnin_block = function(sweeps, monitor, progress, session){
       state$sweeps <- c(state$sweeps, sweeps)
+      state$events <- c(state$events, "block")
       next_block()
     },
     .bt_rjags_batch = function(sample, monitor, thin, ...) batch(sample, thin),
@@ -509,6 +513,31 @@ test_that("chains that disagree without autofit sample after one warning", {
     tryCatch(BayesTools:::.bt_burnin_warn(record), warning = identity),
     "BayesTools_fit_diagnostic"
   ))
+})
+
+test_that("the readiness warning follows the kept attempt's sampling and precedes automatic extensions", {
+
+  warned <- function(expr, state){
+    withCallingHandlers(expr, BayesTools_burnin_not_converged = function(w){
+      state$events <- c(state$events, "warning")
+      invokeRestart("muffleWarning")
+    })
+  }
+  set.seed(8)
+  state <- .readiness_backend(list(.readiness_chains(shift = 10)))
+  warned(.readiness_fit(), state)
+  expect_identical(state$events, c("block", "sampling", "warning"))
+
+  # with autofit: the extensions of burn-in, the sampling, the warning, then
+  # the automatic extension after sampling
+  state <- .readiness_backend(list(.readiness_chains(shift = 10)))
+  warned(.readiness_fit(autofit = TRUE, burnin_max_extend = 1, min_ESS = 1e6, max_extend = 1), state)
+  expect_identical(state$events, c("block", "block", "sampling", "warning", "sampling"))
+
+  # a failed attempt that is restarted warns nothing
+  state <- .readiness_backend(list(.readiness_chains(shift = 10)), fail_batches = 1L)
+  warned(.readiness_fit(restarts = 2), state)
+  expect_identical(state$events, c("block", "sampling", "block", "sampling", "warning"))
 })
 
 test_that("autofit extends burn-in in blocks and the iteration numbers count them", {
