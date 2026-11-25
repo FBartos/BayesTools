@@ -6795,6 +6795,35 @@ test_that("a monitored predictive node changes the stream of a passing check, no
   expect_lt(abs(stats::var(draws[, "ypred"]) - (1 + 1 / 11)), 4 * (1 + 1 / 11) * sqrt(2 / n))
 })
 
+test_that("a requested indicator state that first appears after burn-in does not stop the fit", {
+
+  skip_on_cran()
+  # the third component has a prior weight of 0.004: with this seed no chain
+  # visits it in the checked block of burn-in, but the retained draws do
+  fit_with <- function(check){
+    JAGS_fit("model{ y ~ dnorm(mu, 1) }", data = list(y = 0),
+      prior_list = list(mu = prior_mixture(list(
+        prior("normal", list(0, 1), prior_weights = 0.498),
+        prior("normal", list(0, 1), prior_weights = 0.498),
+        prior("normal", list(0, 1), prior_weights = 0.004)
+      ))), chains = 2L, adapt = 100L, burnin = 100L, sample = 2000L, seed = 11L, autofit = TRUE,
+      autofit_control = .readiness_control(max_Rhat = NULL, min_ESS = NULL, max_error = NULL,
+        max_SD_error = NULL, sample_extend = 100, max_extend = 1, monitor = "mu_indicator (state 3)",
+        burnin_max_Rhat = if(check) 1.5))
+  }
+  on  <- fit_with(TRUE)
+  off <- fit_with(FALSE)
+  expect_s3_class(on, "BayesTools_fit")
+  record <- attr(on, "burnin_check")
+  expect_identical(record[c("status", "stop_reason", "extension")],
+    list(status = "not_assessable", stop_reason = "not_assessable", extension = 0))
+  states <- unlist(lapply(on$mcmc, function(chain) chain[, "mu_indicator"]))
+  expect_gt(sum(states == 3), 0)
+  expect_identical(on$mcmc, off$mcmc)
+  expect_true(JAGS_check_convergence(on, monitor = "mu_indicator (state 3)", max_Rhat = NULL,
+    min_ESS = NULL, max_error = NULL, max_SD_error = NULL))
+})
+
 test_that("chains in separated modes warn without autofit and extend burn-in up to the cap with it", {
 
   skip_on_cran()

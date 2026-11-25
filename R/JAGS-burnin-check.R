@@ -52,16 +52,78 @@
     add_parameters = NULL,
     monitor = monitor
   )
-  metadata <- prepared$targets$metadata
+  targets  <- .bt_burnin_requested_states(prepared, monitor, prior_list)
+  metadata <- targets$metadata
   selected <- .bt_convergence_select(metadata, monitor, check_indicators)
   rows <- which(metadata$parameter %in% selected & metadata$role != "structural")
   chain_lengths <- vapply(prepared$mcmc_samples_list, NROW, integer(1))
   chain_id <- rep.int(seq_along(chain_lengths), chain_lengths)
   values <- vapply(rows, function(row){
-    .bt_burnin_split_Rhat(prepared$targets$samples[[row]], chain_id, length(chain_lengths))
+    .bt_burnin_split_Rhat(targets$samples[[row]], chain_id, length(chain_lengths))
   }, numeric(1))
   names(values) <- metadata$parameter[rows]
   values[!is.na(values)]
+}
+
+# The convergence targets of a block name an indicator's states by the states
+# that the block visits (with two visited states, the occupancy carries the
+# indicator's own name). A state-specific 'monitor' element such as
+# "mu_indicator (state 3)" names a categorical indicator and one of its
+# declared states whatever the block visits: a requested state without its
+# own target is added as its occupancy in the block, which is constant (not
+# assessable) when the block never visits it. A selector that names no
+# categorical indicator or a state it cannot take is left to fail in the
+# selection, as in the convergence check.
+.bt_burnin_requested_states <- function(prepared, monitor, prior_list){
+
+  targets   <- prepared$targets
+  requested <- setdiff(unique(monitor), targets$metadata$parameter)
+  if(length(requested) == 0L){
+    return(targets)
+  }
+  draws <- do.call(rbind, prepared$mcmc_samples_list)
+  declared <- .bt_burnin_indicator_states(prior_list)
+  for(indicator in names(declared)){
+    states <- declared[[indicator]]
+    labels <- paste0(indicator, " (state ", states, ")")
+    if(!any(labels %in% requested) || !indicator %in% colnames(draws) ||
+       !any(targets$metadata$source == indicator & targets$metadata$role == "indicator")){
+      next
+    }
+    for(i in which(labels %in% requested)){
+      targets$samples[[length(targets$samples) + 1L]] <- as.numeric(draws[, indicator] == states[[i]])
+      targets$metadata <- rbind(targets$metadata, data.frame(
+        parameter = labels[[i]], source = indicator, role = "indicator", stringsAsFactors = FALSE))
+    }
+  }
+  targets
+}
+
+# The declared states of the categorical model indicators, by indicator node:
+# the component indicator of a mixture of three or more components (dcat over
+# the components; the indicator of a mixture total of an ordered prior
+# included). Binary indicators have no state-specific targets.
+.bt_burnin_indicator_states <- function(prior_list){
+
+  states <- list()
+  add <- function(parameter, prior){
+    if(is.prior.factor(prior) && is.prior.ordered(prior)){
+      return(add(.prior_ordered_total_name(parameter), prior$total))
+    }
+    if(!is.prior.mixture(prior) || is.prior.spike_and_slab(prior) || length(prior) < 3L){
+      return(NULL)
+    }
+    indicator <- if(inherits(prior, "prior.bias_mixture")) "bias_indicator" else paste0(parameter, "_indicator")
+    states[[indicator]] <<- seq_along(prior)
+    NULL
+  }
+  parameters <- names(prior_list)
+  for(i in seq_along(parameters)){
+    if(!is.na(parameters[[i]]) && nzchar(parameters[[i]])){
+      add(parameters[[i]], prior_list[[i]])
+    }
+  }
+  states
 }
 
 # The check and its extensions. 'first' holds the draws of the last 'block'

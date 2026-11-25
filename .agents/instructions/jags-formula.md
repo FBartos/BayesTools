@@ -230,7 +230,11 @@ keeps its workers' models after sampling. After a failure of a staged
 parallel run the coordinator releases the workers' models unless the
 connection failed. The statistic is the split-chain Gelman-Rubin point
 estimate over `2 x chains` half-chains for the selection of
-`.bt_convergence_select()` (indicators as state occupancies), with the
+`.bt_convergence_select()` (indicators as state occupancies; a requested
+state of a categorical indicator is resolved against its declared states,
+not the states the block visits, and an unvisited one is constant and not
+assessable, while a selector naming no indicator or an impossible state stays
+a terminal error), with the
 degenerate cases decided before coda: all values equal or not finite, not
 assessed; every half-chain constant at different values, `Inf`; varying
 half-chains with equal means, 1. No assessable quantity records

@@ -132,6 +132,51 @@ test_that("a block is assessed on the selection of the convergence check", {
   expect_length(assess(monitor = NULL, check_indicators = FALSE), 0L)
 })
 
+test_that("a requested indicator state is resolved whatever states the block visits", {
+
+  set.seed(6)
+  priors <- list(
+    mu    = prior_mixture(list(prior("normal", list(0, 1)), prior("normal", list(1, 1)), prior("normal", list(2, 1)))),
+    theta = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(1, 1)))
+  )
+  chain <- function(states){
+    cbind(mu = stats::rnorm(200), mu_indicator = rep(states, length.out = 200), theta = stats::rnorm(200),
+      theta_indicator = rep(0:1, length.out = 200), theta_inclusion = stats::runif(200))
+  }
+  # the block visits states 1 and 2 only: its occupancy target carries the
+  # indicator's own name
+  chains <- list(chain(1:2), chain(c(2, 1, 1)), chain(c(1, 2, 2, 2)))
+  input <- .burnin_block(chains, priors)
+  assess <- function(monitor){
+    BayesTools:::.bt_burnin_block_Rhat(input$block, input$coordinates, priors, monitor, FALSE)
+  }
+  occupancy_rhat <- function(state){
+    unname(.burnin_rhat(lapply(chains, function(chain) as.numeric(chain[, "mu_indicator"] == state))))
+  }
+  expect_identical(names(assess("mu_indicator")), "mu_indicator")
+
+  # a declared state that the block has not visited has a constant occupancy:
+  # not assessable, not an error
+  expect_length(assess("mu_indicator (state 3)"), 0L)
+  expect_identical(assess("mu_indicator (state 2)"), c("mu_indicator (state 2)" = occupancy_rhat(2)))
+  several <- assess(c("mu_indicator (state 1)", "mu_indicator (state 3)", "mu"))
+  expect_setequal(names(several), c("mu", "mu_indicator (state 1)"))
+  expect_identical(several[["mu_indicator (state 1)"]], occupancy_rhat(1))
+  expect_identical(several[["mu"]], unname(.burnin_rhat(lapply(chains, function(chain) chain[, "mu"]))))
+
+  # a selector that names no categorical indicator or a state it cannot take
+  for(monitor in c("mu_indicator (state 4)", "mu_indicator (state 0)", "mu_indicator (state 1.5)",
+                   "nu_indicator (state 1)", "theta_indicator (state 1)")){
+    expect_error(assess(monitor), class = "BayesTools_parameter_not_found", info = monitor)
+  }
+
+  # a block that visits every state keeps the targets of the convergence check
+  chains <- list(chain(1:3), chain(c(3, 1, 2)), chain(c(1, 2, 3, 3)))
+  input <- .burnin_block(chains, priors)
+  expect_identical(assess("mu_indicator (state 3)"), c("mu_indicator (state 3)" = occupancy_rhat(3)))
+  expect_setequal(names(assess("mu_indicator")), paste0("mu_indicator (state ", 1:3, ")"))
+})
+
 # The extension loop with scripted assessments.
 .burnin_loop <- function(values, autofit = TRUE, max_extensions = 10, time_exceeded = function() FALSE){
 
