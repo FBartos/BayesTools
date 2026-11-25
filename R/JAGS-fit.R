@@ -39,7 +39,11 @@
 #' Each chain runs \code{sample * thin} sampling iterations.
 #' @param thin thinning interval for the MCMC samples, defaults to \code{1}
 #' @param autofit whether the models should be refitted until convergence criteria
-#' specified in \code{autofit_control}. Defaults to \code{FALSE}.
+#' specified in \code{autofit_control}. Automatic fitting stops once every
+#' requested quantity whose diagnostics can be assessed meets the criteria,
+#' also when the diagnostics of others are not assessable (see
+#' \code{allow_not_assessable}), or at \code{max_time} or \code{max_extend}.
+#' Defaults to \code{FALSE}.
 #' @param autofit_control a list of arguments controlling the autofit function.
 #' Convergence thresholds and \code{max_time$time} must be finite and non-missing.
 #' Set a convergence threshold or \code{max_time} to \code{NULL} to disable that check.
@@ -64,9 +68,8 @@
 #'   parameter: with \code{n} retained draws per chain and \code{f} the largest
 #'   required growth over the parameters (\code{min_ESS / ESS},
 #'   \code{(error / max_error)^2}, and \code{(SD_error / max_SD_error)^2} for
-#'   the criteria that are set; at least \code{2} for an R-hat above
-#'   \code{max_Rhat}, and for a parameter whose diagnostics are not assessable
-#'   unless \code{allow_not_assessable}), the
+#'   the criteria that are set, and at least \code{2} for an R-hat above
+#'   \code{max_Rhat}; diagnostics that are not assessable add nothing), the
 #'   extension is \code{n * (f - 1) * 1.1} draws per chain rounded up to a
 #'   multiple of 100, then at most \code{2 * n} rounded down to a multiple of
 #'   100, then at least 1000 (the minimum wins when \code{2 * n} is smaller),
@@ -82,8 +85,8 @@
 #'   is sized from the check of the supplied fit and, with no rate observed
 #'   yet, is not shortened. Without \code{max_time}, each extension of a fit
 #'   that cannot converge multiplies the draws per chain by about 2.1 (a
-#'   failed R-hat or a parameter whose diagnostics are not assessable) and up
-#'   to 3 (large ESS or error deficits), up to \code{max_extend}.}
+#'   failed R-hat) and up to 3 (large ESS or error deficits), up to
+#'   \code{max_extend}.}
 #'   \item{restarts}{maximum number of fitting attempts when the model fails
 #'   to initialize; every failed attempt but the last is retried with new
 #'   initial values (\code{restarts = 1} fits once, without a retry). A
@@ -111,7 +114,13 @@
 #'   every fitted coordinate is stored in the \code{convergence_role} column
 #'   of [parameter_coordinates()].}
 #'   \item{allow_not_assessable}{whether undefined diagnostics for requested
-#'   sampled parameters may be ignored. Defaults to \code{FALSE}.}
+#'   sampled parameters may be ignored by [JAGS_check_convergence()]. Defaults
+#'   to \code{FALSE}. More draws do not make them assessable, so automatic
+#'   fitting never extends a fit for them, whatever this setting: it stops
+#'   when every quantity that can be assessed meets the criteria, and a fit in
+#'   which nothing can be assessed stops after its initial sampling (in
+#'   \code{JAGS_extend()}, after its first extension). Check the returned fit
+#'   with [JAGS_check_convergence()] to report them.}
 #' }
 #' @param parallel whether to distribute chains over PSOCK worker processes.
 #' Defaults to \code{FALSE}, which runs all chains in the calling process.
@@ -383,7 +392,11 @@
 #' \code{JAGS_extend()} rebuilds the sampler from the stored states, adapts
 #' it for \code{adapt} iterations when needed, then appends draws without
 #' further burn-in. A saved and reloaded fit extends from the same state.
-#' Within one call, automatic extensions continue the serial sampler. JASP fits
+#' Its extensions continue, as automatic fitting in \code{JAGS_fit()}, until
+#' every quantity whose diagnostics can be assessed meets the criteria of
+#' \code{autofit_control} after an extension, or until \code{max_time} or
+#' \code{max_extend} stops them. Within one call, automatic extensions
+#' continue the serial sampler. JASP fits
 #' also keep parallel worker samplers through progress updates and automatic
 #' extensions. Other parallel fits rebuild at each extension. The returned fit stores
 #' ordinary R data and can be serialized with \code{saveRDS()}.
@@ -905,24 +918,13 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       }
       convergence_coordinates
     }
-    # sample_extend = "auto" sizes each extension from the diagnostics of the
-    # failed check, which then assesses every selected quantity
+    # Fitting stops once every assessable quantity meets the criteria, also
+    # when others are not assessable (.bt_autofit_check()). sample_extend =
+    # "auto" sizes each extension from the diagnostics of the failed check,
+    # which then assesses every selected quantity.
     auto_extend <- identical(autofit_control[["sample_extend"]], "auto")
     autofit_converged <- function(fit){
-      convergence_fit <- fit
-      attr(convergence_fit, "prior_list") <- prior_list
-      .bt_check_convergence(
-        fit = convergence_fit,
-        coordinates = autofit_coordinates(fit),
-        max_Rhat = autofit_control[["max_Rhat"]],
-        min_ESS = autofit_control[["min_ESS"]],
-        max_error = autofit_control[["max_error"]],
-        max_SD_error = autofit_control[["max_SD_error"]],
-        fail_fast = !auto_extend,
-        check_indicators = autofit_control[["check_indicators"]],
-        monitor = autofit_control[["monitor"]],
-        allow_not_assessable = autofit_control[["allow_not_assessable"]]
-      )
+      .bt_autofit_check(fit, autofit_coordinates(fit), prior_list, autofit_control)
     }
     converged <- autofit_converged(fit)
     itteration <- 1
@@ -1388,25 +1390,14 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   last_valid_capture_warnings <- character()
   captured_after_success <- FALSE
   reports <- .bt_runtime_reports_empty()
+  # After each extension, fitting stops once every assessable quantity meets
+  # the criteria, also when others are not assessable (.bt_autofit_check()).
   # sample_extend = "auto" sizes each extension when the loop is about to run
   # it, from the diagnostics of the last failed check (assessing every
   # selected quantity); the first one from a check of the supplied fit
   auto_extend <- identical(autofit_control[["sample_extend"]], "auto")
   extend_converged <- function(fit, max_Rhat = autofit_control[["max_Rhat"]]){
-    convergence_fit <- fit
-    attr(convergence_fit, "prior_list") <- prior_list
-    .bt_check_convergence(
-      fit = convergence_fit,
-      coordinates = coordinates,
-      max_Rhat = max_Rhat,
-      min_ESS = autofit_control[["min_ESS"]],
-      max_error = autofit_control[["max_error"]],
-      max_SD_error = autofit_control[["max_SD_error"]],
-      fail_fast = !auto_extend,
-      check_indicators = autofit_control[["check_indicators"]],
-      monitor = autofit_control[["monitor"]],
-      allow_not_assessable = autofit_control[["allow_not_assessable"]]
-    )
+    .bt_autofit_check(fit, coordinates, prior_list, autofit_control, max_Rhat = max_Rhat)
   }
   failed_check <- NULL
 

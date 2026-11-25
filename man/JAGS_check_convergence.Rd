@@ -85,7 +85,10 @@ when it is infinite or zero: chains that are each constant but at different
 values give an R-hat of \code{Inf} and an ESS of 0, which fail
 \code{max_Rhat} and \code{min_ESS} whatever this argument is. Their MCMC
 error (the standard error SD / sqrt(ESS) of an ESS of 0) is \code{Inf}, so
-\code{max_error} and \code{max_SD_error} fail as well.}
+\code{max_error} and \code{max_SD_error} fail as well. Automatic fitting in
+\code{\link[=JAGS_fit]{JAGS_fit()}} and \code{\link[=JAGS_extend]{JAGS_extend()}} does not extend a fit for diagnostics that
+are not assessable, whatever this argument: it stops once every assessable
+diagnostic satisfies the criteria.}
 }
 \value{
 \code{JAGS_check_convergence} returns a boolean indicating whether
