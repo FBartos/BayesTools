@@ -86,8 +86,7 @@ test_that("JAGS autofit settings reject missing and non-finite controls", {
     restarts = 10,
     max_extend = 10,
     check_indicators = FALSE,
-    monitor = c("mu", "sigma"),
-    allow_not_assessable = FALSE
+    monitor = c("mu", "sigma")
   )
   invalid <- list(
     max_Rhat = Inf,
@@ -99,8 +98,7 @@ test_that("JAGS autofit settings reject missing and non-finite controls", {
     restarts = NA_real_,
     max_extend = Inf,
     check_indicators = NA,
-    monitor = NA_character_,
-    allow_not_assessable = NA
+    monitor = NA_character_
   )
 
   expect_silent(JAGS_check_and_list_autofit_settings(valid))
@@ -878,14 +876,44 @@ test_that("JAGS_extend forwards explicit convergence monitor policy", {
   )
 
   # the check of automatic fitting ignores diagnostics that are not
-  # assessable, whatever allow_not_assessable says: they do not extend a fit
+  # assessable: they do not extend a fit
+  control <- .jags_extend_test_control()
+  control$monitor <- "mu"
+  expect_silent(JAGS_extend(fit, autofit_control = control))
+  expect_identical(convergence_arguments$monitor, "mu")
+  expect_true(convergence_arguments$allow_not_assessable)
+})
+
+test_that("autofit_control no longer accepts allow_not_assessable", {
+
+  # removed after 0.4.0, without a deprecation: automatic fitting never
+  # extends a fit for diagnostics that are not assessable, and
+  # JAGS_check_convergence() keeps the argument
+  expect_false("allow_not_assessable" %in% names(formals(JAGS_fit)$autofit_control))
+  expect_false("allow_not_assessable" %in% names(formals(JAGS_extend)$autofit_control))
+  expect_identical(formals(JAGS_check_convergence)$allow_not_assessable, FALSE)
+  expect_false("allow_not_assessable" %in% names(JAGS_check_and_list_autofit_settings(list(sample_extend = 1000))))
+
+  message <- "The 'allow_not_assessable' objects are not recognized by the 'autofit_control' argument."
   for(allow in c(FALSE, TRUE)){
+    expect_error(
+      JAGS_check_and_list_autofit_settings(list(allow_not_assessable = allow)),
+      message, fixed = TRUE
+    )
+    expect_error(
+      JAGS_fit(
+        model_syntax = "model{ mu ~ dnorm(0, 1) }", data = list(),
+        prior_list = list(mu = prior("normal", list(0, 1))),
+        autofit_control = list(allow_not_assessable = allow)
+      ),
+      message, fixed = TRUE
+    )
     control <- .jags_extend_test_control()
-    control$monitor <- "mu"
     control$allow_not_assessable <- allow
-    expect_silent(JAGS_extend(fit, autofit_control = control))
-    expect_identical(convergence_arguments$monitor, "mu")
-    expect_true(convergence_arguments$allow_not_assessable)
+    expect_error(
+      JAGS_extend(.jags_extend_test_fit(), autofit_control = control),
+      message, fixed = TRUE
+    )
   }
 })
 
@@ -2174,18 +2202,16 @@ test_that("JAGS_fit sizes automatic extensions from each failed check", {
 test_that("automatic fitting extends only for quantities that can be assessed", {
 
   fit_with <- .autofit_size_test_fitter()
-  allowed <- function(control) c(control, list(allow_not_assessable = TRUE))
   extensions <- function(fit) nrow(attr(fit, "adaptation")$extensions)
 
   # JAGS_fit(): 'mu' meets min_ESS with the initial 12500 draws (ESS 500) and
   # 'theta' is not assessable: the fitting stops after the initial sampling
-  # with either step and either allow_not_assessable, after one check that
-  # ignores 'theta', and without a stop warning
-  for(control in list(.autofit_size_test_control(), .autofit_size_test_control(sample_extend = 1000),
-                      allowed(.autofit_size_test_control()))){
+  # with either step, after one check that ignores 'theta', and without a
+  # stop warning
+  for(control in list(.autofit_size_test_control(), .autofit_size_test_control(sample_extend = 1000))){
     backend <- .autofit_size_test_backend(not_assessable = TRUE)
     fit <- fit_with(control, sample = 12500)
-    info <- paste(control$sample_extend, isTRUE(control$allow_not_assessable))
+    info <- paste(control$sample_extend)
     expect_length(backend$samples, 0L)
     expect_identical(vapply(backend$checks, `[[`, logical(1), "allow_not_assessable"), TRUE, info = info)
     expect_identical(nrow(fit$mcmc[[1L]]), 12500L, info = info)
@@ -2335,22 +2361,21 @@ test_that("an automatic fit stops at once when only a component that no chain vi
     ))
   )
   max_time <- list(time = 30, unit = "secs")
-  fit_with <- function(sample_extend, allow_not_assessable){
+  fit_with <- function(sample_extend){
     JAGS_fit("model{ for(i in 1:N){ y[i] ~ dnorm(mu + theta, 1) } }", data = data,
       prior_list = prior_list, chains = 2, adapt = 100, burnin = 100, sample = 1000,
       seed = 1, silent = TRUE, autofit = TRUE, autofit_control = list(max_Rhat = 1.05,
         min_ESS = 500, max_error = NULL, max_SD_error = NULL, max_time = max_time,
-        sample_extend = sample_extend, max_extend = NULL,
-        allow_not_assessable = allow_not_assessable))
+        sample_extend = sample_extend, max_extend = NULL))
   }
   check <- function(fit, allow_not_assessable){
     JAGS_check_convergence(fit, max_Rhat = 1.05, min_ESS = 500, max_error = NULL,
       max_SD_error = NULL, allow_not_assessable = allow_not_assessable)
   }
-  for(setting in list(list("auto", FALSE), list(1000, FALSE), list("auto", TRUE))){
-    info <- paste(setting, collapse = " ")
+  for(sample_extend in list("auto", 1000)){
+    info <- paste(sample_extend)
     start <- Sys.time()
-    fit <- fit_with(setting[[1L]], allow_not_assessable = setting[[2L]])
+    fit <- fit_with(sample_extend)
     elapsed <- as.numeric(difftime(Sys.time(), start, units = "secs"))
     expect_lt(elapsed, max_time$time / 3)
     expect_identical(nrow(attr(fit, "adaptation")$extensions), 0L, info = info)
@@ -2359,17 +2384,19 @@ test_that("an automatic fit stops at once when only a component that no chain vi
     expect_identical(unique(unlist(lapply(fit$mcmc, function(chain) chain[, "theta"]))), 0,
       info = info)
     # the check of the returned fit reports 'theta' unless allow_not_assessable
-    checked <- check(fit, allow_not_assessable = setting[[2L]])
-    diagnostics <- attr(checked, "diagnostics")
-    expect_identical(diagnostics$state[match(c("mu", "theta"), diagnostics$parameter)],
-      c("assessable", "not_assessable"), info = info)
-    if(setting[[2L]]){
-      expect_true(checked)
-      expect_null(attr(checked, "errors"))
-    }else{
-      expect_false(checked)
-      expect_identical(attr(checked, "errors"),
-        "R-hat, ESS diagnostics are not assessable for 'theta'.", info = info)
+    for(allow in c(FALSE, TRUE)){
+      checked <- check(fit, allow_not_assessable = allow)
+      diagnostics <- attr(checked, "diagnostics")
+      expect_identical(diagnostics$state[match(c("mu", "theta"), diagnostics$parameter)],
+        c("assessable", "not_assessable"), info = info)
+      if(allow){
+        expect_true(checked)
+        expect_null(attr(checked, "errors"))
+      }else{
+        expect_false(checked)
+        expect_identical(attr(checked, "errors"),
+          "R-hat, ESS diagnostics are not assessable for 'theta'.", info = info)
+      }
     }
   }
 })

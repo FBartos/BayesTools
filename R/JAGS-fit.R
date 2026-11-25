@@ -45,8 +45,11 @@
 #' @param autofit whether the models should be refitted until convergence criteria
 #' specified in \code{autofit_control}. Automatic fitting stops once every
 #' requested quantity whose diagnostics can be assessed meets the criteria,
-#' also when the diagnostics of others are not assessable (see
-#' \code{allow_not_assessable}), or at \code{max_time} or \code{max_extend}.
+#' or at \code{max_time} or \code{max_extend}. More draws do not make
+#' undefined diagnostics assessable, so automatic fitting never extends a fit
+#' for them, and a fit in which nothing can be assessed stops after its
+#' initial sampling (in \code{JAGS_extend()}, after its first extension).
+#' Check the returned fit with [JAGS_check_convergence()] to report them.
 #' Defaults to \code{FALSE}.
 #' @param autofit_control a list of arguments controlling the autofit function.
 #' Convergence thresholds and \code{max_time$time} must be finite and non-missing.
@@ -120,14 +123,6 @@
 #'   Cholesky factors) are derived and not checked by default. The role of
 #'   every fitted coordinate is stored in the \code{convergence_role} column
 #'   of [parameter_coordinates()].}
-#'   \item{allow_not_assessable}{whether undefined diagnostics for requested
-#'   sampled parameters may be ignored by [JAGS_check_convergence()]. Defaults
-#'   to \code{FALSE}. More draws do not make them assessable, so automatic
-#'   fitting never extends a fit for them, whatever this setting: it stops
-#'   when every quantity that can be assessed meets the criteria, and a fit in
-#'   which nothing can be assessed stops after its initial sampling (in
-#'   \code{JAGS_extend()}, after its first extension). Check the returned fit
-#'   with [JAGS_check_convergence()] to report them.}
 #'   \item{burnin_max_Rhat}{the threshold of the readiness check between
 #'   burn-in and sampling. Defaults to \code{2}; an omitted element takes
 #'   its default and \code{NULL} turns the check off. The check runs, also
@@ -318,7 +313,7 @@
 #' block convergence. A
 #' node that is stochastic (\code{~}) or depends on a stochastic node is
 #' checked, and its constant draws are not assessable (see
-#' \code{autofit_control$allow_not_assessable}). A name that repeats a parameter
+#' \code{allow_not_assessable} in [JAGS_check_convergence()]). A name that repeats a parameter
 #' of \code{prior_list} is refused. A parameter that a formula needs monitored,
 #' such as the scalar SD source of a random-effect block
 #' (\code{random_sd_source("tau")}), is added automatically and, when
@@ -625,7 +620,7 @@ NULL
 #' @rdname JAGS_fit
 JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
-                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable = FALSE, burnin_max_Rhat = 2, burnin_extend = 500, burnin_max_extend = 10),
+                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, burnin_max_Rhat = 2, burnin_extend = 500, burnin_max_extend = 10),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
                      add_parameters = NULL, required_packages = NULL,
                      formula_random_prior_list = NULL, formula_random_effects_compile_list = NULL,
@@ -1395,7 +1390,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 }
 
 #' @rdname JAGS_fit
-JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable = FALSE),
+JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL),
                         parallel = FALSE, cores = NULL, silent = TRUE,
                         runtime_setup = attr(fit, "runtime_setup", exact = TRUE),
                         runtime_cache = attr(fit, "runtime_cache", exact = TRUE),
