@@ -1084,6 +1084,8 @@ test_that("mixture prior weights at the normalization limits are used as they ar
   # the overflow edge of the double sum
   set.seed(1)
   expect_identical(as.integer(rng(normal_weights_mixture(c(M, 2^969)), 300, sample_components = TRUE)), rep(1L, 300))
+  expect_true(all(.generate_prior_sample_matrix(
+    list(f = factor_weights_mixture(c(M, 2^969))), 300L, seed = 1)[, "f_indicator"] == 1))
   expect_identical(attr(normal_weights_mixture(c(M, 2^970)), "prior_weights"), c(M, 2^970))
   expect_error(rng(normal_weights_mixture(c(M, 2^970)), 1, sample_components = TRUE),
                class = "BayesTools_mixture_weights_unnormalizable")
