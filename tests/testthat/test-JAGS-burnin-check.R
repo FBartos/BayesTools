@@ -315,6 +315,15 @@ test_that("with thinning the loop runs blocks of draws and records iterations", 
   expect_identical(.burnin_loop(list(c(a = 1.2)), burnin_extend = 500L, thin = 1)$record$extension, 0L)
   expect_identical(.burnin_loop(list(c(a = 3), c(a = 1.2)), burnin_extend = 500L, thin = 3)$record$extension, 1500L)
   expect_identical(.burnin_loop(list(c(a = 3), c(a = 1.2)), burnin_extend = 500, thin = 1L)$record$extension, 500)
+
+  # a 'thin' that is whole only within the validator's tolerance enters the
+  # extension as given, as the extension block runs it; the sweeps of the
+  # blocks are truncated
+  thin <- 2 - 1e-9
+  run  <- .burnin_loop(list(c(a = 3), c(a = 1.2)), burnin_extend = 500L, thin = thin)
+  expect_identical(run$record$extension, 500L * thin)
+  expect_identical(run$record$block, as.integer(400 * thin))
+  expect_identical(run$record$blocks$sweeps, c(799L, 999L))
 })
 
 test_that("the warning names the quantities with the largest values and the remedy", {
@@ -436,6 +445,44 @@ test_that("the printed limit never reads above the threshold and a listed value 
   # four chains: 1.925
   expect_identical(warning_for(4L, c(mu = 1.9251)),
     paste0("Chains did not agree at the end of burn-in: R-hat 1.93 for 'mu' (limit 1.925).", remedy))
+})
+
+test_that("the warning shows the session's decimal mark and compares with a decimal point", {
+
+  warning_at <- function(threshold, values){
+    BayesTools:::.bt_burnin_warning(
+      .burnin_loop(list(values), autofit = FALSE, burnin_max_Rhat = threshold)$record)
+  }
+  remedy <- " Increase 'adapt' and 'burnin'; if the chains mix slowly, increase 'thin'. Or fit with 'autofit = TRUE'."
+  automatic <- vapply(2:12, function(chains) BayesTools:::.bt_burnin_threshold("auto", chains), numeric(1))
+  thresholds <- c(automatic, 1.5, 1.501 - 1e-13, 2.345678, 10)
+  values_above <- function(threshold){
+    c(threshold + 2^(floor(log2(threshold)) - 52) * 1:2, threshold * (1 + 10^-c(12, 6, 3)), threshold + 0.0123)
+  }
+  with_point <- lapply(thresholds, function(threshold){
+    vapply(values_above(threshold), function(value) warning_at(threshold, c(mu = value)), character(1))
+  })
+
+  withr::local_options(OutDec = ",")
+  # six chains, three decimals to read above the limit
+  expect_identical(warning_at(BayesTools:::.bt_burnin_threshold("auto", 6L), c(mu = 1.854, tau = 1.852)),
+    paste0("Chains did not agree at the end of burn-in: R-hat 1,854 for 'mu', 1,852 for 'tau' (limit 1,85).", remedy))
+  # a limit rounded down to three decimals
+  expect_identical(warning_at(1.501 - 1e-13, c(mu = 1.5011)),
+    paste0("Chains did not agree at the end of burn-in: R-hat 1,501 for 'mu' (limit 1,500).", remedy))
+  # the round-trip fallback
+  expect_identical(warning_at(2, c(mu = 2 + 2 * .Machine$double.eps)),
+    paste0("Chains did not agree at the end of burn-in: R-hat 2,0000000000000004 for 'mu' (limit 2,00).", remedy))
+  # an infinite R-hat
+  expect_identical(warning_at(2, c(mu = Inf, tau = 2.5)),
+    paste0("Chains did not agree at the end of burn-in: R-hat Inf for 'mu', 2,50 for 'tau' (limit 2,00).", remedy))
+  # every number as with a decimal point, shown with the comma
+  for(i in seq_along(thresholds)){
+    with_comma <- vapply(values_above(thresholds[[i]]),
+      function(value) warning_at(thresholds[[i]], c(mu = value)), character(1))
+    expect_identical(with_comma, gsub("([0-9])\\.([0-9])", "\\1,\\2", with_point[[i]]),
+      info = sprintf("%.17g", thresholds[[i]]))
+  }
 })
 
 test_that("the readiness settings default when omitted and validate when given", {
@@ -770,6 +817,19 @@ test_that("chains that disagree without autofit sample after one warning", {
     tryCatch(BayesTools:::.bt_burnin_warn(record), warning = identity),
     "BayesTools_fit_diagnostic"
   ))
+
+  # with a comma as the session's decimal mark the fit returns with the
+  # warning, which shows the comma
+  withr::local_options(OutDec = ",")
+  set.seed(2)
+  state <- .readiness_backend(list(.readiness_chains(shift = 10)))
+  expect_warning(
+    fit <- .readiness_fit(),
+    "^Chains did not agree at the end of burn-in: R-hat [0-9]+,[0-9]{2} for 'mu' \\(limit 2,00\\)\\. ",
+    class = "BayesTools_burnin_not_converged"
+  )
+  expect_s3_class(fit, "BayesTools_fit")
+  expect_identical(attr(fit, "warnings"), BayesTools:::.bt_burnin_warning(attr(fit, "burnin_check")))
 })
 
 test_that("the readiness warning follows the kept attempt's sampling and precedes automatic extensions", {
@@ -862,6 +922,22 @@ test_that("autofit extends burn-in in blocks and the iteration numbers count the
   state <- .readiness_backend(list(.readiness_chains(shift = 10, n = 300L), .readiness_chains(n = 300L)))
   fit <- .readiness_fit(autofit = TRUE, burnin_extend = 300L, thin = 1)
   expect_identical(attr(fit, "burnin_check")[c("block", "extension")], list(block = 300L, extension = 300L))
+
+  # thin = 2 - 1e-9, whole within the validator's tolerance: 601 %/% thin
+  # = 300 draws, a block of 200 and one extension of 200; the burn-in, the
+  # record and the iteration numbers are those of the arithmetic in the
+  # given 'thin' (as at b9af0e94), not of a 'thin' truncated to 1
+  thin  <- 2 - 1e-9
+  state <- .readiness_backend(list(.readiness_chains(shift = 10, n = 200L), .readiness_chains(n = 200L)))
+  fit <- .readiness_fit(autofit = TRUE, burnin = 601L, thin = thin, burnin_extend = 200L)
+  expect_identical(state$groups[[1L]][c("burnin", "block", "thin")], list(burnin = 601L, block = 200L, thin = thin))
+  expect_identical(state$sweeps, 200)
+  record <- attr(fit, "burnin_check")
+  expect_identical(record[c("block", "burnin_extend", "thin", "extension", "status")],
+    list(block = 399L, burnin_extend = 200L, thin = thin, extension = 200L * thin, status = "ready"))
+  expect_identical(record$blocks$sweeps, c(399L, 399L))
+  expect_identical(fit$burnin, 1000L)
+  expect_identical(stats::start(fit$mcmc[[1L]]), 100 + 1000 + 1)
 
   # the cap: the warning names the extensions
   state <- .readiness_backend(list(.readiness_chains(shift = 10)))

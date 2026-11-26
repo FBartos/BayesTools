@@ -306,7 +306,8 @@ the threshold (a given value just below 1.501 prints 1.500; the automatic
 value is computed as one division, so six chains give the double 1.85).
 Each listed value then has as many decimals as it takes to read strictly above
 `max(threshold, printed limit)`, and where fifteen are not enough the shortest
-representation that reads back as the value.
+representation that reads back as the value. Both are formatted and compared
+with a decimal point; only the displayed text takes the session's `OutDec`.
 
 The optional `runtime_report` callback (stored as `attr(fit, "runtime_report")`,
 replayed by `JAGS_extend()` like `runtime_cache`) runs with

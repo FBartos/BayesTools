@@ -190,9 +190,11 @@
     burnin_extend   = burnin_extend,
     thin            = thin,
     blocks          = do.call(rbind, blocks),
-    # the type of 'burnin_extend' ('thin' is a whole number, and the room
-    # check keeps the product within the integer range)
-    extension       = extensions * burnin_extend * as.integer(thin),
+    # the type of 'burnin_extend' when 'thin' is exactly whole (the room
+    # check keeps the product within the integer range); a 'thin' that is
+    # whole only within the validator's tolerance enters as given, as the
+    # extension blocks run it
+    extension       = extensions * burnin_extend * if(thin == round(thin)) as.integer(thin) else thin,
     status          = switch(stop_reason, ready = "ready", not_assessable = "not_assessable", "not_ready"),
     stop_reason     = stop_reason,
     failing         = data.frame(parameter = names(failing), Rhat = unname(failing), stringsAsFactors = FALSE)
@@ -207,10 +209,13 @@
   }
   failing <- record$failing
   listed  <- utils::head(failing, 5L)
+  # formatted and compared with a decimal point; the session's decimal mark
+  # applies to the displayed text only
   limit   <- .bt_burnin_format_limit(record$burnin_max_Rhat)
   bound   <- max(record$burnin_max_Rhat, as.numeric(limit))
-  values  <- paste0(.bt_burnin_format_Rhat(listed$Rhat, bound), " for '",
-    listed$parameter, "'", collapse = ", ")
+  shown   <- .bt_burnin_decimal_mark(.bt_burnin_format_Rhat(listed$Rhat, bound))
+  limit   <- .bt_burnin_decimal_mark(limit)
+  values  <- paste0(shown, " for '", listed$parameter, "'", collapse = ", ")
   if(nrow(failing) > 5L){
     values <- paste0(values, " and ", nrow(failing) - 5L, " more")
   }
@@ -236,14 +241,14 @@
 # 1.501 prints 1.500.
 .bt_burnin_format_limit <- function(threshold){
 
-  printed <- formatC(threshold, format = "f", digits = 2)
+  printed <- formatC(threshold, format = "f", digits = 2, decimal.mark = ".")
   if(as.numeric(printed) == threshold){
     return(printed)
   }
   thousandths <- round(threshold * 1000)
-  printed <- formatC(thousandths / 1000, format = "f", digits = 3)
+  printed <- formatC(thousandths / 1000, format = "f", digits = 3, decimal.mark = ".")
   if(as.numeric(printed) > threshold){
-    printed <- formatC((thousandths - 1) / 1000, format = "f", digits = 3)
+    printed <- formatC((thousandths - 1) / 1000, format = "f", digits = 3, decimal.mark = ".")
   }
   printed
 }
@@ -259,19 +264,26 @@
       return(formatC(value))
     }
     for(digits in 2:15){
-      printed <- formatC(value, format = "f", digits = digits)
+      printed <- formatC(value, format = "f", digits = digits, decimal.mark = ".")
       if(as.numeric(printed) > bound){
         return(printed)
       }
     }
     for(digits in 15:17){
-      printed <- formatC(value, format = "g", digits = digits)
+      printed <- formatC(value, format = "g", digits = digits, decimal.mark = ".")
       if(as.numeric(printed) == value){
         break
       }
     }
     printed
   }, character(1))
+}
+
+# Numbers formatted with a decimal point, shown with the session's decimal
+# mark (getOption("OutDec"), as formatC() and print() show them).
+.bt_burnin_decimal_mark <- function(printed){
+
+  sub(".", getOption("OutDec"), printed, fixed = TRUE)
 }
 
 # Signal the warning of chains that were not ready (whatever 'silent' is) and
