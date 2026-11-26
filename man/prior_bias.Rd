@@ -11,12 +11,11 @@ prior_bias(selection = NULL, phacking = NULL, prior_weights = 1)
 
 \item{phacking}{optional \code{prior_phacking()} object.}
 
-\item{prior_weights}{prior odds associated with a given distribution. The
-weights of the components of one \code{prior_mixture()} must be normalizable
-in double precision (a finite sum of at least \code{.Machine$double.xmin} in
-which every component keeps a positive probability); dividing all of them by
-a common factor, such as their largest value, keeps the odds within this
-limit.}
+\item{prior_weights}{prior odds associated with a given distribution. A
+\code{prior_mixture()} whose weights cannot be normalized in double
+precision (their sum overflows or is below \code{.Machine$double.xmin}) is
+refused when it is sampled or fitted; dividing all of its weights by a
+common factor, such as their largest value, keeps the odds and avoids this.}
 }
 \value{
 \code{prior_bias()} returns an object of class \code{"prior"}.

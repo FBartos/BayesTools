@@ -11,12 +11,11 @@
 #' \code{wf_fixed()}, or \code{wf_independent()}.
 #' @param reference reference bin. Currently only \code{"most_significant"} is
 #' supported and fixes the most significant bin to \code{omega = 1}.
-#' @param prior_weights prior odds associated with a given distribution. The
-#' weights of the components of one \code{prior_mixture()} must be normalizable
-#' in double precision (a finite sum of at least \code{.Machine$double.xmin} in
-#' which every component keeps a positive probability); dividing all of them by
-#' a common factor, such as their largest value, keeps the odds within this
-#' limit.
+#' @param prior_weights prior odds associated with a given distribution. A
+#' \code{prior_mixture()} whose weights cannot be normalized in double
+#' precision (their sum overflows or is below \code{.Machine$double.xmin}) is
+#' refused when it is sampled or fitted; dividing all of its weights by a
+#' common factor, such as their largest value, keeps the odds and avoids this.
 #' @param model a fixed selection-model specification from
 #' \code{selection_model()}. Its choices do not add weight-prior parameters or
 #' change \code{prior_weights}.

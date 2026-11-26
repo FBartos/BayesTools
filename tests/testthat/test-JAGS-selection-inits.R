@@ -350,25 +350,29 @@ selection_inits_weighted_branches <- function(weights){
     prior_none(prior_weights = weights[1]),
     prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)), prior_weights = weights[2])
   )
-  if(length(weights) == 3L){
-    branches[[3L]] <- prior_phacking(form = "linear", prior_weights = weights[3])
+  for(k in seq_along(weights)[-(1:2)]){
+    branches[[k]] <- prior_phacking(form = "linear", prior_weights = weights[k])
   }
   branches
 }
 
-test_that("selection mixtures refuse prior weights that cannot be normalized", {
+test_that("selection mixtures refuse prior weights that cannot be normalized where a branch is drawn", {
 
   # The weights are odds that JAGS's dcat() and sample() normalize by their
-  # double sum: a sum that overflows or is subnormal is refused, not rescaled.
+  # double sum: the mixture constructs, and its selection specification, model
+  # syntax and starting branch refuse a sum that overflows or is subnormal.
   unnormalizable <- "BayesTools_mixture_weights_unnormalizable"
-  expect_error(prior_mixture(selection_inits_weighted_branches(rep(1e308, 3))), class = unnormalizable)
-  expect_error(prior_mixture(selection_inits_weighted_branches(c(1e308, 1e308))), class = unnormalizable)
-  expect_error(prior_mixture(selection_inits_weighted_branches(rep(5e-324, 3))), class = unnormalizable)
-  # a list of several priors is a mixture whose weights come together here
-  expect_error(selection_backend_spec(selection_inits_weighted_branches(rep(1e308, 3)), include_init = FALSE),
-               class = unnormalizable)
-  expect_error(selection_backend_spec(selection_inits_weighted_branches(rep(5e-324, 3)), include_init = FALSE),
-               class = unnormalizable)
+  reviewers <- c(4.4942328371557938e+307, 4.4942328371557888e+307, 4.4942328371557888e+307, 4.4942328371557858e+307)
+  for(weights in list(c(1e308, 1e308), rep(1e308, 3), reviewers, rep(5e-324, 3))){
+    branches <- selection_inits_weighted_branches(weights)
+    mixture <- prior_mixture(branches)
+    expect_identical(attr(mixture, "prior_weights"), weights)
+    expect_error(selection_backend_spec(mixture, include_init = FALSE), class = unnormalizable)
+    expect_error(selection_backend_spec(branches, include_init = FALSE), class = unnormalizable)
+    expect_error(JAGS_add_priors("model{}", list(bias = mixture)), class = unnormalizable)
+    expect_error(JAGS_get_inits(list(bias = mixture), chains = 2, seed = 1), class = unnormalizable)
+    expect_error(rng(mixture, 1, sample_components = TRUE), class = unnormalizable)
+  }
   # a single branch has no mixture weights to normalize
   expect_identical(selection_backend_spec(prior_none(prior_weights = 5e-324), include_init = FALSE)$prior_weights, 5e-324)
 })
@@ -400,6 +404,16 @@ test_that("selection mixture weights at the normalization limits are used as the
   expect_identical(selection_inits_labels(JAGS_get_inits(list(bias = tiny), chains = 6, seed = 1)), rep(1L, 6))
   expect_identical(dcat_line(selection_backend_spec(tiny, include_init = FALSE)),
                    "bias_indicator ~ dcat(c(1, 4.94065645841247e-324))")
+
+  # weights whose smallest share of an admitted sum underflows to zero: that
+  # branch is never the starting branch
+  underflow <- prior_mixture(selection_inits_weighted_branches(c(1e200, 1e-200)))
+  expect_identical(selection_inits_labels(JAGS_get_inits(list(bias = underflow), chains = 6, seed = 1)), rep(1L, 6))
+  expect_identical(dcat_line(selection_backend_spec(underflow, include_init = FALSE)), "bias_indicator ~ dcat(c(1e+200, 1e-200))")
+  three <- prior_mixture(selection_inits_weighted_branches(c(1, 1, 5e-324)))
+  expect_false(any(selection_inits_labels(JAGS_get_inits(list(bias = three), chains = 6, seed = 1)) == 3L))
+  expect_identical(dcat_line(selection_backend_spec(three, include_init = FALSE)),
+                   "bias_indicator ~ dcat(c(1, 1, 4.94065645841247e-324))")
 
   # ordinary weights: the syntax and starting branches of 62f9563d (before the
   # normalization limit was introduced)

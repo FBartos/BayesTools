@@ -30,14 +30,18 @@ holds the component priors with their \code{prior_weights} and \code{components}
 This is a more generic version of the \code{prior_spike_and_slab} function.
 }
 \details{
-The \code{prior_weights} of the components are their prior odds.
-Weights that cannot be normalized in double precision (their sum overflows
-or is below \code{.Machine$double.xmin}, or the prior probability of a
-component underflows to zero) stop with an error of class
+The \code{prior_weights} of the components are their prior odds,
+and any positive finite weights construct a mixture. Weights that cannot be
+normalized in double precision (their sum, accumulated in double precision,
+overflows or is below \code{.Machine$double.xmin}) are refused when a
+component is drawn from them: when the mixture is sampled (\code{rng()},
+initial values, prior draws) or fitted (its JAGS prior). The error has class
 \code{BayesTools_mixture_weights_unnormalizable}, which inherits
-\code{BayesTools_prior_input} and has the fields \code{prior_weights},
-\code{total} (their sum in double precision) and \code{components} (the
-components whose probability underflows).
+\code{BayesTools_prior_input}, and the fields \code{prior_weights} and
+\code{total} (their sum in double precision). Dividing all weights by a
+common factor, for example by their largest value, keeps the odds and
+avoids the error. A component whose prior probability underflows to zero is
+never drawn from the prior.
 }
 \seealso{
 \code{\link[=prior]{prior()}}

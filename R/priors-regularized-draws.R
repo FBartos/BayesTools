@@ -30,6 +30,7 @@
         paste0(name, "_variable"), n, registry)
       draws <- cbind(draws, parts)
     }else{
+      .check_mixture_prior_weights(attr(prior, "prior_weights"))
       gate <- sample.int(length(prior), n, replace = TRUE, prob = attr(prior, "prior_weights"))
       draws <- matrix(gate, ncol = 1L, dimnames = list(NULL, paste0(name, "_indicator")))
       for(i in seq_along(prior)){

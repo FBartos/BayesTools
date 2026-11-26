@@ -180,6 +180,7 @@ NULL
 # mixture's indicator in the JAGS initial values.
 .rng_mixture_components <- function(prior_weights, n){
 
+  .check_mixture_prior_weights(prior_weights)
   sample(seq_along(prior_weights), size = n, replace = TRUE, prob = prior_weights)
 }
 

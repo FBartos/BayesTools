@@ -725,15 +725,19 @@ is.prior.regularized_term <- function(x){
 
   return()
 }
-# The prior weights of one mixture are odds. JAGS's dcat() and R's sample()
-# normalize them by their sum, accumulated in double precision in component
-# order (not in the extended precision of R's sum()). A sum that overflows
-# turns every probability into zero, and one component is always drawn; JAGS
-# draws from a subnormal sum with the wrong proportions (it scales the sum by
-# a uniform draw); and a component whose probability underflows to zero can be
-# neither drawn nor reported. Such weights are refused rather than rescaled:
-# dividing all weights by a common factor keeps the odds, and rescaling here
-# would set small positive weights to zero.
+# The prior weights of one mixture are odds. Constructors and the analytic
+# probability routes (which work on the log scale) accept any positive finite
+# weights. Where a component is drawn from the weights (R's sample() and
+# sample.int() in rng(), the initial values and the prior replays) or the
+# weights are emitted for JAGS's dcat() to draw from, they are normalized by
+# their sum, accumulated in double precision in component order (not in the
+# extended precision of R's sum()). A sum that overflows turns every
+# probability into zero, and one component is always drawn; JAGS draws from a
+# subnormal sum with the wrong proportions (it scales the sum by a uniform
+# draw). Such weights are refused there rather than rescaled: dividing all
+# weights by a common factor keeps the odds, and rescaling would set small
+# positive weights to zero. A component whose share of a normal sum underflows
+# to zero is admitted; it is simply never drawn from the prior.
 .check_mixture_prior_weights <- function(prior_weights){
 
   if(!is.numeric(prior_weights)){
@@ -760,34 +764,17 @@ is.prior.regularized_term <- function(x){
              ") is too small to be represented at full double precision. ", common_factor),
       prior_weights, total)
   }
-  underflow <- which(!(prior_weights / total > 0))
-  if(length(underflow) == 1L){
-    .mixture_prior_weights_stop(
-      paste0(weights_text, "the prior probability of component ", underflow,
-             " underflows to zero in double precision. Increase the 'prior_weights' of component ",
-             underflow, " or remove it."),
-      prior_weights, total, underflow)
-  }
-  if(length(underflow) > 1L){
-    components <- paste(underflow, collapse = ", ")
-    .mixture_prior_weights_stop(
-      paste0(weights_text, "the prior probabilities of components ", components,
-             " underflow to zero in double precision. Increase the 'prior_weights' of components ",
-             components, " or remove them."),
-      prior_weights, total, underflow)
-  }
 
   invisible(TRUE)
 }
-.mixture_prior_weights_stop <- function(message, prior_weights, total, components = integer()){
+.mixture_prior_weights_stop <- function(message, prior_weights, total){
 
   stop(structure(
     list(
       message       = message,
       call          = NULL,
       prior_weights = prior_weights,
-      total         = total,
-      components    = components
+      total         = total
     ),
     class = c("BayesTools_mixture_weights_unnormalizable", "BayesTools_prior_input", "error", "condition")
   ))

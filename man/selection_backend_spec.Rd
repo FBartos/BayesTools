@@ -14,9 +14,9 @@ selection_backend_spec(
 }
 \arguments{
 \item{priors}{a selection prior, p-hacking prior, composed bias prior,
-\code{prior_none()}, \code{prior_mixture()}, or a list of those priors. The
-\code{prior_weights} of several priors are refused as in
-\code{prior_mixture()} when they cannot be normalized.}
+\code{prior_none()}, \code{prior_mixture()}, or a list of those priors. Several
+priors whose \code{prior_weights} cannot be normalized are refused, as a
+\code{prior_mixture()} is when it is sampled or fitted.}
 
 \item{backend}{backend target. Currently only \code{"jags"} is supported.}
 

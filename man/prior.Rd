@@ -82,11 +82,11 @@ The truncation is automatically set to the bounds of the support.}
 The value is passed into the model fitting function, which creates models
 corresponding to all combinations of prior distributions for each of
 the model parameters and sets the model priors odds to the product
-of its prior distributions. The weights of the components of one
-\code{prior_mixture()} must be normalizable in double precision (a finite
-sum of at least \code{.Machine$double.xmin} in which every component keeps
-a positive probability); dividing all of them by a common factor, such as
-their largest value, keeps the odds within this limit.}
+of its prior distributions. A \code{prior_mixture()} whose weights
+cannot be normalized in double precision (their sum overflows or is below
+\code{.Machine$double.xmin}) is refused when it is sampled or fitted;
+dividing all of its weights by a common factor, such as their largest value,
+keeps the odds and avoids this.}
 }
 \value{
 \code{prior} and \code{prior_none} return an object of class 'prior'.

@@ -21,12 +21,11 @@
 #' \code{"quadratic"}.
 #' @param alpha prior distribution for the p-hacking severity parameter.
 #' @param report_scale reporting scale for deterministic summaries.
-#' @param prior_weights prior odds associated with a given distribution. The
-#' weights of the components of one \code{prior_mixture()} must be normalizable
-#' in double precision (a finite sum of at least \code{.Machine$double.xmin} in
-#' which every component keeps a positive probability); dividing all of them by
-#' a common factor, such as their largest value, keeps the odds within this
-#' limit.
+#' @param prior_weights prior odds associated with a given distribution. A
+#' \code{prior_mixture()} whose weights cannot be normalized in double
+#' precision (their sum overflows or is below \code{.Machine$double.xmin}) is
+#' refused when it is sampled or fitted; dividing all of its weights by a
+#' common factor, such as their largest value, keeps the odds and avoids this.
 #'
 #' @return \code{prior_phacking()} returns an object of class \code{"prior"}.
 #'
@@ -341,9 +340,9 @@ phack_backend_constants <- function(form, source, destination, target = .025){
 #' starts at a branch drawn from the prior weights.
 #'
 #' @param priors a selection prior, p-hacking prior, composed bias prior,
-#' \code{prior_none()}, \code{prior_mixture()}, or a list of those priors. The
-#' \code{prior_weights} of several priors are refused as in
-#' \code{prior_mixture()} when they cannot be normalized.
+#' \code{prior_none()}, \code{prior_mixture()}, or a list of those priors. Several
+#' priors whose \code{prior_weights} cannot be normalized are refused, as a
+#' \code{prior_mixture()} is when it is sampled or fitted.
 #' @param backend backend target. Currently only \code{"jags"} is supported.
 #' @param names named list of backend parameter names for the public nodes
 #' (\code{omega}, \code{alpha}, \code{pi_null}, \code{beta_null},
@@ -417,7 +416,7 @@ selection_backend_spec <- function(priors,
 
   prior_weights <- .selection_backend_prior_weights(branches)
   uses_indicator <- length(branches) > 1L
-  # a list of priors is a mixture whose weights first come together here
+  # the 'dcat()' prior and the starting branch draw from these weights
   if(uses_indicator){
     .check_mixture_prior_weights(prior_weights)
   }

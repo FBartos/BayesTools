@@ -958,64 +958,99 @@ normal_weights_mixture <- function(weights){
   }))
 }
 
-test_that("mixture prior weights that cannot be normalized are refused", {
+factor_weights_mixture <- function(weights){
 
-  # JAGS's dcat() and R's sample() normalize the weights by their sum in
-  # sequential double addition. A sum that overflows or is subnormal, or a
-  # probability that underflows to zero, is refused rather than rescaled.
-  refusal <- function(weights) tryCatch(normal_weights_mixture(weights),
-    BayesTools_mixture_weights_unnormalizable = function(condition) condition)
+  prior_factor_levels(prior_mixture(lapply(seq_along(weights), function(i){
+    prior_factor("mnormal", list(0, i), contrast = "orthonormal", prior_weights = weights[i])
+  })), 3)
+}
+
+# point components and a bound regularized term (the last weight), which the
+# regularized prior replay draws from
+regularized_weights_mixture <- function(weights){
+
+  prior_list <- JAGS_formula(~ x, "mu", data.frame(x = 1:5), prior_list = list(intercept = prior("point", list(0)),
+    shrink = prior_regularized("lasso", scale = prior("lognormal", list(0, 1.5)))))$prior_list
+  term <- .set_prior_model_weight(prior_list$mu_x, weights[length(weights)])
+  prior_list$mu_x <- prior_mixture(c(lapply(seq_len(length(weights) - 1L), function(i){
+    prior("point", list(3 * (i - 1)), prior_weights = weights[i])
+  }), list(term)))
+  prior_list
+}
+
+test_that("mixture prior weights that cannot be normalized are refused where a component is drawn", {
+
+  # Constructors accept any positive finite weights. JAGS's dcat() and R's
+  # sample() normalize the weights by their sum in sequential double addition:
+  # where a component is drawn from them, or they are written for dcat(), a
+  # sum that overflows or is subnormal is refused rather than rescaled.
+  unnormalizable <- "BayesTools_mixture_weights_unnormalizable"
+  refusal <- function(expr) tryCatch(expr, BayesTools_mixture_weights_unnormalizable = function(condition) condition)
   common_factor <- "Divide all 'prior_weights' by a common factor, for example by their largest value."
-
-  # sums that overflow
-  condition <- refusal(c(1e308, 1e308))
-  expect_s3_class(condition, c("BayesTools_mixture_weights_unnormalizable", "BayesTools_prior_input", "error", "condition"))
-  expect_identical(conditionMessage(condition), paste(
-    "The mixture 'prior_weights' (1e+308, 1e+308) cannot be normalized: their sum overflows in double precision.",
-    common_factor))
-  expect_null(conditionCall(condition))
-  expect_identical(condition$prior_weights, c(1e308, 1e308))
-  expect_identical(condition$total, Inf)
-  expect_identical(refusal(rep(1e308, 3))$total, Inf)
+  overflow <- function(weights_text) paste0("The mixture 'prior_weights' (", weights_text,
+    ") cannot be normalized: their sum overflows in double precision. ", common_factor)
   # equal odds whose sum() is finite in R's extended precision while their
   # double sum, as sample() and JAGS form it, overflows
   reviewers <- c(4.4942328371557938e+307, 4.4942328371557888e+307, 4.4942328371557888e+307, 4.4942328371557858e+307)
   expect_true(is.finite(sum(reviewers)))
-  expect_identical(conditionMessage(refusal(reviewers)), paste(
-    "The mixture 'prior_weights' (4.49e+307, 4.49e+307, 4.49e+307, 4.49e+307) cannot be normalized:",
-    "their sum overflows in double precision.", common_factor))
+  cases <- list(
+    list(weights = c(1e308, 1e308), total = Inf, message = overflow("1e+308, 1e+308")),
+    list(weights = rep(1e308, 3),   total = Inf, message = overflow("1e+308, 1e+308, 1e+308")),
+    list(weights = reviewers,       total = Inf, message = overflow("4.49e+307, 4.49e+307, 4.49e+307, 4.49e+307")),
+    # a subnormal sum, which JAGS draws with the wrong proportions
+    list(weights = rep(5e-324, 3), total = 3 * 5e-324, message = paste(
+      "The mixture 'prior_weights' (4.94e-324, 4.94e-324, 4.94e-324) cannot be normalized:",
+      "their sum (1.48e-323) is too small to be represented at full double precision.", common_factor))
+  )
 
-  # a subnormal sum, which JAGS draws with the wrong proportions
-  condition <- refusal(rep(5e-324, 3))
-  expect_identical(conditionMessage(condition), paste(
-    "The mixture 'prior_weights' (4.94e-324, 4.94e-324, 4.94e-324) cannot be normalized:",
-    "their sum (1.48e-323) is too small to be represented at full double precision.", common_factor))
-  expect_identical(condition$total, 3 * 5e-324)
+  for(case in cases){
+    weights <- case$weights
+    mixture <- normal_weights_mixture(weights)
+    expect_identical(attr(mixture, "prior_weights"), weights)
 
-  # probabilities that underflow to zero next to ordinary weights
-  condition <- refusal(c(1, 1, 5e-324))
-  expect_identical(conditionMessage(condition), paste(
-    "The mixture 'prior_weights' (1, 1, 4.94e-324) cannot be normalized: the prior probability of component 3",
-    "underflows to zero in double precision. Increase the 'prior_weights' of component 3 or remove it."))
-  expect_identical(condition$components, 3L)
-  condition <- refusal(c(1e308, 1e-17, 1e-20, 1))
-  expect_identical(conditionMessage(condition), paste(
-    "The mixture 'prior_weights' (1e+308, 1e-17, 1e-20, 1) cannot be normalized: the prior probabilities of",
-    "components 2, 3 underflow to zero in double precision. Increase the 'prior_weights' of components 2, 3",
-    "or remove them."))
-  expect_identical(condition$components, 2:3)
+    condition <- refusal(rng(mixture, 10, sample_components = TRUE))
+    expect_s3_class(condition, c(unnormalizable, "BayesTools_prior_input", "error", "condition"), exact = TRUE)
+    expect_identical(conditionMessage(condition), case$message)
+    expect_null(conditionCall(condition))
+    expect_identical(condition$prior_weights, weights)
+    expect_identical(condition$total, case$total)
+    expect_identical(sort(names(condition)), c("call", "message", "prior_weights", "total"))
 
-  # every constructor of a mixture refuses them
-  unnormalizable <- "BayesTools_mixture_weights_unnormalizable"
-  expect_error(prior_mixture(list(prior_none(prior_weights = 1e308), prior_PET("normal", list(0, 1), prior_weights = 1e308),
-    prior_PEESE("normal", list(0, 1), prior_weights = 1e308))), class = unnormalizable)
-  expect_error(prior_mixture(list(
-    prior_factor("mnormal", list(0, 1), contrast = "orthonormal", prior_weights = 5e-324),
-    prior_factor("mnormal", list(0, 3), contrast = "orthonormal", prior_weights = 5e-324))), class = unnormalizable)
-  expect_error(prior_ordered(total = prior_mixture(list(prior("point", list(0), prior_weights = 1e308),
-    prior("normal", list(1, .5), prior_weights = 1e308)))), class = unnormalizable)
-  # the spike of a spike and slab has weight 1, so any admitted slab weight
-  # can be normalized
+    expect_error(rng(mixture, 10), class = unnormalizable)
+    expect_error(JAGS_get_inits(list(mu = mixture), chains = 2, seed = 1), class = unnormalizable)
+    expect_error(JAGS_add_priors("model{}", list(mu = mixture)), class = unnormalizable)
+    expect_error(.JAGS_add_priors.fun(list(mu = mixture), numeric_literals = TRUE), class = unnormalizable)
+
+    factor_mixture <- factor_weights_mixture(weights)
+    expect_identical(attr(factor_mixture, "prior_weights"), weights)
+    expect_error(.generate_prior_sample_matrix(list(f = factor_mixture), 10L, seed = 1), class = unnormalizable)
+    expect_error(JAGS_add_priors("model{}", list(f = factor_mixture)), class = unnormalizable)
+
+    regularized <- regularized_weights_mixture(weights)
+    expect_identical(attr(regularized$mu_x, "prior_weights"), weights)
+    expect_error(.generate_prior_sample_matrix(regularized, 10L, seed = 1), class = unnormalizable)
+
+    # a none/PET/PEESE bias mixture (at most three branches) writes its own
+    # dcat() prior
+    if(length(weights) <= 3L){
+      bias <- prior_mixture(c(list(prior_none(prior_weights = weights[1]), prior_PET("normal", list(0, 1), prior_weights = weights[2])),
+        if(length(weights) == 3L) list(prior_PEESE("normal", list(0, 1), prior_weights = weights[3]))))
+      expect_identical(attr(bias, "prior_weights"), weights)
+      expect_error(JAGS_add_priors("model{}", list(bias = bias)), class = unnormalizable)
+      expect_error(JAGS_get_inits(list(bias = bias), chains = 2, seed = 1), class = unnormalizable)
+    }
+  }
+
+  # the total of an ordered prior is refused where its dcat() prior is written
+  # when the prior is bound to an ordered factor
+  total <- prior_mixture(list(prior("point", list(0), prior_weights = 1e308), prior("point", list(3), prior_weights = 1e308)))
+  ordered <- prior_ordered(total = total, allocation = c(.2, .3, .5), contrast = "cumulative")
+  expect_s3_class(ordered, "prior.ordered")
+  expect_error(JAGS_formula(~ f, "mu", data.frame(f = ordered(rep(letters[1:4], 3L), levels = letters[1:4])),
+    list(intercept = prior("normal", list(0, 1)), f = ordered)), class = unnormalizable)
+
+  # the spike of a spike and slab has weight 1, and its inclusion is drawn from
+  # the inclusion prior
   expect_s3_class(prior_spike_and_slab(prior("normal", list(0, 1), prior_weights = 1e308)), "prior.spike_and_slab")
   expect_s3_class(prior_spike_and_slab(prior("normal", list(0, 1), prior_weights = 5e-324)), "prior.spike_and_slab")
 })
@@ -1046,14 +1081,38 @@ test_that("mixture prior weights at the normalization limits are used as they ar
                    "mu_indicator ~ dcat(c(8.988465674311579e+307, 8.988465674311579e+307))")
   expect_identical(dcat_line(normal_weights_mixture(c(xmin / 2, xmin / 2))),
                    "mu_indicator ~ dcat(c(1.1125369292536007e-308, 1.1125369292536007e-308))")
-  expect_identical(attr(normal_weights_mixture(c(M, 2^969)), "prior_weights"), c(M, 2^969))
-  expect_error(normal_weights_mixture(c(M, 2^970)), class = "BayesTools_mixture_weights_unnormalizable")
+  # the overflow edge of the double sum
+  set.seed(1)
+  expect_identical(as.integer(rng(normal_weights_mixture(c(M, 2^969)), 300, sample_components = TRUE)), rep(1L, 300))
+  expect_identical(attr(normal_weights_mixture(c(M, 2^970)), "prior_weights"), c(M, 2^970))
+  expect_error(rng(normal_weights_mixture(c(M, 2^970)), 1, sample_components = TRUE),
+               class = "BayesTools_mixture_weights_unnormalizable")
 
   # the smallest positive probability next to an ordinary weight
   tiny <- normal_weights_mixture(c(1, 5e-324))
   set.seed(1)
   expect_identical(as.integer(rng(tiny, 300, sample_components = TRUE)), rep(1L, 300))
   expect_identical(dcat_line(tiny), "mu_indicator ~ dcat(c(1, 4.94065645841247e-324))")
+
+  # weights whose smallest share of an admitted sum underflows to zero are
+  # used as they are: that component is never drawn from the prior
+  for(weights in list(c(1e200, 1e-200), c(1, 1, 5e-324))){
+    never <- length(weights)
+    mixture <- normal_weights_mixture(weights)
+    set.seed(1)
+    components <- as.integer(rng(mixture, 300, sample_components = TRUE))
+    expect_false(any(components == never))
+    expect_setequal(unique(components), seq_len(never - 1L))
+    inits <- JAGS_get_inits(list(mu = mixture), chains = 6, seed = 1)
+    expect_false(any(vapply(inits, function(init) init$mu_indicator, numeric(1)) == never))
+    factor_draws <- .generate_prior_sample_matrix(list(f = factor_weights_mixture(weights)), 300L, seed = 1)
+    expect_false(any(factor_draws[, "f_indicator"] == never))
+    regularized_draws <- .generate_prior_sample_matrix(regularized_weights_mixture(weights), 300L, seed = 1)
+    expect_false(any(regularized_draws[, "mu_x_indicator"] == never))
+    expect_setequal(unique(regularized_draws[, "mu_x_indicator"]), seq_len(never - 1L))
+  }
+  expect_identical(dcat_line(normal_weights_mixture(c(1e200, 1e-200))), "mu_indicator ~ dcat(c(1e+200, 1e-200))")
+  expect_identical(dcat_line(normal_weights_mixture(c(1, 1, 5e-324))), "mu_indicator ~ dcat(c(1, 1, 4.94065645841247e-324))")
 
   # a factor mixture's prior draws at the largest double sum are those of its odds
   factor_mixture <- function(weight) prior_factor_levels(prior_mixture(list(
