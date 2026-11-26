@@ -631,7 +631,7 @@ test_that("emitted marginal random-effect covariance JAGS syntax reproduces rand
         formula_random_prior_list = list(mu = case$prior_random),
         formula_random_effects_compile_list = list(mu = compile),
         add_parameters = c(monitors, case$monitor),
-        chains = 1, adapt = 100, burnin = 50, sample = 100, thin = 5,
+        chains = 1, adapt = 50, burnin = 50, sample = 100, thin = 5,
         silent = TRUE, seed = 1
       ))
       expect_s3_class(fit, "BayesTools_fit")
@@ -1261,7 +1261,7 @@ test_that("JASP progress preserves adaptive chains and finite readouts", {
       data = list(y = 1.3), prior_list = list(mu = prior("normal", list(0, 1)),
         sigma = prior("normal", list(0, 1), list(0, Inf))),
       add_parameters = "gate", sampler_probabilities = c("gate", "mu"),
-      chains = 3L, cores = 2L, parallel = parallel, adapt = 1000L, burnin = 50L,
+      chains = 3L, cores = 2L, parallel = parallel, adapt = 334L, burnin = 50L,
       sample = sample, thin = 3L, seed = 14567L, ...)
   }
   for(parallel in c(FALSE, TRUE)){
@@ -1289,7 +1289,7 @@ test_that("JASP progress preserves adaptive chains and finite readouts", {
   expect_identical(fit$mcmc, reference$mcmc)
   expect_identical(fit$sampler_probabilities, reference$sampler_probabilities)
   expect_identical(fit$end_state, reference$end_state)
-  expect_identical(attr(fit, "adaptation")$extensions, data.frame(adapt = 1000L, rebuilt = FALSE))
+  expect_identical(attr(fit, "adaptation")$extensions, data.frame(adapt = 334L, rebuilt = FALSE))
   expect_null(fit[["live_model"]])
 })
 
@@ -6720,26 +6720,26 @@ test_that("a passing readiness check leaves the draws as they are with the check
   # block of burn-in changes no sampler and no random number; the burn-in is
   # either the block itself or longer than it, so that its first part runs
   # unmonitored (the default path); the block holds draws at the fit's 'thin'
-  # (with thin = 3, 700 %/% 3 = 233 draws over 699 iterations, after one
-  # unmonitored iteration)
-  fit_with <- function(check, burnin, burnin_extend, thin, ...){
+  # ('adapt' and 'burnin' count draws at it: 200 and 400 or 700 iterations
+  # at thin = 2, 201 and 702 at thin = 3)
+  fit_with <- function(check, adapt, burnin, burnin_extend, thin, ...){
     JAGS_fit("model{ gate ~ dbern(0.4); y ~ dnorm(mu + gate, pow(sigma, -2)) }",
       data = list(y = 1.3), prior_list = list(mu = prior("normal", list(0, 1)),
         sigma = prior("normal", list(0, 1), list(0, Inf))),
-      add_parameters = "gate", chains = 3L, cores = 2L, adapt = 200L, burnin = burnin, sample = 150L,
+      add_parameters = "gate", chains = 3L, cores = 2L, adapt = adapt, burnin = burnin, sample = 150L,
       thin = thin, seed = 2024L,
       autofit_control = if(check) .readiness_control(burnin_extend = burnin_extend) else
         .readiness_control(burnin_max_Rhat = NULL), ...)
   }
-  for(setting in list(list(burnin = 400L, burnin_extend = 500, thin = 2L, block = 400L),
-                     list(burnin = 700L, burnin_extend = 200, thin = 2L, block = 400L),
-                     list(burnin = 700L, burnin_extend = 500, thin = 3L, block = 699L)))
+  for(setting in list(list(adapt = 100L, burnin = 200L, burnin_extend = 500, thin = 2L, block = 200L),
+                     list(adapt = 100L, burnin = 350L, burnin_extend = 200, thin = 2L, block = 200L),
+                     list(adapt = 67L, burnin = 234L, burnin_extend = 500, thin = 3L, block = 234L)))
   for(parallel in c(FALSE, TRUE)) for(probabilities in list(NULL, c("gate", "mu"))) for(jasp in c(FALSE, TRUE)){
     info <- paste("burnin", setting$burnin, "thin", setting$thin, "parallel", parallel, "probabilities",
       !is.null(probabilities), "JASP", jasp)
-    on  <- fit_with(TRUE, setting$burnin, setting$burnin_extend, setting$thin, parallel = parallel,
+    on  <- fit_with(TRUE, setting$adapt, setting$burnin, setting$burnin_extend, setting$thin, parallel = parallel,
       sampler_probabilities = probabilities, is_JASP = jasp)
-    off <- fit_with(FALSE, setting$burnin, setting$burnin_extend, setting$thin, parallel = parallel,
+    off <- fit_with(FALSE, setting$adapt, setting$burnin, setting$burnin_extend, setting$thin, parallel = parallel,
       sampler_probabilities = probabilities, is_JASP = jasp)
     expect_identical(attr(on, "burnin_check")$status, "ready", info = info)
     expect_identical(attr(on, "burnin_check")$block, setting$block, info = info)
@@ -6753,11 +6753,11 @@ test_that("a passing readiness check leaves the draws as they are with the check
     expect_identical(attr(on, "warnings"), attr(off, "warnings"), info = info)
     expect_identical(on$burnin, setting$burnin, info = info)
     expect_identical(on$burnin, off$burnin, info = info)
-    expect_identical(stats::start(on$mcmc[[1L]]), 200 + setting$burnin + 1, info = info)
+    start <- (as.double(setting$adapt) + setting$burnin) * setting$thin + 1
+    expect_identical(stats::start(on$mcmc[[1L]]), start, info = info)
     for(node in names(on$sampler_probabilities)){
       if(!is.null(on$sampler_probabilities[[node]])){
-        expect_identical(stats::start(on$sampler_probabilities[[node]][[1L]]), 200 + setting$burnin + 1,
-          info = info)
+        expect_identical(stats::start(on$sampler_probabilities[[node]][[1L]]), start, info = info)
       }
     }
   }
@@ -6865,13 +6865,14 @@ test_that("chains in separated modes warn without autofit and extend burn-in up 
   fit_with <- function(autofit, ...){
     JAGS_fit("model{ y ~ dnorm(pow(m, 2), 100)\n gate ~ dbern(0.4)\n z ~ dnorm(gate, 1) }",
       data = list(y = 16, z = 0.3), prior_list = list(m = prior("normal", list(0, 5))),
-      add_parameters = "gate", sampler_probabilities = "gate", chains = 3L, adapt = 100L,
-      burnin = 300L, sample = 100L, thin = 2L, seed = 1L, autofit = autofit, silent = TRUE,
+      add_parameters = "gate", sampler_probabilities = "gate", chains = 3L, adapt = 50L,
+      burnin = 150L, sample = 100L, thin = 2L, seed = 1L, autofit = autofit, silent = TRUE,
       autofit_control = .readiness_control(max_Rhat = NULL, min_ESS = NULL, max_error = NULL,
         max_SD_error = NULL, ...))
   }
-  # thin = 2: the check reads 150 draws over the last 300 iterations of
-  # burn-in, and an extension of 200 draws runs 400 iterations
+  # thin = 2: adaptation runs 100 iterations, the check reads all 150 draws
+  # of burn-in (300 iterations), and an extension of 200 draws runs 400
+  # iterations
   expect_warning(
     fit <- fit_with(FALSE),
     paste0("^Chains did not agree at the end of burn-in: R-hat [0-9.]+ for 'm' [(]limit 2[.]00[)][.] ",
@@ -6884,9 +6885,9 @@ test_that("chains in separated modes warn without autofit and extend burn-in up 
   record <- attr(fit, "burnin_check")
   expect_identical(record[c("status", "stop_reason", "extension")],
     list(status = "not_ready", stop_reason = "no_autofit", extension = 0))
-  expect_identical(record[c("burnin_max_Rhat", "block", "thin")], list(burnin_max_Rhat = 2, block = 300L, thin = 2L))
+  expect_identical(record[c("burnin_max_Rhat", "block", "thin")], list(burnin_max_Rhat = 2, block = 150L, thin = 2L))
   expect_gt(record$blocks$Rhat, 100)
-  expect_identical(fit$burnin, 300L)
+  expect_identical(fit$burnin, 150L)
   expect_identical(attr(fit, "warnings"), BayesTools:::.bt_burnin_warning(record))
 
   expect_warning(
@@ -6896,9 +6897,11 @@ test_that("chains in separated modes warn without autofit and extend burn-in up 
   )
   record <- attr(fit, "burnin_check")
   expect_identical(record$stop_reason, "max_extend")
-  expect_identical(record$blocks$sweeps, c(300L, 400L, 400L))
-  expect_identical(record$extension, 800)
-  expect_identical(fit$burnin, 1100L)
+  expect_identical(record$blocks$draws, c(150L, 200L, 200L))
+  expect_identical(record$extension, 400)
+  expect_identical(fit$burnin, 550L)
+  # (50 + 550) * 2 + 1: the iterations of earlier versions' adapt = 100,
+  # burnin = 300 and two extensions of 400
   expect_identical(JAGS_draw_geometry(fit)$chains$start, rep(1201L, 3L))
   expect_identical(JAGS_draw_geometry(fit)$chains$end, rep(1201L + 99L * 2L, 3L))
   for(chain in seq_len(3L)){

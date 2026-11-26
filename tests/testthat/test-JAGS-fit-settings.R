@@ -2527,3 +2527,153 @@ test_that("an automatic fit stops at once when only a component that no chain vi
     }
   }
 })
+
+# ============================================================================ #
+# 'adapt', 'burnin' and 'sample' count draws at the fit's thinning
+# ============================================================================ #
+.thinned_data <- list(y = c(-0.23, 0.58, -0.44, 2, 0.73, -0.42, 0.89, 1.14, 0.98, 0.09), N = 10L)
+
+# 'sigma' has a slice sampler, which adapts
+.thinned_fit <- function(adapt, burnin, sample, thin, ...){
+  JAGS_fit("model{ for(i in 1:N){ y[i] ~ dnorm(mu, pow(sigma, -2)) } }", data = .thinned_data,
+    prior_list = list(mu = prior("normal", list(0, 1)), sigma = prior("normal", list(0, 1), list(0, Inf))),
+    chains = 2, adapt = adapt, burnin = burnin, sample = sample, thin = thin, seed = 1, ...)
+}
+
+test_that("a fit adapts, burns in and samples 'thin' iterations per draw and numbers its draws by iteration", {
+
+  skip_if_not_installed("rjags")
+  adapt <- rjags::adapt
+  batch <- BayesTools:::.bt_rjags_batch
+  adapted <- before_sampling <- numeric()
+  testthat::local_mocked_bindings(
+    adapt = function(object, n.iter, ...){
+      adapted <<- c(adapted, n.iter)
+      adapt(object, n.iter, ...)
+    },
+    .package = "rjags"
+  )
+  testthat::local_mocked_bindings(
+    .bt_rjags_batch = function(sample, monitor, thin, progress, keep_live, probability_plan, last = TRUE,
+                               session = BayesTools:::.bt_rjags_worker_session, live_model = session$model,
+                               release_model = FALSE){
+      before_sampling <<- c(before_sampling, live_model$iter())
+      batch(sample, monitor, thin, progress, keep_live, probability_plan, last = last, session = session,
+        live_model = live_model, release_model = release_model)
+    },
+    .package = "BayesTools"
+  )
+  for(thin in c(1L, 2L, 3L)){
+    info <- paste("thin", thin)
+    adapted <- before_sampling <- numeric()
+    fit <- .thinned_fit(adapt = 100L, burnin = 200L, sample = 100L, thin = thin)
+    # 100 * thin adaptation and 200 * thin burn-in iterations, which JAGS
+    # counts before sampling: the readiness block holds all 200 draws of
+    # burn-in, its last 200 * thin iterations
+    expect_equal(adapted, 100 * thin, info = info)
+    expect_equal(before_sampling, (100 + 200) * thin, info = info)
+    expect_identical(attr(fit, "adaptation")$initial, 100L, info = info)
+    expect_identical(fit$burnin, 200L, info = info)
+    expect_identical(fit$sample, 100L, info = info)
+    expect_identical(fit$thin, thin, info = info)
+    record <- attr(fit, "burnin_check")
+    expect_identical(record[c("block", "thin", "extension", "status")],
+      list(block = 200L, thin = thin, extension = 0, status = "ready"), info = info)
+    expect_identical(record$blocks$draws, 200L, info = info)
+    # the first retained draw is iteration (100 + 200) * thin + 1, the last
+    # (100 + 200 + 100 - 1) * thin + 1
+    for(chain in fit$mcmc){
+      expect_identical(attr(chain, "mcpar"), c((100 + 200) * thin + 1, (100 + 200 + 99) * thin + 1, thin),
+        info = info)
+      expect_identical(nrow(chain), 100L, info = info)
+    }
+    geometry <- JAGS_draw_geometry(fit)$chains
+    expect_identical(geometry$start, rep(as.integer(300L * thin + 1L), 2L), info = info)
+    expect_identical(geometry$end, rep(as.integer(399L * thin + 1L), 2L), info = info)
+  }
+})
+
+test_that("adapt = 250 and burnin = 500 at thin = 2 run the iterations of the earlier adapt = 500 and burnin = 1000", {
+
+  skip_if_not_installed("rjags")
+  fit <- .thinned_fit(adapt = 250, burnin = 500, sample = 100, thin = 2)
+
+  # the same iterations run directly in rjags: 500 adaptation and 1000
+  # burn-in iterations, then 200 sampling iterations thinned by 2 (monitoring
+  # the readiness block changes no sampler)
+  inits <- JAGS_get_inits(attr(fit, "prior_list"), chains = 2, seed = 1)
+  model <- rjags::jags.model(textConnection(fit$model), data = fit$data, inits = inits, n.chains = 2,
+    n.adapt = 0, quiet = TRUE)
+  rjags::adapt(model, n.iter = 500, end.adaptation = TRUE, progress.bar = "none")
+  stats::update(model, n.iter = 1000, progress.bar = "none")
+  reference <- rjags::coda.samples(model, c("mu", "sigma"), n.iter = 200, thin = 2, progress.bar = "none")
+  for(chain in 1:2){
+    expect_identical(unname(as.matrix(fit$mcmc[[chain]])[, c("mu", "sigma")]),
+      unname(as.matrix(reference[[chain]])[, c("mu", "sigma")]))
+  }
+  expect_identical(fit$end_state, model$state(internal = TRUE))
+
+  # pinned from BayesTools f9f77929, where 'adapt' and 'burnin' counted
+  # iterations, with adapt = 500, burnin = 1000, thin = 2 (the same fit
+  # otherwise): the chains end in the same random-number states, and the
+  # draws and their iteration numbers are the same
+  expect_identical(lapply(fit$end_state, `[[`, ".RNG.name"), rep(list("base::Super-Duper"), 2L))
+  expect_identical(lapply(fit$end_state, `[[`, ".RNG.state"),
+    list(c(993861771, 1093724209), c(-1621646870, -107494039)))
+  expect_equal(unname(fit$mcmc[[1L]][c(1L, 50L, 100L), "mu"]),
+    c(0.51234744241818353, 0.51506102361899775, 0.17386462115027174), tolerance = 1e-10)
+  expect_equal(unname(fit$mcmc[[1L]][c(1L, 50L, 100L), "sigma"]),
+    c(0.44650524093002697, 0.67136730635643005, 1.0033387888462699), tolerance = 1e-10)
+  expect_equal(unname(fit$mcmc[[2L]][c(1L, 50L, 100L), "mu"]),
+    c(0.54590634906879953, 0.30750871440048355, 0.39223734805373445), tolerance = 1e-10)
+  expect_equal(unname(fit$mcmc[[2L]][c(1L, 50L, 100L), "sigma"]),
+    c(0.88513699296000226, 1.0963839598105984, 0.78908217304607797), tolerance = 1e-10)
+  expect_identical(attr(fit$mcmc[[1L]], "mcpar"), c(1501, 1699, 2))
+  expect_identical(fit$burnin, 500)
+  expect_identical(attr(fit, "burnin_check")[c("block", "thin", "status")],
+    list(block = 500L, thin = 2, status = "ready"))
+})
+
+test_that("settings that are whole within the validator's tolerance run as the whole numbers", {
+
+  skip_if_not_installed("rjags")
+  # rjags would thin by the integer part of 2 - 1e-9 and keep about twice the
+  # draws
+  whole <- .thinned_fit(adapt = 250, burnin = 500, sample = 100, thin = 2)
+  for(near in list(list(thin = 2 - 1e-9), list(thin = 2 + 1e-9),
+                   list(adapt = 250 - 1e-9, burnin = 500 + 1e-9, sample = 100 + 1e-9))){
+    settings <- utils::modifyList(list(adapt = 250, burnin = 500, sample = 100, thin = 2), near)
+    info <- paste(names(near), format(unlist(near), digits = 17), collapse = ", ")
+    fit <- do.call(.thinned_fit, settings)
+    expect_identical(fit$mcmc, whole$mcmc, info = info)
+    expect_identical(fit$end_state, whole$end_state, info = info)
+    expect_identical(list(burnin = fit$burnin, sample = fit$sample, thin = fit$thin),
+      list(burnin = 500, sample = 100, thin = 2), info = info)
+    expect_identical(attr(fit, "burnin_check"), attr(whole, "burnin_check"), info = info)
+    expect_identical(attr(fit, "adaptation"), attr(whole, "adaptation"), info = info)
+  }
+  expect_identical(nrow(whole$mcmc[[1L]]), 100L)
+})
+
+test_that("the settings are refused when the last draw would be numbered beyond the integer range", {
+
+  settings <- function(adapt, burnin, sample, thin){
+    JAGS_check_and_list_fit_settings(chains = 1, adapt = adapt, burnin = burnin, sample = sample, thin = thin,
+      autofit = FALSE, parallel = FALSE, cores = 1, silent = TRUE, seed = 1)
+  }
+  limit <- .Machine$integer.max
+  message <- function(last){
+    paste0("The settings 'adapt', 'burnin', 'sample' and 'thin' would number the last retained draw ", last,
+      ", beyond the largest iteration number (2147483647): a fit runs ('adapt' + 'burnin' + 'sample') times ",
+      "'thin' iterations. Reduce 'adapt', 'burnin', 'sample' or 'thin'.")
+  }
+  # the last draw is iteration (adapt + burnin + sample - 1) * thin + 1
+  expect_silent(settings(50, 50, limit - 100, 1))
+  expect_error(settings(50, 50, limit - 99, 1), message("2147483648"), fixed = TRUE)
+  expect_silent(settings(100, 100, 1073741624, 2))
+  expect_error(settings(100, 100, 1073741625, 2), message("2147483649"), fixed = TRUE)
+  expect_error(settings(1073741824, 50, 100, 2), message("2147483947"), fixed = TRUE)
+  expect_error(settings(50, 1073741824, 100, 2L), message("2147483947"), fixed = TRUE)
+  # a single setting beyond the integer range is named by its own check
+  expect_error(settings(limit + 1, 50, 100, 1), "The 'adapt' must be equal or lower than 2147483647.", fixed = TRUE)
+})

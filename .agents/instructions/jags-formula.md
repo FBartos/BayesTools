@@ -217,11 +217,26 @@ chain whose `draws * thin` sampling iterations fit rjags' signed-integer
 `n.iter`; sizes stay whole doubles until these caps apply. The fixed step
 keeps `fail_fast` and its size.
 
+`adapt`, `burnin` and `sample` of `JAGS_fit()`, and the `adapt` of
+`JAGS_extend()`, count draws at the fit's `thin` (a breaking change after
+0.4.0, where `adapt` and `burnin` counted iterations): the backend runs
+`adapt * thin` adaptation, `burnin * thin` burn-in and `sample * thin`
+sampling iterations, and the first retained draw is public iteration
+`(adapt + burnin) * thin + 1`. `JAGS_check_and_list_fit_settings()` refuses,
+before any backend work and naming the four settings, a fit whose last
+retained draw `(adapt + burnin + sample - 1) * thin + 1` (double arithmetic)
+passes `.Machine$integer.max`; `JAGS_extend()` refuses an `adapt` whose
+`adapt * thin` adaptation iterations pass it. Both functions then run the
+whole numbers that `check_int()` accepted (`.JAGS_whole_count()`): rjags
+thins by `as.integer(thin)` and trims `n.iter` to a multiple of it, so a
+`thin` of `2 - 1e-9` would thin by 1. `fit$burnin`, the readiness record and
+the `adaptation` record count draws at the fit's thinning, like `fit$sample`.
+
 The readiness check between burn-in and sampling (`R/JAGS-burnin-check.R`)
 runs in the initial run of every `JAGS_fit()` with `burnin_max_Rhat` set, at
-least two chains and a block of `D = min(burnin_extend, burnin %/% thin)` draws
-at the fit's `thin` (the last `D * thin` iterations of burn-in) with `D` at
-least 100; never in `JAGS_extend()` or automatic extensions, and afresh in every
+least two chains and a block of `D = min(burnin_extend, burnin)` draws at the
+fit's `thin` (the last `D * thin` iterations of burn-in) with `D` at least
+100; never in `JAGS_extend()` or automatic extensions, and afresh in every
 restart attempt. The omitted `autofit_control` elements take their defaults
 (`.bt_burnin_check_settings()`); the validator does not fill them in, so that
 an explicit `burnin_max_Rhat = NULL` (off) differs from an omission. The
@@ -233,7 +248,7 @@ must agree, else an internal error) is not checked: JAGS draws every monitored
 node afresh in each sweep, so the check could only pass and monitoring would
 change the stream. It runs its whole burn-in unmonitored, as with the check
 off, and records no check. Each
-process runs `burnin - D * thin` unmonitored sweeps, then the `D * thin` sweeps
+process runs `(burnin - D) * thin` unmonitored sweeps, then the `D * thin` sweeps
 of the block with the fit's monitors on at the fit's `thin` (no probability
 read-outs, never in the retained chunks) through the shared
 `.bt_rjags_samples()`, and keeps its live model. The block's draws are those
@@ -272,8 +287,9 @@ is not retried as a sampler failure. Only the kept attempt signals
 `BayesTools_burnin_not_converged` (whatever `silent` is), after its initial
 sampling has finished and before any automatic extension (so that a discarded
 restart attempt warns nothing), and stores it once in the fit's warnings. `attr(fit, "burnin_check")` records the check (with
-`thin`; `block`, `blocks$sweeps` and `extension` in sweeps), and
-`fit$burnin` and the public iteration numbers count the extension sweeps. A
+`thin`; `block`, `blocks$draws` and `extension` in draws at the fit's
+thinning), `fit$burnin` adds the extension's draws, and the public iteration
+numbers count its `extension * thin` sweeps. A
 passing check leaves the draws, end states, samplers and warnings identical
 to the check off, for any `thin`, unless a monitored node has no observed
 descendants: JAGS forward-samples such a node only while it is monitored.
@@ -295,7 +311,7 @@ call. JASP progress ticks divide the requested draws into at most five batches.
 Only the calling process ticks, after every group completes its batch.
 Returned fits store the compiled model text and data, chain states and RNGs.
 An explicit `JAGS_extend()` rebuilds the sampler, uses the recorded adaptation
-length (or the call-specific override), and starts sampling with zero additional
+length (or the call-specific override; `adapt * thin` iterations), and starts sampling with zero additional
 burn-in. Record the adaptation settings and rebuild status for each extension.
 The incomplete-adaptation warning (`BayesTools_adaptation_incomplete`) and the
 readiness warning share the parent class `BayesTools_fit_diagnostic`. The

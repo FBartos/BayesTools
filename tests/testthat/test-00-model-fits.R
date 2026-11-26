@@ -161,8 +161,11 @@ test_that("Simple prior models fit correctly", {
   )
   model_syntax_thin <- "model{}"
 
+  # adapt and burnin count draws at thin = 3: 150 adaptation and 150 burn-in
+  # iterations (the 100 adaptation iterations of earlier versions are below
+  # the minimum of 50 draws)
   fit_simple_thin <- suppressWarnings(JAGS_fit(model_syntax_thin, data = NULL, prior_list = priors_thin,
-                                               chains = 2, adapt = 100, burnin = 150, sample = 300, thin = 3, seed = 2))
+                                               chains = 2, adapt = 50, burnin = 50, sample = 300, thin = 3, seed = 2))
   result <- save_fit(fit_simple_thin, "fit_simple_thin",
                      simple_priors = TRUE, thinning = TRUE,
                      note = "Simple normal prior with thinning parameter (thin=3)")

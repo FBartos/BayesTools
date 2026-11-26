@@ -30,18 +30,29 @@ JAGS_check_and_list_autofit_settings(
 \arguments{
 \item{chains}{number of chains to be run, defaults to \code{4}}
 
-\item{adapt}{number of samples used for adapting the MCMC chains, defaults to \code{500}}
+\item{adapt}{length of the adaptation phase in draws per chain at the
+thinning \code{thin} (\code{adapt * thin} iterations), defaults to \code{500}}
 
-\item{burnin}{number of burnin iterations of the MCMC chains, defaults to
-\code{1000}. Its last iterations are checked for agreement of the chains
-before sampling starts, and with \code{autofit} burn-in can be extended (see
-\code{burnin_max_Rhat} in \code{autofit_control}); \code{fit$burnin} holds
-the burn-in that was run.}
+\item{burnin}{length of burn-in in draws per chain at the thinning
+\code{thin}, like \code{sample}: each chain runs \code{burnin * thin}
+burn-in iterations. Defaults to \code{1000}. Its last draws are checked for
+agreement of the chains before sampling starts, and with \code{autofit}
+burn-in can be extended (see \code{burnin_max_Rhat} in
+\code{autofit_control}); \code{fit$burnin} holds the burn-in that was run,
+in draws.}
 
 \item{sample}{number of draws to retain per chain, defaults to \code{4000}.
 Each chain runs \code{sample * thin} sampling iterations.}
 
-\item{thin}{thinning interval for the MCMC samples, defaults to \code{1}}
+\item{thin}{thinning interval: one draw is retained every \code{thin}
+iterations. Defaults to \code{1}. \code{adapt}, \code{burnin} and
+\code{sample} count draws at this thinning, so a fit runs
+\code{(adapt + burnin + sample) * thin} iterations per chain and its first
+retained draw is iteration \code{(adapt + burnin) * thin + 1}. The last
+retained draw, iteration \code{(adapt + burnin + sample - 1) * thin + 1},
+must not be numbered beyond \code{.Machine$integer.max}. \code{adapt},
+\code{burnin}, \code{sample} and \code{thin} are whole numbers; a value
+within a small tolerance of a whole number is used as that number.}
 
 \item{autofit}{whether the models should be refitted until convergence criteria
 specified in \code{autofit_control}. Automatic fitting stops once every
@@ -184,9 +195,9 @@ check runs, also without \code{autofit}, in the initial fit of
 \code{JAGS_fit()} (afresh in each restart attempt; not in
 \code{JAGS_extend()} or the automatic extensions after sampling) when
 there are at least two chains, the block of the last
-\code{min(burnin_extend, floor(burnin / thin))} draws of burn-in, taken
-every \code{thin} iterations as in sampling, has at least 100 draws, and
-JAGS assigns the model a sampler. The iterations of the block (its draws
+\code{min(burnin_extend, burnin)} draws of burn-in, taken every
+\code{thin} iterations as in sampling, has at least 100 draws, and JAGS
+assigns the model a sampler. The iterations of the block (its draws
 times \code{thin}) run with the monitors on; their draws are checked and
 then dropped. Each
 chain's block is split into halves, and the chains are ready when the
@@ -227,19 +238,13 @@ exceed the threshold although its chains agree, because the statistic
 grows with the autocorrelation of the block's draws; a larger
 \code{thin} then helps when more widely spaced draws are less
 correlated, while more burn-in is the remedy for chains that have not
-yet reached the same region. The check needs 100 draws at the fit's
-thinning: with \code{burnin} below \code{100 * thin} it does not run,
-and when it runs with \code{burnin} at most \code{burnin_extend * thin},
-the block holds every complete window of \code{thin} iterations of
-burn-in (the first \code{burnin \%\% thin} iterations run unmonitored),
-so raise \code{burnin} together with \code{thin}.}
+yet reached the same region. With \code{burnin} below 100 the check does
+not run, and with \code{burnin} at most \code{burnin_extend} it checks
+the whole burn-in.}
 \item{burnin_extend}{the number of final burn-in draws, taken every
 \code{thin} iterations, that the readiness check assesses, and of each
 extension of burn-in (\code{burnin_extend * thin} iterations); at least
-\code{100}. Defaults to \code{500}. When the check runs with
-\code{burnin} at most \code{burnin_extend * thin}, its block holds every
-complete window of \code{thin} iterations of burn-in, and the first
-\code{burnin \%\% thin} iterations run unmonitored.}
+\code{100}. Defaults to \code{500}.}
 \item{burnin_max_extend}{the largest number of extensions of burn-in, with
 \code{autofit} only. Defaults to \code{10}. An extension after which the
 last retained draw would have an iteration number beyond
@@ -257,5 +262,8 @@ invisibly returns a list of checked autofit settings.
 }
 \description{
 Checks and lists settings for the
-\link{JAGS_fit} function.
+\link{JAGS_fit} function. \code{adapt}, \code{burnin} and \code{sample} count
+draws at the thinning \code{thin}; settings whose last retained draw,
+iteration \code{(adapt + burnin + sample - 1) * thin + 1}, would be
+numbered beyond \code{.Machine$integer.max} are refused.
 }

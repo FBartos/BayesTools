@@ -230,7 +230,7 @@ test_that("the extension loop stops when ready, at the cap, at max_time and with
   expect_identical(run$record$extension, 0)
   expect_length(run$calls$blocks, 0L)
   expect_identical(run$record$blocks,
-    data.frame(block = 0L, sweeps = 400L, Rhat = 1.2, parameter = "a", stringsAsFactors = FALSE))
+    data.frame(block = 0L, draws = 400L, Rhat = 1.2, parameter = "a", stringsAsFactors = FALSE))
   expect_identical(nrow(run$record$failing), 0L)
 
   # ready after two extensions, each block checked alone
@@ -241,7 +241,7 @@ test_that("the extension loop stops when ready, at the cap, at max_time and with
   expect_identical(run$calls$draws, c("first block", "block 1", "block 2"))
   expect_identical(run$record$blocks$Rhat, c(3, 1.7, 1.4))
   expect_identical(run$record$blocks$parameter, c("a", "b", "b"))
-  expect_identical(run$record$blocks$sweeps, c(400L, 500L, 500L))
+  expect_identical(run$record$blocks$draws, c(400L, 500L, 500L))
 
   # the cap
   run <- .burnin_loop(list(c(a = 3, b = 2, c = 1.2)), max_extensions = 2)
@@ -290,20 +290,21 @@ test_that("the extension loop stops when ready, at the cap, at max_time and with
   expect_null(BayesTools:::.bt_burnin_warning(run$record))
 })
 
-test_that("with thinning the loop runs blocks of draws and records iterations", {
+test_that("with thinning the loop counts draws and checks the room in iterations", {
 
   # the first block holds 400 draws, every third iteration, and each
-  # extension 500 draws: 1500 iterations
+  # extension 500 draws (1500 iterations); the record counts draws, as
+  # fit$burnin and fit$sample do
   run <- .burnin_loop(list(c(a = 3), c(a = 3), c(a = 1.2)), thin = 3L)
   expect_identical(run$calls$blocks, c(500, 500))
   expect_identical(run$record[c("block", "burnin_extend", "thin", "extension", "status")],
-    list(block = 1200L, burnin_extend = 500, thin = 3L, extension = 3000, status = "ready"))
-  expect_identical(run$record$blocks$sweeps, c(1200L, 1500L, 1500L))
+    list(block = 400L, burnin_extend = 500, thin = 3L, extension = 1000, status = "ready"))
+  expect_identical(run$record$blocks$draws, c(400L, 500L, 500L))
 
   # the room for iteration numbers counts iterations: two blocks of 1500 fit
   # in 3000, a third does not; none fits in 1499
   run <- .burnin_loop(list(c(a = 3)), thin = 3L, extension_room = 3000)
-  expect_identical(run$record[c("stop_reason", "extension")], list(stop_reason = "iteration_limit", extension = 3000))
+  expect_identical(run$record[c("stop_reason", "extension")], list(stop_reason = "iteration_limit", extension = 1000))
   expect_identical(run$calls$blocks, c(500, 500))
   run <- .burnin_loop(list(c(a = 3)), thin = 3L, extension_room = 1499)
   expect_identical(run$record[c("stop_reason", "extension")], list(stop_reason = "iteration_limit", extension = 0))
@@ -313,17 +314,8 @@ test_that("with thinning the loop runs blocks of draws and records iterations", 
   # thin = 1 (a double)
   expect_identical(.burnin_loop(list(c(a = 3), c(a = 1.2)), burnin_extend = 500L, thin = 1)$record$extension, 500L)
   expect_identical(.burnin_loop(list(c(a = 1.2)), burnin_extend = 500L, thin = 1)$record$extension, 0L)
-  expect_identical(.burnin_loop(list(c(a = 3), c(a = 1.2)), burnin_extend = 500L, thin = 3)$record$extension, 1500L)
+  expect_identical(.burnin_loop(list(c(a = 3), c(a = 1.2)), burnin_extend = 500L, thin = 3)$record$extension, 500L)
   expect_identical(.burnin_loop(list(c(a = 3), c(a = 1.2)), burnin_extend = 500, thin = 1L)$record$extension, 500)
-
-  # a 'thin' that is whole only within the validator's tolerance enters the
-  # extension as given, as the extension block runs it; the sweeps of the
-  # blocks are truncated
-  thin <- 2 - 1e-9
-  run  <- .burnin_loop(list(c(a = 3), c(a = 1.2)), burnin_extend = 500L, thin = thin)
-  expect_identical(run$record$extension, 500L * thin)
-  expect_identical(run$record$block, as.integer(400 * thin))
-  expect_identical(run$record$blocks$sweeps, c(799L, 999L))
 })
 
 test_that("the warning names the quantities with the largest values and the remedy", {
@@ -551,7 +543,7 @@ test_that("the readiness settings default when omitted and validate when given",
 
   state <- new.env()
   state$groups <- list()
-  state$sweeps <- numeric()
+  state$extension_draws <- numeric()
   state$batches <- 0L
   state$block_index <- 0L
   state$events <- character()
@@ -591,7 +583,7 @@ test_that("the readiness settings default when omitted and validate when given",
       if(block > 0L) next_block() else NULL
     },
     .bt_rjags_burnin_block = function(draws, thin, monitor, progress, session){
-      state$sweeps <- c(state$sweeps, draws)
+      state$extension_draws <- c(state$extension_draws, draws)
       state$block_thin <- c(state$block_thin, thin)
       state$events <- c(state$events, "block")
       next_block()
@@ -642,7 +634,7 @@ test_that("the check runs on the last block of burn-in when it can and the fit r
   expect_identical(state$groups[[1L]]$block, 150L)
   expect_identical(attr(fit, "burnin_check")$block, 150L)
 
-  # no check: burn-in below 100 sweeps, one chain, or switched off; the fit
+  # no check: burn-in below 100 draws, one chain, or switched off; the fit
   # then runs as before, in one call of the chain group
   for(case in list(list(burnin = 99), list(chains = 1L), list(burnin_max_Rhat = NULL))){
     state <- .readiness_backend(list(), chains = if(is.null(case$chains)) 3L else case$chains)
@@ -668,102 +660,107 @@ test_that("JAGS_fit() resolves the automatic threshold with the fit's number of 
   expect_identical(attr(fit, "burnin_check")$burnin_max_Rhat, 1.5)
 })
 
-test_that("the block holds draws at the fit's thinning and the record counts its iterations", {
+test_that("the block holds the last draws of burn-in at the fit's thinning and the record counts draws", {
 
-  # burnin = 2000: min(500, 2000 %/% thin) draws over the last draws * thin
-  # iterations of burn-in
-  for(case in list(list(thin = 1L, draws = 500L, block = 500L),
-                   list(thin = 2L, draws = 500L, block = 1000L),
-                   list(thin = 4L, draws = 500L, block = 2000L),
-                   list(thin = 5L, draws = 400L, block = 2000L))){
-    info <- paste("thin", case$thin)
+  # burnin = 2000 draws: a block of min(500, 2000) = 500 draws, the last
+  # 500 * thin of the 2000 * thin burn-in iterations, at any 'thin'; the
+  # first retained draw is iteration (100 + 2000) * thin + 1
+  for(thin in list(1L, 2L, 3L, 5L)){
+    info <- paste("thin", thin)
     set.seed(1)
-    state <- .readiness_backend(list(.readiness_chains(n = case$draws)))
-    fit <- .readiness_fit(burnin = 2000, thin = case$thin)
+    state <- .readiness_backend(list(.readiness_chains()))
+    fit <- .readiness_fit(burnin = 2000, thin = thin)
     expect_identical(state$groups[[1L]][c("burnin", "block", "prepare", "thin")],
-      list(burnin = 2000, block = case$draws, prepare = TRUE, thin = case$thin), info = info)
+      list(burnin = 2000, block = 500L, prepare = TRUE, thin = thin), info = info)
     record <- attr(fit, "burnin_check")
     expect_identical(record[c("block", "thin", "extension", "status")],
-      list(block = case$block, thin = case$thin, extension = 0, status = "ready"), info = info)
-    expect_identical(record$blocks$sweeps, case$block, info = info)
+      list(block = 500L, thin = thin, extension = 0, status = "ready"), info = info)
+    expect_identical(record$blocks$draws, 500L, info = info)
     expect_identical(fit$burnin, 2000, info = info)
+    expect_identical(stats::start(fit$mcmc[[1L]]), (100 + 2000) * thin + 1, info = info)
   }
-  # thin = 30: 66 draws are too few, the check does not run
-  state <- .readiness_backend(list())
-  fit <- .readiness_fit(burnin = 2000, thin = 30L)
-  expect_identical(state$groups[[1L]][c("block", "prepare")], list(block = 0L, prepare = FALSE))
-  expect_null(attr(fit, "burnin_check"))
 
-  # thin = 101 above burnin = 100: no draw at all; the check does not run
-  # and the fit equals the fit with the check off
+  # 'thin' never switches the check off: with burnin = 100 and thin = 101,
+  # the block holds all 100 draws of burn-in (10100 iterations)
+  state <- .readiness_backend(list(.readiness_chains(n = 100L)))
+  fit <- .readiness_fit(burnin = 100, thin = 101L)
+  expect_identical(state$groups[[1L]][c("burnin", "block", "prepare")], list(burnin = 100, block = 100L, prepare = TRUE))
+  expect_identical(attr(fit, "burnin_check")[c("block", "thin")], list(block = 100L, thin = 101L))
+
+  # a burn-in below 100 draws is not checked, at any 'thin'; the fit then
+  # equals the fit with the check off
   set.seed(1)
   state <- .readiness_backend(list())
-  fit <- .readiness_fit(burnin = 100, thin = 101L)
+  fit <- .readiness_fit(burnin = 99, thin = 3L)
   expect_identical(state$groups[[1L]][c("block", "prepare")], list(block = 0L, prepare = FALSE))
   expect_null(attr(fit, "burnin_check"))
   set.seed(1)
   state <- .readiness_backend(list())
-  off <- .readiness_fit(burnin = 100, thin = 101L, burnin_max_Rhat = NULL)
+  off <- .readiness_fit(burnin = 99, thin = 3L, burnin_max_Rhat = NULL)
   # the parameter map's cache identifier is unique to each fit
   without_id <- function(fit){
     attr(attr(fit, "parameter_map"), "runtime_cache_id") <- NULL
     fit
   }
   expect_identical(without_id(fit), without_id(off))
-
-  # a burn-in that is not a multiple of 'thin': 1000 %/% 3 = 333 draws over
-  # the last 999 iterations
-  state <- .readiness_backend(list(.readiness_chains(n = 333L)))
-  fit <- .readiness_fit(burnin = 1000, thin = 3L)
-  expect_identical(state$groups[[1L]]$block, 333L)
-  expect_identical(attr(fit, "burnin_check")[c("block", "thin")], list(block = 999L, thin = 3L))
 })
 
-test_that("a chain group runs the unmonitored part of burn-in, then the block at the fit's thinning", {
+# A model with a slice sampler for 'sigma', which adapts (JAGS counts the
+# adaptation iterations of such a model in its iteration number).
+.burnin_slice_model <- "model{ mu ~ dnorm(0, 1)\n sigma ~ dnorm(0, 1) T(0, )\n y ~ dnorm(mu, pow(sigma, -2)) }"
+
+test_that("a chain group runs adaptation and burn-in at the fit's thinning, the block last", {
 
   skip_if_not_installed("rjags")
   run_group <- function(block, thin){
     session <- new.env(parent = emptyenv())
     inits <- lapply(1:2, function(chain) list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = chain))
-    draws <- BayesTools:::.bt_rjags_group(inits, "model{ mu ~ dnorm(0, 1)\n y ~ dnorm(mu, 1) }",
+    draws <- BayesTools:::.bt_rjags_group(inits, .burnin_slice_model,
       data = list(y = 0.5), monitor = "mu", adapt = 100L, burnin = 1000L, sample = 10L, thin = thin,
       silent = TRUE, keep_live = FALSE, prepare = TRUE, block = block, session = session)
     list(draws = draws, iteration = session$model$iter(), state = session$model$state(internal = TRUE))
   }
-  # 1000 %/% 3 = 333 draws over the last 999 iterations, after one
-  # unmonitored iteration: the chains end where the unmonitored burn-in ends
+  # adapt = 100 and burnin = 1000 draws at thin = 3 run 300 + 3000
+  # iterations; a block of 500 draws runs the last 1500 of them, after 1500
+  # unmonitored ones: the chains end where the unmonitored burn-in ends
   off <- run_group(0L, 3L)
-  on  <- run_group(333L, 3L)
+  on  <- run_group(500L, 3L)
   expect_null(off$draws)
-  expect_identical(vapply(on$draws, nrow, integer(1)), c(333L, 333L))
+  expect_equal(off$iteration, 3300)
+  expect_identical(vapply(on$draws, nrow, integer(1)), c(500L, 500L))
   expect_identical(coda::thin(on$draws), 3)
   expect_identical(on$iteration, off$iteration)
   expect_identical(on$state, off$state)
+  # at thin = 1 the draws are iterations
+  expect_equal(run_group(0L, 1L)$iteration, 1100)
 })
 
 test_that("the block holds the iterations that JAGS records at the fit's thinning", {
 
   skip_if_not_installed("rjags")
   # the burn-in block and one extension block of a seeded run at thin = 3,
-  # and the same blocks of an unthinned run: JAGS records the first
+  # and the same iterations of an unthinned run: JAGS records the first
   # iteration of each window of 'thin' iterations, as in sampling
-  run_blocks <- function(block, thin){
+  run_blocks <- function(adapt, burnin, block, extension, thin){
     session <- new.env(parent = emptyenv())
     inits <- lapply(1:2, function(chain) list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = chain))
-    first <- BayesTools:::.bt_rjags_group(inits, "model{ mu ~ dnorm(0, 1)\n y ~ dnorm(mu, 1) }",
-      data = list(y = 0.5), monitor = "mu", adapt = 100L, burnin = 1000L, sample = 10L, thin = thin,
+    first <- BayesTools:::.bt_rjags_group(inits, .burnin_slice_model,
+      data = list(y = 0.5), monitor = "mu", adapt = adapt, burnin = burnin, sample = 10L, thin = thin,
       silent = TRUE, keep_live = FALSE, prepare = TRUE, block = block, session = session)
-    extension <- BayesTools:::.bt_rjags_burnin_block(600L %/% thin, thin, "mu", "none", session)
+    extension <- BayesTools:::.bt_rjags_burnin_block(extension, thin, "mu", "none", session)
     lapply(list(first = first, extension = extension), function(draws){
       lapply(draws, function(chain) as.numeric(chain[, "mu"]))
     })
   }
-  unthinned <- run_blocks(1000L, 1L)
-  thinned   <- run_blocks(333L, 3L)
-  # after 1000 - 333 * 3 = 1 unmonitored iteration, the block holds burn-in
-  # iterations 2, 5, ..., 998; the extension its iterations 1, 4, ..., 598
-  expect_identical(lengths(thinned$first), c(333L, 333L))
-  expect_identical(thinned$first, lapply(unthinned$first, `[`, 2L + 3L * 0:332))
+  # at thin = 3, adapt = 100, burnin = 1000 and a block of 500 draws are 300
+  # adaptation iterations, 1500 unmonitored burn-in iterations and a block of
+  # 1500 iterations, as in the unthinned run
+  unthinned <- run_blocks(300L, 3000L, 1500L, 600L, 1L)
+  thinned   <- run_blocks(100L, 1000L, 500L, 200L, 3L)
+  # the block holds burn-in iterations 1501, 1504, ..., 2998; the extension
+  # its iterations 1, 4, ..., 598
+  expect_identical(lengths(thinned$first), c(500L, 500L))
+  expect_identical(thinned$first, lapply(unthinned$first, `[`, 1L + 3L * 0:499))
   expect_identical(lengths(thinned$extension), c(200L, 200L))
   expect_identical(thinned$extension, lapply(unthinned$extension, `[`, 1L + 3L * 0:199))
 })
@@ -774,7 +771,7 @@ test_that("a model without samplers is not checked", {
   state <- .readiness_backend(list(NULL))
   fit <- .readiness_fit(autofit = TRUE)
   expect_identical(state$groups[[1L]][c("block", "prepare")], list(block = 500L, prepare = TRUE))
-  expect_length(state$sweeps, 0L)
+  expect_length(state$extension_draws, 0L)
   expect_null(attr(fit, "burnin_check"))
   expect_identical(fit$burnin, 600)
   expect_identical(stats::start(fit$mcmc[[1L]]), 701)
@@ -807,7 +804,7 @@ test_that("chains that disagree without autofit sample after one warning", {
     "Chains did not agree at the end of burn-in: R-hat",
     class = "BayesTools_burnin_not_converged"
   )
-  expect_length(state$sweeps, 0L)
+  expect_length(state$extension_draws, 0L)
   record <- attr(fit, "burnin_check")
   expect_identical(record[c("status", "stop_reason", "extension")],
     list(status = "not_ready", stop_reason = "no_autofit", extension = 0))
@@ -889,25 +886,27 @@ test_that("automatic extensions and JAGS_extend() never run the check", {
 
 test_that("autofit extends burn-in in blocks and the iteration numbers count them", {
 
-  # thin = 2: blocks of 300 draws over 600 iterations each
+  # thin = 2: blocks of 300 draws over 600 iterations each; the record and
+  # fit$burnin count draws, the iteration numbers count iterations:
+  # (100 + 600 + 2 * 300) * 2 + 1
   set.seed(3)
   state <- .readiness_backend(list(.readiness_chains(shift = 10, n = 300L), .readiness_chains(shift = 10, n = 300L),
     .readiness_chains(n = 300L)))
   fit <- .readiness_fit(autofit = TRUE, thin = 2L, burnin_extend = 300)
-  expect_identical(state$groups[[1L]]$block, 300L)
-  expect_identical(state$sweeps, c(300, 300))
+  expect_identical(state$groups[[1L]][c("burnin", "block")], list(burnin = 600, block = 300L))
+  expect_identical(state$extension_draws, c(300, 300))
   expect_identical(state$block_thin, c(2L, 2L))
   record <- attr(fit, "burnin_check")
   expect_identical(record$status, "ready")
   expect_identical(record[c("block", "burnin_extend", "thin", "extension")],
-    list(block = 600L, burnin_extend = 300, thin = 2L, extension = 1200))
-  expect_identical(record$blocks$sweeps, c(600L, 600L, 600L))
-  expect_identical(fit$burnin, 1800)
-  expect_identical(stats::start(fit$mcmc[[1L]]), 100 + 1800 + 1)
+    list(block = 300L, burnin_extend = 300, thin = 2L, extension = 600))
+  expect_identical(record$blocks$draws, c(300L, 300L, 300L))
+  expect_identical(fit$burnin, 1200)
+  expect_identical(stats::start(fit$mcmc[[1L]]), (100 + 1200) * 2 + 1)
   expect_identical(coda::thin(fit$mcmc[[1L]]), 2)
   geometry <- JAGS_draw_geometry(fit)
-  expect_identical(geometry$chains$start, rep(1901L, 3L))
-  expect_identical(geometry$chains$end, rep(1901L + 199L * 2L, 3L))
+  expect_identical(geometry$chains$start, rep(2601L, 3L))
+  expect_identical(geometry$chains$end, rep(2601L + 199L * 2L, 3L))
   expect_null(attr(fit, "warnings"))
 
   # 'fit$burnin' keeps the type it was given
@@ -923,21 +922,33 @@ test_that("autofit extends burn-in in blocks and the iteration numbers count the
   fit <- .readiness_fit(autofit = TRUE, burnin_extend = 300L, thin = 1)
   expect_identical(attr(fit, "burnin_check")[c("block", "extension")], list(block = 300L, extension = 300L))
 
-  # thin = 2 - 1e-9, whole within the validator's tolerance: 601 %/% thin
-  # = 300 draws, a block of 200 and one extension of 200; the burn-in, the
-  # record and the iteration numbers are those of the arithmetic in the
-  # given 'thin' (as at b9af0e94), not of a 'thin' truncated to 1
-  thin  <- 2 - 1e-9
-  state <- .readiness_backend(list(.readiness_chains(shift = 10, n = 200L), .readiness_chains(n = 200L)))
-  fit <- .readiness_fit(autofit = TRUE, burnin = 601L, thin = thin, burnin_extend = 200L)
-  expect_identical(state$groups[[1L]][c("burnin", "block", "thin")], list(burnin = 601L, block = 200L, thin = thin))
-  expect_identical(state$sweeps, 200)
-  record <- attr(fit, "burnin_check")
+  # a 'thin' that is whole only within the validator's tolerance runs as the
+  # whole number: the fit equals the fit with thin = 2 (a block of 200
+  # draws and one extension of 200, and the draws numbered from
+  # (100 + 801) * 2 + 1)
+  fit_with_thin <- function(thin){
+    set.seed(5)
+    state <- .readiness_backend(list(.readiness_chains(shift = 10, n = 200L), .readiness_chains(n = 200L)),
+      env = parent.frame())
+    fit <- .readiness_fit(autofit = TRUE, burnin = 601L, thin = thin, burnin_extend = 200L)
+    attr(attr(fit, "parameter_map"), "runtime_cache_id") <- NULL
+    list(fit = fit, state = state)
+  }
+  whole <- fit_with_thin(2)
+  expect_identical(whole$state$groups[[1L]][c("burnin", "block", "thin")], list(burnin = 601L, block = 200L, thin = 2))
+  expect_identical(whole$state$extension_draws, 200)
+  record <- attr(whole$fit, "burnin_check")
   expect_identical(record[c("block", "burnin_extend", "thin", "extension", "status")],
-    list(block = 399L, burnin_extend = 200L, thin = thin, extension = 200L * thin, status = "ready"))
-  expect_identical(record$blocks$sweeps, c(399L, 399L))
-  expect_identical(fit$burnin, 1000L)
-  expect_identical(stats::start(fit$mcmc[[1L]]), 100 + 1000 + 1)
+    list(block = 200L, burnin_extend = 200L, thin = 2, extension = 200L, status = "ready"))
+  expect_identical(record$blocks$draws, c(200L, 200L))
+  expect_identical(whole$fit$burnin, 801L)
+  expect_identical(whole$fit$thin, 2)
+  expect_identical(stats::start(whole$fit$mcmc[[1L]]), (100 + 801) * 2 + 1)
+  for(thin in c(2 - 1e-9, 2 + 1e-9)){
+    near <- fit_with_thin(thin)
+    expect_identical(near$state$groups, whole$state$groups, info = format(thin, digits = 17))
+    expect_identical(near$fit, whole$fit, info = format(thin, digits = 17))
+  }
 
   # the cap: the warning names the extensions
   state <- .readiness_backend(list(.readiness_chains(shift = 10)))
@@ -966,18 +977,24 @@ test_that("autofit extends burn-in in blocks and the iteration numbers count the
     fixed = TRUE
   )
   expect_identical(attr(fit, "burnin_check")$stop_reason, "max_time")
-  expect_identical(state$sweeps, 500)
+  expect_identical(state$extension_draws, 500)
 })
 
 test_that("no extension numbers the draws beyond the integer range", {
 
   limit <- .Machine$integer.max
 
-  # a burn-in beyond the iteration numbers is refused before any backend work
-  # (its block of 2^30 draws at thin = 2 would overflow an integer product)
+  # settings whose last draw would be numbered beyond the integer range are
+  # refused before any backend work: (100 + 2^31 + 200 - 1) * 2 + 1; and
+  # an 'adapt' within the integer range whose iterations at thin = 2 are
+  # not, (1073741500 + 600 + 200 - 1) * 2 + 1
   state <- .readiness_backend(list())
   expect_error(.readiness_fit(burnin = 2147483648, thin = 2L, burnin_extend = 1073741824L),
-    "The 'burnin' must be equal or lower than 2147483647.", fixed = TRUE)
+    paste0("The settings 'adapt', 'burnin', 'sample' and 'thin' would number the last retained draw 4294967895, ",
+      "beyond the largest iteration number (2147483647): a fit runs ('adapt' + 'burnin' + 'sample') times ",
+      "'thin' iterations. Reduce 'adapt', 'burnin', 'sample' or 'thin'."), fixed = TRUE)
+  expect_error(.readiness_fit(adapt = 1073741500, thin = 2L), "would number the last retained draw 2147484599,",
+    fixed = TRUE)
   expect_length(state$groups, 0L)
 
   # burn-in: one block of 500 fits before the last draw (adapt + burnin +
@@ -991,25 +1008,27 @@ test_that("no extension numbers the draws beyond the integer range", {
   )
   record <- attr(fit, "burnin_check")
   expect_identical(record[c("stop_reason", "extension")], list(stop_reason = "iteration_limit", extension = 500))
-  expect_identical(state$sweeps, 500)
+  expect_identical(state$extension_draws, 500)
   expect_identical(fit$burnin, 1100)
   expect_identical(JAGS_draw_geometry(fit)$chains$end, rep(limit - 200L, 3L))
 
   # with thin = 2 a block of 500 draws runs 1000 iterations: the room after
-  # the last draw (adapt + 600 + 1 + 199 * 2) is 2000 iterations, so two
-  # blocks fit and the last draw reaches the limit exactly
-  state <- .readiness_backend(list(.readiness_chains(shift = 10, n = 300L), .readiness_chains(shift = 10)))
+  # the last draw ((adapt + 600) * 2 + 1 + 199 * 2) is 2000 iterations, so
+  # two blocks fit and the last draw reaches the limit exactly
+  adapt <- 1073740024
+  state <- .readiness_backend(list(.readiness_chains(shift = 10)))
   expect_warning(
-    fit <- .readiness_fit(autofit = TRUE, adapt = limit - 2999, burnin = 600, thin = 2L),
+    fit <- .readiness_fit(autofit = TRUE, adapt = adapt, burnin = 600, thin = 2L),
     "A further extension would number the draws beyond the largest iteration number",
     class = "BayesTools_burnin_not_converged"
   )
   record <- attr(fit, "burnin_check")
-  expect_identical(record[c("stop_reason", "extension")], list(stop_reason = "iteration_limit", extension = 2000))
-  expect_identical(record$blocks$sweeps, c(600L, 1000L, 1000L))
-  expect_identical(state$sweeps, c(500, 500))
-  expect_identical(fit$burnin, 2600)
+  expect_identical(record[c("stop_reason", "extension")], list(stop_reason = "iteration_limit", extension = 1000))
+  expect_identical(record$blocks$draws, c(500L, 500L, 500L))
+  expect_identical(state$extension_draws, c(500, 500))
+  expect_identical(fit$burnin, 1600)
   expect_identical(JAGS_draw_geometry(fit)$chains$end, rep(limit, 3L))
+  expect_identical((adapt + 1600 + 199) * 2 + 1, as.double(limit))
 
   # sampling: the first automatic extension reaches the limit exactly, the
   # second would pass it and is not started; the fit keeps its draws
@@ -1042,6 +1061,20 @@ test_that("no extension numbers the draws beyond the integer range", {
   expect_identical(state$batches, 1L)
   expect_identical(extended$mcmc, fit$mcmc)
   expect_true(sub("200 draws", "300 draws", message, fixed = TRUE) %in% attr(extended, "warnings"))
+
+  # JAGS_extend() refuses an 'adapt' whose iterations at the fit's thinning
+  # pass the integer range, before any backend work
+  state <- .readiness_backend(list(.readiness_chains()))
+  fit <- .readiness_fit(thin = 2L)
+  control <- list(max_Rhat = NULL, min_ESS = NULL, max_error = NULL, max_SD_error = NULL, max_time = NULL,
+    sample_extend = 100, max_extend = 1)
+  expect_error(JAGS_extend(fit, autofit_control = control, adapt = 1073741824),
+    paste0("The 'adapt' setting of 1073741824 draws at the fit's 'thin' of 2 would run 2147483648 adaptation ",
+      "iterations, beyond the largest iteration count (2147483647). Reduce 'adapt'."), fixed = TRUE)
+  expect_identical(state$batches, 1L)
+  extended <- JAGS_extend(fit, autofit_control = control, adapt = 1073741823)
+  expect_identical(state$groups[[2L]]$thin, 2L)
+  expect_identical(attr(extended, "adaptation")$extensions$adapt, 1073741823L)
 })
 
 test_that("a restart carries no state or warning of the failed attempt", {
@@ -1221,9 +1254,9 @@ test_that("the JASP warm-up bar ticks after the check and its extensions", {
       events <<- c(events, paste("warm-up block", block))
       .readiness_chains(shift = 10, n = block)
     },
-    .bt_rjags_burnin_block = function(sweeps, ...){
-      events <<- c(events, paste("extension", sweeps))
-      .readiness_chains(n = sweeps)
+    .bt_rjags_burnin_block = function(draws, ...){
+      events <<- c(events, paste("extension", draws))
+      .readiness_chains(n = draws)
     },
     .bt_rjags_batch = function(sample, ...){
       events <<- c(events, paste("batch", sample))
