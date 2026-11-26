@@ -16,7 +16,8 @@
 #'   \item{thin}{\code{1}}
 #' }
 #' @param adapt length of the adaptation phase in draws per chain at the
-#' thinning \code{thin} (\code{adapt * thin} iterations), defaults to \code{500}
+#' thinning \code{thin} (\code{adapt * thin} iterations where a sampler
+#' adapts), defaults to \code{500}
 #' @param skip_sample_extend whether \code{sample_extend}
 #' is allowed to be NULL and skipped in the check
 #'
@@ -25,7 +26,9 @@
 #'
 #' @return \code{JAGS_check_and_list_fit_settings} invisibly returns a
 #' list of checked fit settings. \code{JAGS_check_and_list_autofit_settings}
-#' invisibly returns a list of checked autofit settings.
+#' invisibly returns a list of checked autofit settings, with numeric
+#' \code{burnin_extend} and \code{sample_extend} as the whole numbers that
+#' are run.
 #'
 #' @export JAGS_check_and_list_fit_settings
 #' @export JAGS_check_and_list_autofit_settings
@@ -171,6 +174,10 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
     autofit_control[["sample_extend"]] <- "auto"
   }else{
     check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, allow_NA = FALSE, call = call)
+    # the whole number of draws that the validator accepted (.JAGS_whole_count())
+    if(!is.null(autofit_control[["sample_extend"]])){
+      autofit_control[["sample_extend"]] <- .JAGS_whole_count(autofit_control[["sample_extend"]])
+    }
   }
   check_int(autofit_control[["restarts"]], "restarts", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
   check_int(autofit_control[["max_extend"]], "max_extend", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
@@ -199,6 +206,9 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
   }
   check_int(autofit_control[["burnin_extend"]], "burnin_extend", lower = 100, upper = .Machine$integer.max,
     allow_NULL = !supplied("burnin_extend"), allow_NA = FALSE, call = call)
+  if(!is.null(autofit_control[["burnin_extend"]])){
+    autofit_control[["burnin_extend"]] <- .JAGS_whole_count(autofit_control[["burnin_extend"]])
+  }
   check_int(autofit_control[["burnin_max_extend"]], "burnin_max_extend", lower = 0,
     allow_NULL = !supplied("burnin_max_extend"), allow_NA = FALSE, call = call)
 

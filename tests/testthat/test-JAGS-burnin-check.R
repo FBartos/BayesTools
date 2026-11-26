@@ -576,7 +576,7 @@ test_that("the readiness settings default when omitted and validate when given",
                                keep_live, live_model = NULL, probability_plan = NULL,
                                prepare = FALSE, block = 0L, session){
       state$groups[[length(state$groups) + 1L]] <- list(chains = length(inits), burnin = burnin,
-        block = block, prepare = prepare, thin = thin)
+        block = block, prepare = prepare, thin = thin, adapt = adapt, sample = sample)
       if(!prepare) return(batch(sample, thin))
       session$model <- "compiled"
       if(block > 0L) state$events <- c(state$events, "block")
@@ -950,6 +950,47 @@ test_that("autofit extends burn-in in blocks and the iteration numbers count the
     expect_identical(near$fit, whole$fit, info = format(thin, digits = 17))
   }
 
+  # 'burnin_extend' and 'sample_extend' that are whole only within the
+  # validator's tolerance run as the whole numbers, in JAGS_fit() and
+  # JAGS_extend(): at thin = 2, a block of 200 draws, one burn-in extension
+  # of 200 and two sampling extensions of 200, then one more in
+  # JAGS_extend()
+  fits_with_extend <- function(burnin_extend, sample_extend){
+    set.seed(6)
+    state <- .readiness_backend(list(.readiness_chains(shift = 10, n = 200L), .readiness_chains(n = 200L)),
+      env = parent.frame())
+    fit <- .readiness_fit(autofit = TRUE, burnin = 601L, thin = 2L, burnin_extend = burnin_extend,
+      sample_extend = sample_extend, min_ESS = 1e6, max_extend = 2)
+    extended <- JAGS_extend(fit, autofit_control = list(max_Rhat = NULL, min_ESS = 1e6, max_error = NULL,
+      max_SD_error = NULL, max_time = NULL, sample_extend = sample_extend, max_extend = 1))
+    attr(attr(fit, "parameter_map"), "runtime_cache_id") <- NULL
+    attr(attr(extended, "parameter_map"), "runtime_cache_id") <- NULL
+    list(fit = fit, extended = extended, state = state)
+  }
+  whole <- fits_with_extend(200, 200)
+  expect_identical(whole$state$groups[[1L]]$block, 200L)
+  expect_identical(whole$state$extension_draws, 200)
+  expect_identical(vapply(whole$state$groups, `[[`, numeric(1), "sample"), c(200, 200, 200, 200))
+  expect_identical(attr(whole$fit, "burnin_check")[c("block", "burnin_extend", "extension")],
+    list(block = 200L, burnin_extend = 200, extension = 200))
+  expect_identical(attr(whole$fit, "burnin_check")$blocks$draws, c(200L, 200L))
+  expect_identical(list(burnin = whole$fit$burnin, sample = whole$fit$sample, extended = whole$extended$sample),
+    list(burnin = 801L, sample = 600, extended = 800))
+  expect_identical(c(NROW(whole$fit$mcmc[[1L]]), NROW(whole$extended$mcmc[[1L]])), c(600L, 800L))
+  expect_identical(attr(whole$fit$mcmc[[1L]], "mcpar"), c((100 + 801) * 2 + 1, (100 + 801 + 599) * 2 + 1, 2))
+  expect_identical(attr(whole$extended$mcmc[[1L]], "mcpar"), c((100 + 801) * 2 + 1, (100 + 801 + 799) * 2 + 1, 2))
+  for(value in c(200 - 1e-9, 200 + 1e-9)){
+    for(control in c("burnin_extend", "sample_extend")){
+      info <- paste(control, format(value, digits = 17))
+      near <- do.call(fits_with_extend, stats::setNames(list(value, 200), c(control, setdiff(
+        c("burnin_extend", "sample_extend"), control))))
+      expect_identical(near$state$groups, whole$state$groups, info = info)
+      expect_identical(near$state$extension_draws, whole$state$extension_draws, info = info)
+      expect_identical(near$fit, whole$fit, info = info)
+      expect_identical(near$extended, whole$extended, info = info)
+    }
+  }
+
   # the cap: the warning names the extensions
   state <- .readiness_backend(list(.readiness_chains(shift = 10)))
   expect_warning(
@@ -1072,9 +1113,44 @@ test_that("no extension numbers the draws beyond the integer range", {
     paste0("The 'adapt' setting of 1073741824 draws at the fit's 'thin' of 2 would run 2147483648 adaptation ",
       "iterations, beyond the largest iteration count (2147483647). Reduce 'adapt'."), fixed = TRUE)
   expect_identical(state$batches, 1L)
-  extended <- JAGS_extend(fit, autofit_control = control, adapt = 1073741823)
-  expect_identical(state$groups[[2L]]$thin, 2L)
-  expect_identical(attr(extended, "adaptation")$extensions$adapt, 1073741823L)
+
+  # The sampler rebuilt for an extension adapts for 'adapt * thin' iterations
+  # and then samples 'sample_extend * thin', which rjags counts as an integer
+  # (it numbers the first draw 'adapt * thin + thin'). An extension whose
+  # '(adapt + sample_extend) * thin' would pass the integer range is not
+  # started: the fit keeps its draws and the iteration-limit warning. The
+  # largest admitted 'adapt' runs; with fixed and "auto" extension sizes, at
+  # thin = 2 and at thin = 1.
+  auto_control <- utils::modifyList(control, list(min_ESS = 1e6, sample_extend = "auto"))
+  cases <- list(
+    list(thin = 2L, control = control, size = 100, largest = 1073741723),
+    list(thin = 1L, control = control, size = 100, largest = 2147483547),
+    # an "auto" extension of this 200-draw fit is 1000 draws
+    list(thin = 2L, control = auto_control, size = 1000, largest = 1073740823)
+  )
+  for(case in cases){
+    info <- paste("thin", case$thin, "extension", case$size)
+    expect_lte((case$largest + case$size) * case$thin, limit)
+    expect_gt((case$largest + 1 + case$size) * case$thin, limit)
+    state <- .readiness_backend(list(.readiness_chains()))
+    fit <- .readiness_fit(thin = case$thin)
+    expect_true(BayesTools:::.bt_extension_fits_iterations(fit, case$size, case$largest), info = info)
+    expect_false(BayesTools:::.bt_extension_fits_iterations(fit, case$size, case$largest + 1), info = info)
+
+    refused <- JAGS_extend(fit, autofit_control = case$control, adapt = case$largest + 1)
+    expect_identical(state$batches, 1L, info = info)
+    expect_identical(refused$mcmc, fit$mcmc, info = info)
+    expect_identical(attr(refused, "warnings"), sub("200 draws", paste(case$size, "draws"), message, fixed = TRUE),
+      info = info)
+    expect_identical(nrow(attr(refused, "adaptation")$extensions), 0L, info = info)
+
+    extended <- JAGS_extend(fit, autofit_control = case$control, adapt = case$largest)
+    expect_identical(state$batches, 2L, info = info)
+    expect_identical(state$groups[[2L]][c("adapt", "sample", "thin")],
+      list(adapt = as.integer(case$largest), sample = case$size, thin = case$thin), info = info)
+    expect_identical(attr(extended, "adaptation")$extensions$adapt, as.integer(case$largest), info = info)
+    expect_identical(NROW(extended$mcmc[[1L]]), as.integer(200 + case$size), info = info)
+  }
 })
 
 test_that("a restart carries no state or warning of the failed attempt", {

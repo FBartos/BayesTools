@@ -1609,6 +1609,15 @@ test_that("the incomplete-adaptation warning belongs to the fit diagnostics", {
   ), warning = identity)
   expect_identical(class(condition)[1:2], c("BayesTools_adaptation_incomplete", "BayesTools_fit_diagnostic"))
   expect_identical(conditionMessage(condition), "The JAGS adaptation phase was incomplete after 10 iterations.")
+
+  # the iterations are written out also where R would print them in
+  # scientific notation: 500 draws at thin = 200 are 1e+05 iterations
+  condition <- tryCatch(.bt_rjags_group(
+    inits = list(list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = 1L)),
+    model = "model{ mu ~ dnorm(0, 1)\n y ~ dnorm(mu, 1) }", data = list(y = 0.5), monitor = "mu",
+    adapt = 500, burnin = 0, sample = 100, thin = 200, silent = TRUE, keep_live = FALSE
+  ), warning = identity)
+  expect_identical(conditionMessage(condition), "The JAGS adaptation phase was incomplete after 100000 iterations.")
 })
 
 test_that("JAGS_fit forwards its adaptation to automatic extensions", {
@@ -1913,12 +1922,14 @@ test_that("JAGS_extend sizes each extension from the last check and stops at max
   expect_identical(backend$samples, c(1000L, 2000L, 6000L, 3900L))
   expect_identical(nrow(named$mcmc[[1L]]), 12902L)
   # at most the draws whose sampling iterations the backend can run, to which
-  # the minimum yields: with thin 2.5e6, 800 (2147483647 / 2.5e6 = 859.0)
+  # the minimum yields: with thin 2.5e6, 800 (2147483647 / 2.5e6 = 859.0);
+  # with an adaptation of 50 draws, whose iterations the rebuilt sampler
+  # counts with those of the extension ((50 + 800) * 2.5e6 is in range)
   backend <- .autofit_size_test_backend()
   thinned <- fit
   thinned$thin <- 2500000L
   suppressWarnings(JAGS_extend(thinned, autofit_control = .autofit_size_test_control(
-    max_extend = 1)))
+    max_extend = 1), adapt = 50))
   expect_identical(backend$samples, 800L)
 
   # an extension is sized only when it runs: max_extend = 2 sizes two
@@ -2590,6 +2601,35 @@ test_that("a fit adapts, burns in and samples 'thin' iterations per draw and num
     geometry <- JAGS_draw_geometry(fit)$chains
     expect_identical(geometry$start, rep(as.integer(300L * thin + 1L), 2L), info = info)
     expect_identical(geometry$end, rep(as.integer(399L * thin + 1L), 2L), info = info)
+    if(thin == 1L){
+      next
+    }
+
+    # JAGS_extend() rebuilds the sampler from the stored states and adapts it
+    # for 'adapt * thin' iterations, with the initial adapt = 100 or an
+    # explicit one, which the record keeps in draws; a near-whole 'adapt' runs
+    # as the whole number
+    control <- list(max_Rhat = NULL, min_ESS = NULL, max_error = NULL, max_SD_error = NULL, max_time = NULL,
+      sample_extend = 100, max_extend = 1)
+    adapted <- before_sampling <- numeric()
+    inherited <- JAGS_extend(fit, autofit_control = control)
+    explicit <- JAGS_extend(fit, autofit_control = control, adapt = 60)
+    near <- JAGS_extend(fit, autofit_control = control, adapt = 60 - 1e-9)
+    expect_equal(adapted, c(100, 60, 60) * thin, info = info)
+    expect_equal(before_sampling, c(100, 60, 60) * thin, info = info)
+    expect_identical(attr(inherited, "adaptation")$initial, 100L, info = info)
+    expect_identical(attr(inherited, "adaptation")$extensions$adapt, 100L, info = info)
+    expect_identical(attr(inherited, "adaptation")$extensions$rebuilt, TRUE, info = info)
+    expect_identical(attr(explicit, "adaptation")$initial, 100L, info = info)
+    expect_identical(attr(explicit, "adaptation")$extensions$adapt, 60L, info = info)
+    expect_identical(attr(near, "adaptation"), attr(explicit, "adaptation"), info = info)
+    expect_identical(near$mcmc, explicit$mcmc, info = info)
+    expect_identical(near$end_state, explicit$end_state, info = info)
+    # the slice sampler adapts, so the adaptation changes the appended draws
+    expect_false(identical(explicit$mcmc, inherited$mcmc), info = info)
+    for(chain in explicit$mcmc){
+      expect_identical(attr(chain, "mcpar"), c(300 * thin + 1, (300 + 199) * thin + 1, thin), info = info)
+    }
   }
 })
 
@@ -2612,11 +2652,20 @@ test_that("adapt = 250 and burnin = 500 at thin = 2 run the iterations of the ea
       unname(as.matrix(reference[[chain]])[, c("mu", "sigma")]))
   }
   expect_identical(fit$end_state, model$state(internal = TRUE))
+  expect_identical(attr(fit$mcmc[[1L]], "mcpar"), c(1501, 1699, 2))
+  expect_identical(fit$burnin, 500)
+  expect_identical(attr(fit, "burnin_check")[c("block", "thin", "status")],
+    list(block = 500L, thin = 2, status = "ready"))
 
   # pinned from BayesTools f9f77929, where 'adapt' and 'burnin' counted
   # iterations, with adapt = 500, burnin = 1000, thin = 2 (the same fit
   # otherwise): the chains end in the same random-number states, and the
-  # draws and their iteration numbers are the same
+  # draws are the same. Pinned on Windows, where they were printed: elsewhere
+  # the R-generated initial values can differ in the last bit where the
+  # compiler fuses multiply-adds (Apple silicon), which can change how many
+  # random numbers the slice sampler draws. The rjags reference above shows
+  # the identity on every platform.
+  skip_on_os(c("mac", "linux"))
   expect_identical(lapply(fit$end_state, `[[`, ".RNG.name"), rep(list("base::Super-Duper"), 2L))
   expect_identical(lapply(fit$end_state, `[[`, ".RNG.state"),
     list(c(993861771, 1093724209), c(-1621646870, -107494039)))
@@ -2628,10 +2677,6 @@ test_that("adapt = 250 and burnin = 500 at thin = 2 run the iterations of the ea
     c(0.54590634906879953, 0.30750871440048355, 0.39223734805373445), tolerance = 1e-10)
   expect_equal(unname(fit$mcmc[[2L]][c(1L, 50L, 100L), "sigma"]),
     c(0.88513699296000226, 1.0963839598105984, 0.78908217304607797), tolerance = 1e-10)
-  expect_identical(attr(fit$mcmc[[1L]], "mcpar"), c(1501, 1699, 2))
-  expect_identical(fit$burnin, 500)
-  expect_identical(attr(fit, "burnin_check")[c("block", "thin", "status")],
-    list(block = 500L, thin = 2, status = "ready"))
 })
 
 test_that("settings that are whole within the validator's tolerance run as the whole numbers", {

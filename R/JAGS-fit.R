@@ -29,8 +29,9 @@
 #' Defaults to \code{NULL}, which preserves the current all-sampled behavior.
 #' @param chains number of chains to be run, defaults to \code{4}
 #' @param adapt length of the adaptation phase in draws per chain at the
-#' thinning \code{thin}, like \code{sample}: each chain runs
-#' \code{adapt * thin} adaptation iterations. Defaults to \code{500}. In
+#' thinning \code{thin}, like \code{sample}: where a sampler adapts, each
+#' chain runs \code{adapt * thin} adaptation iterations (JAGS runs none for a
+#' model whose samplers need no adaptation). Defaults to \code{500}. In
 #' \code{JAGS_extend()}, the adaptation run when the backend builds the
 #' sampler from the stored chain states (\code{adapt} times the fit's
 #' \code{thin} iterations); the default \code{NULL} uses the setting of the
@@ -49,12 +50,16 @@
 #' @param thin thinning interval: one draw is retained every \code{thin}
 #' iterations. Defaults to \code{1}. \code{adapt}, \code{burnin} and
 #' \code{sample} count draws at this thinning, so a fit runs
-#' \code{(adapt + burnin + sample) * thin} iterations per chain and its first
-#' retained draw is iteration \code{(adapt + burnin) * thin + 1}. The last
+#' \code{(adapt + burnin + sample) * thin} iterations per chain (without the
+#' adaptation iterations when no sampler adapts) and its first retained draw
+#' is iteration \code{(adapt + burnin) * thin + 1}. The last
 #' retained draw, iteration \code{(adapt + burnin + sample - 1) * thin + 1},
 #' must not be numbered beyond \code{.Machine$integer.max}. \code{adapt},
-#' \code{burnin}, \code{sample} and \code{thin} are whole numbers; a value
-#' within a small tolerance of a whole number is used as that number.
+#' \code{burnin}, \code{sample} and \code{thin}, and \code{burnin_extend} and
+#' \code{sample_extend} of \code{autofit_control}, are whole numbers:
+#' \code{JAGS_fit()} and \code{JAGS_extend()} run a value accepted within a
+#' small tolerance of a whole number as the nearest whole number, and refuse
+#' a value below the minimum of its setting, also within that tolerance.
 #' @param autofit whether the models should be refitted until convergence criteria
 #' specified in \code{autofit_control}. Automatic fitting stops once every
 #' diagnostic that can be assessed meets its criterion, or at \code{max_time}
@@ -114,8 +119,11 @@
 #'   failed R-hat) and up to 3 (large ESS or error deficits), up to
 #'   \code{max_extend}. An
 #'   extension, of either kind, whose last draw would have an iteration
-#'   number beyond \code{.Machine$integer.max} is not started: the fitting
-#'   stops with the last fit and a warning of its own.}
+#'   number beyond \code{.Machine$integer.max}, or whose
+#'   \code{(adapt + sample_extend) * thin} adaptation and sampling iterations
+#'   (which the backend counts for a sampler it rebuilds for the extension)
+#'   would exceed it, is not started: the fitting stops with the last fit and
+#'   a warning of its own.}
 #'   \item{restarts}{maximum number of fitting attempts when the model fails
 #'   to initialize; every failed attempt but the last is retried with new
 #'   initial values (\code{restarts = 1} fits once, without a retry). A
@@ -488,8 +496,8 @@
 #'
 #' The \code{adaptation} attribute of a fit records the adaptation settings
 #' in draws at the fit's thinning (the backend adapts for \code{adapt * thin}
-#' iterations): \code{initial}, the \code{adapt} of \code{JAGS_fit()}, and
-#' \code{extensions}, a data frame with one row
+#' iterations where a sampler adapts): \code{initial}, the \code{adapt} of
+#' \code{JAGS_fit()}, and \code{extensions}, a data frame with one row
 #' per backend extension (automatic extensions of \code{JAGS_fit()} and the
 #' extensions of \code{JAGS_extend()}) giving the \code{adapt} passed to the
 #' backend and whether the backend \code{rebuilt} the sampler, the only case in
@@ -577,12 +585,22 @@ NULL
   list(value = value, warnings = messages)
 }
 
-# Whether 'sample' more draws per chain keep the public iteration number of
-# the fit's last draw within the integer range of the draw geometry (the
-# chains' coda timing). An extension that would leave it is not started.
-# Chains without timing have no iteration numbers to keep in range.
-.bt_extension_fits_iterations <- function(fit, sample){
+# Whether an extension of 'sample' draws per chain keeps its iterations within
+# the integer range. A sampler rebuilt for the extension adapts for
+# 'adapt * thin' iterations and then samples 'sample * thin', which rjags
+# counts as an integer (it numbers the first draw 'adapt * thin + thin' in
+# integer arithmetic); and the public iteration number of the fit's last draw
+# (the chains' coda timing, used by the draw geometry) moves 'sample * thin'
+# further. 'adapt' and 'sample' count draws at the fit's thinning. An
+# extension that would leave the range is not started. An object without
+# 'thin' cannot be run and is left to the backend; chains without timing
+# have no public iteration numbers to keep in range.
+.bt_extension_fits_iterations <- function(fit, sample, adapt){
 
+  thin <- fit[["thin"]]
+  if(length(thin) == 1L && (as.double(adapt) + sample) * thin > .Machine$integer.max){
+    return(FALSE)
+  }
   timing <- lapply(fit[["mcmc"]], attr, which = "mcpar", exact = TRUE)
   if(length(timing) == 0L || any(lengths(timing) != 3L)){
     return(TRUE)
@@ -1166,7 +1184,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       }else{
         autofit_control[["sample_extend"]]
       }
-      if(!.bt_extension_fits_iterations(fit, sample_extend)){
+      if(!.bt_extension_fits_iterations(fit, sample_extend, adapt)){
         warning_message <- .bt_iteration_limit_message(sample_extend)
         fit <- .bt_append_fit_warnings(fit, warning_message)
         if(!silent){
@@ -1661,7 +1679,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     }else{
       autofit_control[["sample_extend"]]
     }
-    if(!.bt_extension_fits_iterations(fit, sample_extend)){
+    if(!.bt_extension_fits_iterations(fit, sample_extend, adapt)){
       warning_message <- .bt_iteration_limit_message(sample_extend)
       fit <- .bt_append_fit_warnings(fit, warning_message)
       if(!silent){

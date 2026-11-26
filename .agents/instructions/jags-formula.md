@@ -223,17 +223,31 @@ keeps `fail_fast` and its size.
 `adapt`, `burnin` and `sample` of `JAGS_fit()`, and the `adapt` of
 `JAGS_extend()`, count draws at the fit's `thin` (a breaking change after
 0.4.0, where `adapt` and `burnin` counted iterations): the backend runs
-`adapt * thin` adaptation, `burnin * thin` burn-in and `sample * thin`
-sampling iterations, and the first retained draw is public iteration
-`(adapt + burnin) * thin + 1`. `JAGS_check_and_list_fit_settings()` refuses,
+`adapt * thin` adaptation iterations where a sampler adapts (rjags' `adapt()`
+runs none for a model whose samplers need no adaptation), `burnin * thin`
+burn-in and `sample * thin` sampling iterations, and the first retained draw
+is public iteration `(adapt + burnin) * thin + 1` either way.
+`JAGS_check_and_list_fit_settings()` refuses,
 before any backend work and naming the four settings, a fit whose last
 retained draw `(adapt + burnin + sample - 1) * thin + 1` (double arithmetic)
 passes `.Machine$integer.max`; `JAGS_extend()` refuses an `adapt` whose
-`adapt * thin` adaptation iterations pass it. Both functions then run the
-whole numbers that `check_int()` accepted (`.JAGS_whole_count()`): rjags
-thins by `as.integer(thin)` and trims `n.iter` to a multiple of it, so a
-`thin` of `2 - 1e-9` would thin by 1. `fit$burnin`, the readiness record and
-the `adaptation` record count draws at the fit's thinning, like `fit$sample`.
+`adapt * thin` adaptation iterations pass it. An extension of either
+function, of fixed or `"auto"` size, is not started, with the iteration-limit
+warning (`.bt_extension_fits_iterations()`), when the public number of its
+last draw or its `(adapt + sample_extend) * thin` iterations (double
+arithmetic) would pass it: a sampler rebuilt for the extension counts its
+adaptation and sampling iterations as an integer, and rjags numbers the first
+draw `model$iter() + thin` in integer arithmetic. Both functions then run the
+whole numbers that `check_int()` accepted (`.JAGS_whole_count()`), as does
+`JAGS_check_and_list_autofit_settings()` for numeric `burnin_extend` and
+`sample_extend`: rjags thins by `as.integer(thin)` and trims `n.iter` to a
+multiple of it, so a `thin` of `2 - 1e-9` would thin by 1. A value below a
+setting's minimum is refused also within the tolerance (`check_int()` tests
+the bound first). `fit$burnin`, the readiness record and the `adaptation`
+record count draws at the fit's thinning, like `fit$sample`. From this
+version on, the stored counts of a fit are draws at its thinning; fits saved
+by earlier development versions with `thin` above 1 are read the same way,
+without a compatibility layer.
 
 The readiness check between burn-in and sampling (`R/JAGS-burnin-check.R`)
 runs in the initial run of every `JAGS_fit()` with `burnin_max_Rhat` set, at
@@ -265,7 +279,8 @@ fit's clock (read before a block), or a block that would number the last
 retained draw beyond `.Machine$integer.max` (stop reason `iteration_limit`,
 with a remedy of its own). Every extension that appends draws (an automatic
 extension after sampling and `JAGS_extend()`, fixed or `"auto"` size) is
-checked the same way before it starts (`.bt_extension_fits_iterations()`);
+checked the same way, and for the adaptation and sampling iterations of a
+rebuilt sampler (above), before it starts (`.bt_extension_fits_iterations()`);
 one that does not fit is not run, and the fitting stops with the last valid
 fit and its own warning. Sampling then continues on the same models; serial, PSOCK
 and JASP runs share this staged structure, and only a JASP fit with `autofit`

@@ -37,7 +37,8 @@
       progress.bar = progress)
     if(!adapted){
       warning(warningCondition(
-        paste0("The JAGS adaptation phase was incomplete after ", adapt_iterations, " iterations."),
+        paste0("The JAGS adaptation phase was incomplete after ", format(adapt_iterations, scientific = FALSE),
+          " iterations."),
         class = c("BayesTools_adaptation_incomplete", "BayesTools_fit_diagnostic")
       ))
     }

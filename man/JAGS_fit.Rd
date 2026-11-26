@@ -88,8 +88,9 @@ be standardized. Defaults to \code{NULL} (no standardization).}
 \item{chains}{number of chains to be run, defaults to \code{4}}
 
 \item{adapt}{length of the adaptation phase in draws per chain at the
-thinning \code{thin}, like \code{sample}: each chain runs
-\code{adapt * thin} adaptation iterations. Defaults to \code{500}. In
+thinning \code{thin}, like \code{sample}: where a sampler adapts, each
+chain runs \code{adapt * thin} adaptation iterations (JAGS runs none for a
+model whose samplers need no adaptation). Defaults to \code{500}. In
 \code{JAGS_extend()}, the adaptation run when the backend builds the
 sampler from the stored chain states (\code{adapt} times the fit's
 \code{thin} iterations); the default \code{NULL} uses the setting of the
@@ -111,12 +112,16 @@ Each chain runs \code{sample * thin} sampling iterations.}
 \item{thin}{thinning interval: one draw is retained every \code{thin}
 iterations. Defaults to \code{1}. \code{adapt}, \code{burnin} and
 \code{sample} count draws at this thinning, so a fit runs
-\code{(adapt + burnin + sample) * thin} iterations per chain and its first
-retained draw is iteration \code{(adapt + burnin) * thin + 1}. The last
+\code{(adapt + burnin + sample) * thin} iterations per chain (without the
+adaptation iterations when no sampler adapts) and its first retained draw
+is iteration \code{(adapt + burnin) * thin + 1}. The last
 retained draw, iteration \code{(adapt + burnin + sample - 1) * thin + 1},
 must not be numbered beyond \code{.Machine$integer.max}. \code{adapt},
-\code{burnin}, \code{sample} and \code{thin} are whole numbers; a value
-within a small tolerance of a whole number is used as that number.}
+\code{burnin}, \code{sample} and \code{thin}, and \code{burnin_extend} and
+\code{sample_extend} of \code{autofit_control}, are whole numbers:
+\code{JAGS_fit()} and \code{JAGS_extend()} run a value accepted within a
+small tolerance of a whole number as the nearest whole number, and refuse
+a value below the minimum of its setting, also within that tolerance.}
 
 \item{autofit}{whether the models should be refitted until convergence criteria
 specified in \code{autofit_control}. Automatic fitting stops once every
@@ -178,8 +183,11 @@ that cannot converge multiplies the draws per chain by about 2.1 (a
 failed R-hat) and up to 3 (large ESS or error deficits), up to
 \code{max_extend}. An
 extension, of either kind, whose last draw would have an iteration
-number beyond \code{.Machine$integer.max} is not started: the fitting
-stops with the last fit and a warning of its own.}
+number beyond \code{.Machine$integer.max}, or whose
+\code{(adapt + sample_extend) * thin} adaptation and sampling iterations
+(which the backend counts for a sampler it rebuilds for the extension)
+would exceed it, is not started: the fitting stops with the last fit and
+a warning of its own.}
 \item{restarts}{maximum number of fitting attempts when the model fails
 to initialize; every failed attempt but the last is retried with new
 initial values (\code{restarts = 1} fits once, without a retry). A
@@ -556,8 +564,8 @@ ordinary R data and can be serialized with \code{saveRDS()}.
 
 The \code{adaptation} attribute of a fit records the adaptation settings
 in draws at the fit's thinning (the backend adapts for \code{adapt * thin}
-iterations): \code{initial}, the \code{adapt} of \code{JAGS_fit()}, and
-\code{extensions}, a data frame with one row
+iterations where a sampler adapts): \code{initial}, the \code{adapt} of
+\code{JAGS_fit()}, and \code{extensions}, a data frame with one row
 per backend extension (automatic extensions of \code{JAGS_fit()} and the
 extensions of \code{JAGS_extend()}) giving the \code{adapt} passed to the
 backend and whether the backend \code{rebuilt} the sampler, the only case in
