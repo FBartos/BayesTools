@@ -36,6 +36,7 @@
 - on Apple silicon, numeric constants in generated JAGS models and the values of compiled hypotheses are exact
 - the starting value of the publication-bias indicator of mixtures with selection or p-hacking components is drawn from its prior probabilities; draws differ from earlier versions
 - sampling or fitting a mixture prior whose prior weights cannot be normalized (their sum overflows or underflows) stops with an explanation
+- `adapt`, `burnin`, `sample`, `thin`, `burnin_extend` and `sample_extend` given within rounding of a whole number run as that number
 
 # version 0.4.0
 ### Breaking changes

@@ -614,7 +614,7 @@ NULL
 .bt_iteration_limit_message <- function(sample){
 
   paste0("The automatic model fitting was terminated due to the iteration limit: an extension of ",
-    sample, " draws per chain would number the draws beyond the largest iteration number (",
+    format(sample, scientific = FALSE), " draws per chain would number the draws beyond the largest iteration number (",
     .Machine$integer.max, "). Use a smaller 'adapt', 'burnin', or 'sample' times 'thin' ",
     "to leave room for extensions.")
 }
@@ -1184,6 +1184,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       }else{
         autofit_control[["sample_extend"]]
       }
+      # for a fit of this call the public iteration numbers already imply the
+      # bound on 'adapt'; it is passed as in JAGS_extend()
       if(!.bt_extension_fits_iterations(fit, sample_extend, adapt)){
         warning_message <- .bt_iteration_limit_message(sample_extend)
         fit <- .bt_append_fit_warnings(fit, warning_message)

@@ -2665,7 +2665,7 @@ test_that("adapt = 250 and burnin = 500 at thin = 2 run the iterations of the ea
   # compiler fuses multiply-adds (Apple silicon), which can change how many
   # random numbers the slice sampler draws. The rjags reference above shows
   # the identity on every platform.
-  skip_on_os(c("mac", "linux"))
+  skip_if(.Platform$OS.type != "windows", "values pinned on Windows")
   expect_identical(lapply(fit$end_state, `[[`, ".RNG.name"), rep(list("base::Super-Duper"), 2L))
   expect_identical(lapply(fit$end_state, `[[`, ".RNG.state"),
     list(c(993861771, 1093724209), c(-1621646870, -107494039)))

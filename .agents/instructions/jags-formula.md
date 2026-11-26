@@ -282,7 +282,10 @@ extension after sampling and `JAGS_extend()`, fixed or `"auto"` size) is
 checked the same way, and for the adaptation and sampling iterations of a
 rebuilt sampler (above), before it starts (`.bt_extension_fits_iterations()`);
 one that does not fit is not run, and the fitting stops with the last valid
-fit and its own warning. Sampling then continues on the same models; serial, PSOCK
+fit and its own warning. Within a few `thin` of the limit, or when a live
+sampler continues after an explicit `adapt` near it, rjags' own integer
+counter can still overflow; the extension then fails with the backend's
+message and the last valid fit is returned. Sampling then continues on the same models; serial, PSOCK
 and JASP runs share this staged structure, and only a JASP fit with `autofit`
 keeps its workers' models after sampling. On every exit before a staged
 parallel run completes (an error, an interrupt, a JASP cancellation) its
