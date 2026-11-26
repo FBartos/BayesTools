@@ -648,6 +648,9 @@ test_that("the JAGS thread control changes nothing when the JAGS library is abse
   expect_identical(.bt_jags_threads(1L, libraries = missing), NA_integer_)
   expect_identical(.bt_jags_threads(1L, libraries = c(NA_character_, missing)), NA_integer_)
   expect_error(.bt_jags_threads(0L), "'threads' must be NA or a positive integer.", fixed = TRUE)
+  for(invalid in list(1.9, c(2L, 0L), integer(0), "1", NULL)){
+    expect_error(.bt_jags_threads(invalid), "'threads' must be one integer.", fixed = TRUE)
+  }
   if(.Platform$OS.type != "windows"){
     expect_identical(.bt_jags_threads(), NA_integer_)
     expect_identical(.bt_jags_threads(1L), NA_integer_)
@@ -660,7 +663,7 @@ test_that("the JAGS thread control changes nothing when the JAGS library is abse
     NA_integer_
   })
   expect_identical(.bt_with_single_threaded_jags("value"), "value")
-  expect_identical(calls, list(1L))
+  expect_identical(calls, list(NA_integer_))
 })
 
 test_that("JAGS runs its linear algebra on one thread and the previous count returns", {
@@ -674,12 +677,20 @@ test_that("JAGS runs its linear algebra on one thread and the previous count ret
   expect_identical(.bt_jags_threads(1L, libraries = missing), NA_integer_)
   expect_identical(.bt_jags_threads(), 3L)
   expect_identical(.bt_jags_threads(libraries = c(missing, .bt_jags_libraries)), 3L)
+  # a loaded library without the thread controls, and rejected counts, change nothing
+  expect_identical(.bt_jags_threads(1L, libraries = "R.dll"), NA_integer_)
+  for(invalid in list(1.9, c(2L, 0L), integer(0), 0L)){
+    expect_error(.bt_jags_threads(invalid))
+  }
+  expect_identical(.bt_jags_threads(), 3L)
 
   expect_identical(.bt_with_single_threaded_jags(.bt_jags_threads()), 1L)
   expect_identical(.bt_jags_threads(), 3L)
   expect_identical(.bt_with_single_threaded_jags(.bt_with_single_threaded_jags(.bt_jags_threads())), 1L)
   expect_identical(.bt_jags_threads(), 3L)
   expect_error(.bt_with_single_threaded_jags(stop("sampler failed")), "sampler failed", fixed = TRUE)
+  expect_identical(.bt_jags_threads(), 3L)
+  tryCatch(.bt_with_single_threaded_jags(rlang::interrupt()), interrupt = function(condition) NULL)
   expect_identical(.bt_jags_threads(), 3L)
 
   # a serial chain group

@@ -1432,7 +1432,10 @@ test_that("serial fits and parallel workers run JAGS's linear algebra on one thr
   withr::defer(.bt_jags_threads(original))
   withr::local_options(BayesTools_test_jags_threads = NULL)
   traced <- c("jags.model", "adapt", "coda.samples")
-  withr::defer(for(fun in traced) suppressMessages(untrace(fun, where = asNamespace("rjags"))))
+  withr::defer({
+    for(fun in traced) suppressMessages(untrace(fun, where = asNamespace("rjags")))
+    suppressMessages(untrace("update", where = asNamespace("stats")))
+  })
 
   set.seed(1)
   data <- list(y = rnorm(20, 0.5, 1), N = 20)
@@ -1443,7 +1446,9 @@ test_that("serial fits and parallel workers run JAGS's linear algebra on one thr
     }
   }"
   # Every process that runs chains starts from three threads and records the
-  # count at the entry of each rjags call that compiles, adapts or samples.
+  # count at the entry of each call that compiles, adapts, updates or samples
+  # a JAGS model (the burn-in is longer than the readiness block, so part of
+  # it runs as an unmonitored update).
   setup <- function(context){
 
     if(context$phase != "start" || context$role == "coordinator") return(NULL)
@@ -1452,13 +1457,18 @@ test_that("serial fits and parallel workers run JAGS's linear algebra on one thr
     state$before <- BayesTools:::.bt_jags_threads()
     state$during <- integer()
     options(BayesTools_test_jags_threads = state)
-    tracer <- quote(local({
-      state <- getOption("BayesTools_test_jags_threads")
-      state$during <- c(state$during, BayesTools:::.bt_jags_threads())
-    }))
     for(fun in c("jags.model", "adapt", "coda.samples")){
+      tracer <- bquote(local({
+        state <- getOption("BayesTools_test_jags_threads")
+        state$during <- c(state$during, stats::setNames(BayesTools:::.bt_jags_threads(), .(fun)))
+      }))
       suppressMessages(trace(fun, tracer = tracer, where = asNamespace("rjags"), print = FALSE))
     }
+    update_tracer <- quote(if(inherits(object, "jags")) local({
+      state <- getOption("BayesTools_test_jags_threads")
+      state$during <- c(state$during, stats::setNames(BayesTools:::.bt_jags_threads(), "update"))
+    }))
+    suppressMessages(trace("update", tracer = update_tracer, where = asNamespace("stats"), print = FALSE))
     NULL
   }
   report <- function(context){
@@ -1471,7 +1481,7 @@ test_that("serial fits and parallel workers run JAGS's linear algebra on one thr
   environment(report) <- baseenv()
   fit_with <- function(...){
     JAGS_fit(model_syntax = model_syntax, data = data, prior_list = prior_list,
-      chains = 2, adapt = 100, burnin = 100, sample = 200, seed = 1, silent = TRUE,
+      chains = 2, adapt = 100, burnin = 700, sample = 200, seed = 1, silent = TRUE,
       runtime_setup = setup, runtime_report = report, ...)
   }
   expect_one_thread <- function(fit, role, processes){
@@ -1482,9 +1492,9 @@ test_that("serial fits and parallel workers run JAGS's linear algebra on one thr
     for(process in runs[[1L]]){
       expect_identical(process$role, role)
       expect_identical(process$before, 3L)
-      # at least compilation, adaptation and sampling
-      expect_gte(length(process$during), 3L)
-      expect_identical(unique(process$during), 1L)
+      # compilation, adaptation, the unmonitored burn-in and sampling
+      expect_true(all(c("jags.model", "adapt", "update", "coda.samples") %in% names(process$during)))
+      expect_identical(unique(unname(process$during)), 1L)
       expect_identical(process$after, 3L)
     }
   }

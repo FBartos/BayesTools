@@ -8,19 +8,25 @@
 # and always off Windows (src/r-jags-threads.c gives the reasons).
 .bt_jags_threads <- function(threads = NA_integer_, libraries = .bt_jags_libraries){
 
-  .Call("BayesTools_jags_threads", libraries, as.integer(threads), PACKAGE = "BayesTools")
+  .Call("BayesTools_jags_threads", libraries, threads, PACKAGE = "BayesTools")
 }
 
 # Evaluates 'expr' with JAGS's linear algebra on one thread and restores the
 # previous count on exit. The Windows build of JAGS 5 otherwise starts a team
 # of threads for every larger BLAS or LAPACK call, which makes models with
-# multivariate nodes up to hundreds of times slower; the draws are the same.
+# multivariate nodes up to a thousand times slower; the draws were identical
+# in every comparison.
 # Used where JAGS compiles, adapts or samples in a process: the steps of the
 # chain groups (serial and on PSOCK workers) and the data-block generator.
 .bt_with_single_threaded_jags <- function(expr){
 
-  previous <- .bt_jags_threads(1L)
-  if(!is.na(previous)) on.exit(.bt_jags_threads(previous), add = TRUE)
+  # the count is read and its restoration registered before it is changed, so
+  # that an interrupt in between cannot leave it changed
+  previous <- .bt_jags_threads()
+  if(!is.na(previous)){
+    on.exit(.bt_jags_threads(previous), add = TRUE)
+    .bt_jags_threads(1L)
+  }
   expr
 }
 

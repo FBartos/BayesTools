@@ -11,18 +11,19 @@
  * runtime in statically. With the default thread count, every larger BLAS or
  * LAPACK call of a multivariate node (dmnorm, dwish, ...) starts a team of
  * threads, which costs milliseconds per call on a machine with many cores and
- * makes such models up to hundreds of times slower than on one thread; the
- * draws do not depend on the count. Neither OPENBLAS_NUM_THREADS nor
+ * makes such models up to a thousand times slower than on one thread; the
+ * draws were identical in every comparison. Neither OPENBLAS_NUM_THREADS nor
  * openblas_set_num_threads() reaches that copy, but the omp_set_num_threads()
  * the library exports does. That runtime is JAGS's own: R and other packages
- * keep theirs.
+ * keep theirs. The count applies to the calling thread, on which JAGS runs
+ * (BayesTools compiles its models with 'n.threads = 1').
  *
  * Windows only: elsewhere JAGS uses the system BLAS, whose OpenMP runtime, if
  * any, is shared by the whole process and is left alone.
  *
  * 'libraries' names the candidate JAGS libraries in order; the first one that
- * is loaded is used. With 'threads' NA the count is only read, otherwise it is
- * set to 'threads'. Returns the count before the call, or NA when no candidate
+ * is loaded is used. 'threads' is one integer: with NA the count is only read,
+ * otherwise it is set to 'threads'. Returns the count before the call, or NA when no candidate
  * is loaded, when the loaded one lacks either thread control, and on platforms
  * other than Windows.
  */
@@ -31,7 +32,10 @@ SEXP BayesTools_jags_threads(SEXP libraries, SEXP threads)
   if(TYPEOF(libraries) != STRSXP){
     Rf_error("'libraries' must be a character vector.");
   }
-  int value = Rf_asInteger(threads);
+  if(TYPEOF(threads) != INTSXP || XLENGTH(threads) != 1){
+    Rf_error("'threads' must be one integer.");
+  }
+  int value = INTEGER(threads)[0];
   if(value != NA_INTEGER && value < 1){
     Rf_error("'threads' must be NA or a positive integer.");
   }
