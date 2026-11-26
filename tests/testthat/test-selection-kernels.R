@@ -1265,23 +1265,6 @@ test_that("summary tables handle ordinary mixtures next to selection kernels", {
   expect_true(all(c("mu (inclusion)", "bias (inclusion)", "pi_null") %in% rownames(table)))
 })
 
-test_that("a selection mixture whose weights sum past the double maximum samples every branch", {
-
-  skip_if_not_test_profile("fixture")
-  skip_if_not_installed("rjags")
-  skip_if_missing_fits("fit_selection_overflow_weights")
-
-  fit <- readRDS(file.path(temp_fits_dir, "fit_selection_overflow_weights.RDS"))
-
-  # Equal odds of 1e308 (sum Inf). The bias nodes have no observed
-  # descendants, so JAGS draws the indicator from its 'dcat()' prior: with the
-  # raw weights, normalized by their infinite sum, it drew the last branch only.
-  model_lines <- trimws(strsplit(fit$model, "\n", fixed = TRUE)[[1L]])
-  expect_true("bias_indicator ~ dcat(c(1, 1, 1))" %in% model_lines)
-  labels <- as.matrix(coda::as.mcmc.list(fit))[, "bias_indicator"]
-  expect_setequal(unique(labels), 1:3)
-})
-
 
 test_that("selection support distinguishes hard-zero endpoint geometries", {
 

@@ -67,7 +67,11 @@
 #' The value is passed into the model fitting function, which creates models
 #' corresponding to all combinations of prior distributions for each of
 #' the model parameters and sets the model priors odds to the product
-#' of its prior distributions.
+#' of its prior distributions. The weights of the components of one
+#' \code{prior_mixture()} must be normalizable in double precision (a finite
+#' sum of at least \code{.Machine$double.xmin} in which every component keeps
+#' a positive probability); dividing all of them by a common factor, such as
+#' their largest value, keeps the odds within this limit.
 #'
 #' @details Moment and inverse-moment priors are symmetric nonlocal priors
 #' with zero density at \code{location}. The \code{mode} parameter is the
@@ -636,6 +640,15 @@ prior_spike_and_slab <- function(prior_parameter,
 #' belong to the same mixture component (this is an alternative specification to the \code{is_null} argument).
 #' Defaults to \code{NULL} (i.e., \code{is_null} is used.
 #'
+#' @details The \code{prior_weights} of the components are their prior odds.
+#' Weights that cannot be normalized in double precision (their sum overflows
+#' or is below \code{.Machine$double.xmin}, or the prior probability of a
+#' component underflows to zero) stop with an error of class
+#' \code{BayesTools_mixture_weights_unnormalizable}, which inherits
+#' \code{BayesTools_prior_input} and has the fields \code{prior_weights},
+#' \code{total} (their sum in double precision) and \code{components} (the
+#' components whose probability underflows).
+#'
 #' @return A prior object of class \code{prior.mixture} (with the classes of a
 #' factor, ordered or simple mixture where the components have them) that
 #' holds the component priors with their \code{prior_weights} and \code{components}.
@@ -754,6 +767,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
 
   attr(prior_list, "components")    <- components
   attr(prior_list, "prior_weights") <- sapply(prior_list, .prior_model_weight)
+  .check_mixture_prior_weights(attr(prior_list, "prior_weights"))
 
   return(prior_list)
 }

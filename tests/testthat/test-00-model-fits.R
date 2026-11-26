@@ -607,31 +607,6 @@ test_that("Weightfunction redesign and selection-kernel models fit correctly", {
                      note = "Summary table fixture with ordinary mixture and selection-kernel bias mixture")
   model_registry[["fit_selection_kernel_summary"]] <<- result$registry_entry
   fit_selection_kernel_summary <- result$fit
-
-  # Selection mixture with equal odds whose weights sum past the double
-  # maximum; the bias nodes have no observed descendants, so JAGS samples the
-  # indicator from its 'dcat()' prior
-  bias_overflow_weights <- prior_mixture(list(
-    prior_none(prior_weights = 1e308),
-    prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)), prior_weights = 1e308),
-    prior_phacking(form = "linear", prior_weights = 1e308)
-  ))
-  fit_selection_overflow_weights <- suppressWarnings(JAGS_fit(
-    "model{}",
-    data       = NULL,
-    prior_list = list(bias = bias_overflow_weights),
-    chains     = 1,
-    adapt      = 50,
-    burnin     = 50,
-    sample     = 100,
-    seed       = 17,
-    silent     = TRUE
-  ))
-  result <- save_fit(fit_selection_overflow_weights, "fit_selection_overflow_weights",
-                     pub_bias_priors = TRUE, weightfunction_priors = TRUE, mixture_priors = TRUE,
-                     assertion_only = TRUE,
-                     note = "Selection mixture whose prior weights sum past the double maximum")
-  model_registry[["fit_selection_overflow_weights"]] <<- result$registry_entry
 })
 
 

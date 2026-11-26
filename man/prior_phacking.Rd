@@ -32,7 +32,12 @@ prior_phacking(
 
 \item{report_scale}{reporting scale for deterministic summaries.}
 
-\item{prior_weights}{prior odds associated with a given distribution.}
+\item{prior_weights}{prior odds associated with a given distribution. The
+weights of the components of one \code{prior_mixture()} must be normalizable
+in double precision (a finite sum of at least \code{.Machine$double.xmin} in
+which every component keeps a positive probability); dividing all of them by
+a common factor, such as their largest value, keeps the odds within this
+limit.}
 }
 \value{
 \code{prior_phacking()} returns an object of class \code{"prior"}.

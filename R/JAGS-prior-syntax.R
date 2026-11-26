@@ -540,7 +540,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
     if(any(!(is_PET | is_PEESE | is_weightfunction | is_phacking | is_bias | is_none)))
       stop("Mixture of publication bias and standard priors is not supported.")
 
-    prior_weights <- .mixture_weights_finite_sum(attr(prior_list, "prior_weights"))
+    prior_weights <- attr(prior_list, "prior_weights")
     if(any(has_selection) || any(has_phacking)){
       spec <- selection_backend_spec(prior_list, include_init = FALSE)
       syntax <- .JAGS_selection_backend_syntax(spec)
@@ -573,7 +573,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
   }else{
 
-    prior_weights <- .mixture_weights_finite_sum(attr(prior_list, "prior_weights"))
+    prior_weights    <- attr(prior_list, "prior_weights")
     prior_weights <- if(numeric_literals){
       vapply(prior_weights,.prior_ordered_format_number,character(1))
     }else{

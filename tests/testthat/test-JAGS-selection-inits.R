@@ -344,57 +344,67 @@ test_that("a single-branch selection prior has no starting branch to draw", {
   }
 })
 
-selection_inits_odds_mixture <- function(weights){
+selection_inits_weighted_branches <- function(weights){
 
-  prior_mixture(list(
+  branches <- list(
     prior_none(prior_weights = weights[1]),
-    prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)), prior_weights = weights[2]),
-    prior_phacking(form = "linear", prior_weights = weights[3])
-  ))
+    prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)), prior_weights = weights[2])
+  )
+  if(length(weights) == 3L){
+    branches[[3L]] <- prior_phacking(form = "linear", prior_weights = weights[3])
+  }
+  branches
 }
 
-test_that("selection mixtures whose weights sum past the double maximum keep their odds", {
+test_that("selection mixtures refuse prior weights that cannot be normalized", {
 
-  # The weights are odds: a common factor must not change the starting branch
-  # or the 'dcat()' prior. Three weights of 1e308 sum to Inf, by which sample()
-  # and JAGS normalize; such weights are divided by their largest element.
-  expect_identical(sum(rep(1e308, 3)), Inf)
-  unit  <- selection_inits_odds_mixture(c(1, 1, 1))
-  large <- selection_inits_odds_mixture(rep(1e308, 3))
-  for(seed in 1:20){
-    expect_identical(
-      JAGS_get_inits(list(bias = large), chains = 6, seed = seed),
-      JAGS_get_inits(list(bias = unit),  chains = 6, seed = seed)
-    )
-  }
-  # (the overflowing sum started every chain in the first branch)
-  expect_gt(length(unique(selection_inits_labels(JAGS_get_inits(list(bias = large), chains = 12, seed = 1)))), 1L)
+  # The weights are odds that JAGS's dcat() and sample() normalize by their
+  # double sum: a sum that overflows or is subnormal is refused, not rescaled.
+  unnormalizable <- "BayesTools_mixture_weights_unnormalizable"
+  expect_error(prior_mixture(selection_inits_weighted_branches(rep(1e308, 3))), class = unnormalizable)
+  expect_error(prior_mixture(selection_inits_weighted_branches(c(1e308, 1e308))), class = unnormalizable)
+  expect_error(prior_mixture(selection_inits_weighted_branches(rep(5e-324, 3))), class = unnormalizable)
+  # a list of several priors is a mixture whose weights come together here
+  expect_error(selection_backend_spec(selection_inits_weighted_branches(rep(1e308, 3)), include_init = FALSE),
+               class = unnormalizable)
+  expect_error(selection_backend_spec(selection_inits_weighted_branches(rep(5e-324, 3)), include_init = FALSE),
+               class = unnormalizable)
+  # a single branch has no mixture weights to normalize
+  expect_identical(selection_backend_spec(prior_none(prior_weights = 5e-324), include_init = FALSE)$prior_weights, 5e-324)
+})
 
-  # Odds 1:2:3 near the double maximum: their sum is finite at the factor 1e307
-  # (6e307) and overflows at 5e307 (3e308). One chain per seed, with the bound
-  # of 4 binomial standard errors of the test above.
-  probabilities <- c(1, 2, 3) / 6
-  n <- 2000L
-  for(factor in c(1e307, 5e307)){
-    mixture <- selection_inits_odds_mixture(c(1, 2, 3) * factor)
-    labels <- vapply(seq_len(n), function(seed){
-      JAGS_get_inits(list(bias = mixture), chains = 1, seed = seed)[[1L]]$bias_indicator
-    }, integer(1))
-    frequencies <- tabulate(labels, nbins = 3L) / n
-    expect_true(all(abs(frequencies - probabilities) < 4 * sqrt(probabilities * (1 - probabilities) / n)),
-                info = paste0(factor, ": ", paste(round(frequencies, 3), collapse = ", ")))
-  }
+test_that("selection mixture weights at the normalization limits are used as they are", {
 
-  # the emitted weights are finite, with a finite sum and the same odds ...
   dcat_line <- function(spec) grep("dcat(", strsplit(spec$prior_code, "\n", fixed = TRUE)[[1L]], value = TRUE, fixed = TRUE)
-  spec <- selection_backend_spec(large, include_init = FALSE)
-  expect_identical(spec$prior_weights, c(1, 1, 1))
-  expect_identical(dcat_line(spec), "bias_indicator ~ dcat(c(1, 1, 1))")
-  spec <- selection_backend_spec(selection_inits_odds_mixture(c(1, 2, 3) * 5e307), include_init = FALSE)
-  expect_true(all(is.finite(spec$prior_weights)) && is.finite(sum(spec$prior_weights)))
-  expect_equal(spec$prior_weights, c(1, 2, 3) / 3, tolerance = 1e-15)
-  # ... and weights with a finite sum are emitted as they are
-  spec <- selection_backend_spec(selection_inits_odds_mixture(c(1, 2, 3) * 1e307), include_init = FALSE)
-  expect_identical(spec$prior_weights, c(1, 2, 3) * 1e307)
-  expect_identical(dcat_line(spec), "bias_indicator ~ dcat(c(1e+307, 2e+307, 3e+307))")
+  M    <- .Machine$double.xmax
+  xmin <- .Machine$double.xmin
+  unit <- prior_mixture(selection_inits_weighted_branches(c(1, 1, 2)))
+
+  # the largest double sum and the smallest normal sum start the chains as
+  # their odds do and are emitted as they are
+  for(weights in list(c(M / 4, M / 4, M / 2), c(xmin / 4, xmin / 4, xmin / 2))){
+    mixture <- prior_mixture(selection_inits_weighted_branches(weights))
+    for(seed in 1:3){
+      expect_identical(JAGS_get_inits(list(bias = mixture), chains = 6, seed = seed),
+                       JAGS_get_inits(list(bias = unit),    chains = 6, seed = seed))
+    }
+    expect_identical(selection_backend_spec(mixture, include_init = FALSE)$prior_weights, weights)
+  }
+  expect_identical(
+    dcat_line(selection_backend_spec(prior_mixture(selection_inits_weighted_branches(c(M / 4, M / 4, M / 2))), include_init = FALSE)),
+    "bias_indicator ~ dcat(c(4.4942328371557893e+307, 4.4942328371557893e+307, 8.988465674311579e+307))"
+  )
+
+  # the smallest positive probability next to an ordinary weight
+  tiny <- prior_mixture(selection_inits_weighted_branches(c(1, 5e-324)))
+  expect_identical(selection_inits_labels(JAGS_get_inits(list(bias = tiny), chains = 6, seed = 1)), rep(1L, 6))
+  expect_identical(dcat_line(selection_backend_spec(tiny, include_init = FALSE)),
+                   "bias_indicator ~ dcat(c(1, 4.94065645841247e-324))")
+
+  # ordinary weights: the syntax and starting branches of 62f9563d (before the
+  # normalization limit was introduced)
+  mixture <- selection_inits_label_mixture()
+  expect_identical(dcat_line(selection_backend_spec(mixture, include_init = FALSE)), "bias_indicator ~ dcat(c(1, 2, 3))")
+  expect_identical(selection_inits_labels(JAGS_get_inits(list(bias = mixture), chains = 6, seed = 1)),
+                   c(3L, 1L, 3L, 2L, 3L, 2L))
 })

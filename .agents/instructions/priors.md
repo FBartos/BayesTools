@@ -49,6 +49,14 @@ common norm is taken over the non-zero rows, and levels whose non-zero rows
 differ in norm have no common marginal and refuse. Priors without a stored
 design keep the single-factor contrast of K + 1 levels.
 
+Mixture weights are odds. `prior_mixture()`, and `selection_backend_spec()`
+for a list of several bias priors, refuse weights whose sum in sequential
+double addition (as JAGS `dcat()` and R's `sample()` form it) overflows or is
+subnormal, or in which a component's probability underflows to zero
+(`.check_mixture_prior_weights()`, class
+`BayesTools_mixture_weights_unnormalizable`). Consumers use the stored weights
+as they are and never rescale them.
+
 `prior()` creates the core `prior` S3 family. Distribution aliases and routing
 live in `R/priors.R`; constructors and parameter normalization live in
 `R/priors-constructors.R`; joint and marginal methods live in

@@ -40,7 +40,11 @@ vector; partial named maps may be reused across terms.}
 The value is passed into the model fitting function, which creates models
 corresponding to all combinations of prior distributions for each of
 the model parameters and sets the model priors odds to the product
-of its prior distributions.}
+of its prior distributions. The weights of the components of one
+\code{prior_mixture()} must be normalizable in double precision (a finite
+sum of at least \code{.Machine$double.xmin} in which every component keeps
+a positive probability); dividing all of them by a common factor, such as
+their largest value, keeps the odds within this limit.}
 }
 \value{
 return an object of class 'prior'.

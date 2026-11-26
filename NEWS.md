@@ -34,7 +34,7 @@
 ### Fixes
 - on Apple silicon, numeric constants in generated JAGS models and the values of compiled hypotheses are exact
 - the starting value of the publication-bias indicator of mixtures with selection or p-hacking components is drawn from its prior probabilities; draws differ from earlier versions
-- mixture priors whose prior weights sum beyond the largest representable number keep their odds in `rng()`, initial values, and the JAGS model
+- mixture priors whose prior weights cannot be normalized (their sum overflows or underflows) stop with an explanation
 
 # version 0.4.0
 ### Breaking changes

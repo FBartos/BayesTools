@@ -986,17 +986,6 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       flags = list(simple_priors = TRUE, pub_bias_priors = TRUE, weightfunction_priors = TRUE, mixture_priors = TRUE)
     ),
     catalog_row(
-      "fit_selection_overflow_weights",
-      has_marglik = FALSE,
-      model_family = "prior-only-selection-kernel",
-      scale_policy = "mixture-indicator,selection-kernel",
-      prior_features = "publication-bias,weightfunction,mixture,selection-kernel",
-      expected_monitor = c("bias_indicator", "omega[1]", "omega[2]", "omega[3]", "alpha", "phack_kind", "pi_null"),
-      expected_chains = 1L,
-      expected_iterations = 100L,
-      flags = list(pub_bias_priors = TRUE, weightfunction_priors = TRUE, mixture_priors = TRUE, assertion_only = TRUE)
-    ),
-    catalog_row(
       "fit_spike_slab_simple",
       has_marglik = FALSE,
       model_family = "prior-only-spike-and-slab",
