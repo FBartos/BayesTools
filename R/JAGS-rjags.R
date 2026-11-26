@@ -1,3 +1,35 @@
+# The JAGS libraries whose linear-algebra threads BayesTools controls: the
+# Windows builds of JAGS 5 and of later major versions.
+.bt_jags_libraries <- paste0("libjags-", 5:9, ".dll")
+
+# The OpenMP thread count of the loaded JAGS library. Sets it to 'threads'
+# and returns the previous count; with 'threads' NA only returns the count;
+# NA when no library of 'libraries' is loaded or it has no thread controls,
+# and always off Windows (src/r-jags-threads.c gives the reasons).
+.bt_jags_threads <- function(threads = NA_integer_, libraries = .bt_jags_libraries){
+
+  .Call("BayesTools_jags_threads", libraries, threads, PACKAGE = "BayesTools")
+}
+
+# Evaluates 'expr' with JAGS's linear algebra on one thread and restores the
+# previous count on exit. The Windows build of JAGS 5 otherwise starts a team
+# of threads for every larger BLAS or LAPACK call, which makes models with
+# multivariate nodes more than a thousand times slower; the draws were identical
+# in every comparison.
+# Used where JAGS compiles, adapts or samples in a process: the steps of the
+# chain groups (serial and on PSOCK workers) and the data-block generator.
+.bt_with_single_threaded_jags <- function(expr){
+
+  # the count is read and its restoration registered before it is changed, so
+  # that an interrupt in between cannot leave it changed
+  previous <- .bt_jags_threads()
+  if(!is.na(previous)){
+    on.exit(.bt_jags_threads(previous), add = TRUE)
+    .bt_jags_threads(1L)
+  }
+  expr
+}
+
 # Run the chains assigned to one R process. The caller owns process-level
 # setup and reporting. Keep JAGS to one thread per process for both serial
 # fits and PSOCK workers, including workers that own multiple chains.
@@ -266,7 +298,7 @@
 
   warnings <- list()
   value <- tryCatch(withCallingHandlers(
-    step(input, ...),
+    .bt_with_single_threaded_jags(step(input, ...)),
     warning = function(w){
       warnings[[length(warnings) + 1L]] <<- w
       invokeRestart("muffleWarning")
@@ -294,7 +326,7 @@
   # transport failure: new initial values cannot repair the connection.
   reachable <- TRUE
   run_groups <- function(step, inputs, ...){
-    if(local) return(list(step(inputs[[1L]], ..., session = session)))
+    if(local) return(list(.bt_with_single_threaded_jags(step(inputs[[1L]], ..., session = session))))
     reachable <<- FALSE
     results <- tryCatch(parallel::clusterApply(cl, inputs, .bt_rjags_worker, step, ...),
       error = function(e) stop(.JAGS_worker_connection_error(e)))
@@ -497,8 +529,8 @@
   if(grepl("~", substr(masked, data_at, model_at - 1L), fixed = TRUE)){
     rjags::jags.seed(seed)
   }
-  generator <- rjags::jags.model(connection, data = data[names(data) %in% inputs],
-    n.chains = 1L, n.threads = 1L, n.adapt = 0L, quiet = TRUE)
+  generator <- .bt_with_single_threaded_jags(rjags::jags.model(connection,
+    data = data[names(data) %in% inputs], n.chains = 1L, n.threads = 1L, n.adapt = 0L, quiet = TRUE))
   generated <- generator$data()
   data[names(generated)] <- generated
   declarations <- substr(model, 1L, data_at - 1L)
