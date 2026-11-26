@@ -1,7 +1,10 @@
 #' @title Create initial values for 'JAGS' model
 #'
 #' @description Creates initial values for priors in
-#' a 'JAGS' model.
+#' a 'JAGS' model. Every component of a \code{\link{prior_mixture}} is
+#' initialized, and each chain starts in a component drawn from the mixture's
+#' prior weights, including publication-bias mixtures with selection or
+#' p-hacking components.
 #'
 #' @param chains number of chains
 #' @param seed seed for random number generation: a number between

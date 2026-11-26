@@ -336,8 +336,6 @@
 
 .selection_backend_init <- function(branch_info, prior_weights, uses_indicator, global_cuts = NULL, names = NULL){
 
-  active_branch <- which.max(prior_weights)
-
   init <- list()
   for(i in seq_along(branch_info)){
     component_id <- if(uses_indicator) i else NULL
@@ -354,8 +352,11 @@
       init <- c(init, .selection_JAGS_init_phacking_component(branch_info[[i]]$phacking, component_id = component_id, names = names))
     }
   }
+  # Every branch is initialized; the chain starts in a branch drawn from the
+  # prior weights of the 'dcat()' prior, after the branches' own values, as
+  # every other mixture draws its starting component.
   if(uses_indicator){
-    init[["bias_indicator"]] <- active_branch
+    init[["bias_indicator"]] <- .rng_mixture_components(prior_weights, 1L)
   }
 
   return(init)

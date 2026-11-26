@@ -33,5 +33,8 @@ priors are specified only in the model syntax remain reproducible.
 }
 \description{
 Creates initial values for priors in
-a 'JAGS' model.
+a 'JAGS' model. Every component of a \code{\link{prior_mixture}} is
+initialized, and each chain starts in a component drawn from the mixture's
+prior weights, including publication-bias mixtures with selection or
+p-hacking components.
 }

@@ -14,7 +14,9 @@ selection_backend_spec(
 }
 \arguments{
 \item{priors}{a selection prior, p-hacking prior, composed bias prior,
-\code{prior_none()}, \code{prior_mixture()}, or a list of those priors.}
+\code{prior_none()}, \code{prior_mixture()}, or a list of those priors. Several
+priors whose \code{prior_weights} cannot be normalized are refused, as a
+\code{prior_mixture()} is when it is sampled or fitted.}
 
 \item{backend}{backend target. Currently only \code{"jags"} is supported.}
 
@@ -49,5 +51,7 @@ A list describing the compiled backend specification.
 p-hacking prior objects into active backend parameters. The returned object
 contains stable p/z geometry, JAGS prior/transform code, monitor names,
 initial values, and data constants. Set \code{include_init = FALSE} for
-deterministic metadata without drawing unused initial values.
+deterministic metadata without drawing unused initial values. The initial
+values of a mixture cover every branch, and its \code{bias_indicator}
+starts at a branch drawn from the prior weights.
 }

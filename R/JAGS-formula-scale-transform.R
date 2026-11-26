@@ -625,6 +625,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     )
   }else if(is.prior.mixture(prior)){
     prior_weights <- attr(prior, "prior_weights")
+    .check_mixture_prior_weights(prior_weights)
     prior_weights <- prior_weights / sum(prior_weights)
     components <- sample(seq_along(prior_weights), size = n_samples, replace = TRUE, prob = prior_weights)
     samples <- matrix(NA_real_, nrow = n_samples, ncol = K)
@@ -787,7 +788,8 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
       temp_samples <- tryCatch(
         rng(prior, n_samples),
         error = function(e){
-          if(inherits(e, "BayesTools_prior_rng_unavailable")){
+          if(inherits(e, "BayesTools_prior_rng_unavailable") ||
+             inherits(e, "BayesTools_mixture_weights_unnormalizable")){
             stop(e)
           }
           stop(
