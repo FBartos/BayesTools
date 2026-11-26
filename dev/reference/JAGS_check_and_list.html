@@ -18,7 +18,7 @@ JAGS_fit function."><meta name="robots" content="noindex"><!-- mathjax --><scrip
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9015</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9016</span>
       </span>
     </div>
 
@@ -120,7 +120,20 @@ Each chain runs <code>sample * thin</code> sampling iterations.</p></dd>
 
 <dt id="arg-autofit">autofit<a class="anchor" aria-label="anchor" href="#arg-autofit"></a></dt>
 <dd><p>whether the models should be refitted until convergence criteria
-specified in <code>autofit_control</code>. Defaults to <code>FALSE</code>.</p></dd>
+specified in <code>autofit_control</code>. Automatic fitting stops once every
+diagnostic that can be assessed meets its criterion, or at <code>max_time</code>
+or <code>max_extend</code>. Assessability is judged from the draws available at
+each check. Automatic fitting does not extend a fit for diagnostics that
+cannot be assessed then (a mixture component or indicator state that no
+chain has visited, draws that are constant), so a quantity that only more
+draws would reveal is not waited for; every diagnostic that can be assessed
+still extends the fit. A fit in which nothing can be assessed stops after
+its initial sampling (in <code><a href="JAGS_fit.html">JAGS_extend()</a></code>, after its first extension).
+When automatic fitting stops with diagnostics that cannot be assessed, a
+warning of class <code>BayesTools_autofit_not_assessable</code> (also
+<code>BayesTools_fit_diagnostic</code>) names them unless <code>silent = TRUE</code>;
+it is not stored in the fit's <code>warnings</code> attribute. Check the returned
+fit with <code><a href="JAGS_check_convergence.html">JAGS_check_convergence()</a></code>. Defaults to <code>FALSE</code>.</p></dd>
 
 
 <dt id="arg-parallel">parallel<a class="anchor" aria-label="anchor" href="#arg-parallel"></a></dt>
@@ -219,7 +232,30 @@ corresponds to the <code>units</code> argument of <a href="https://rdrr.io/r/bas
 
 <dt>sample_extend</dt>
 <dd><p>number of samples between each convergence check. Defaults to
-<code>1000</code>.</p></dd>
+<code>1000</code>. With <code>"auto"</code>, each extension is sized from the
+convergence check that failed, which then assesses every selected
+parameter: with <code>n</code> retained draws per chain and <code>f</code> the largest
+required growth over the parameters (<code>min_ESS / ESS</code>,
+<code>(error / max_error)^2</code>, and <code>(SD_error / max_SD_error)^2</code> for
+the criteria that are set, and at least <code>2</code> for an R-hat above
+<code>max_Rhat</code>; diagnostics that are not assessable add nothing), the
+extension is <code>n * (f - 1) * 1.1</code> draws per chain rounded up to a
+multiple of 100, then at most <code>2 * n</code> rounded down to a multiple of
+100, then at least 1000 (the minimum wins when <code>2 * n</code> is smaller),
+and at most the largest multiple of 100 whose sampling iterations
+(draws times <code>thin</code>) stay within the backend's integer limit.
+With <code>max_time</code>, it is then at most the draws per chain that the
+time left allows at the rate observed so far (the time on the
+<code>max_time</code> clock divided by the retained draws per chain run since
+that clock started; in <code><a href="JAGS_fit.html">JAGS_fit()</a></code> the clock starts before the
+initial run, so the rate includes its adaptation and burn-in), rounded
+down to a multiple of 100; when that is below 100, the fitting stops with
+the <code>max_time</code> warning. In <code><a href="JAGS_fit.html">JAGS_extend()</a></code>, the first extension
+is sized from the check of the supplied fit and, with no rate observed
+yet, is not shortened. Without <code>max_time</code>, each extension of a fit
+that cannot converge multiplies the draws per chain by about 2.1 (a
+failed R-hat) and up to 3 (large ESS or error deficits), up to
+<code>max_extend</code>.</p></dd>
 
 <dt>restarts</dt>
 <dd><p>maximum number of fitting attempts when the model fails
@@ -252,10 +288,6 @@ formulas monitor (such as random-effect correlation matrices and their
 Cholesky factors) are derived and not checked by default. The role of
 every fitted coordinate is stored in the <code>convergence_role</code> column
 of <code><a href="parameter_map.html">parameter_coordinates()</a></code>.</p></dd>
-
-<dt>allow_not_assessable</dt>
-<dd><p>whether undefined diagnostics for requested
-sampled parameters may be ignored. Defaults to <code>FALSE</code>.</p></dd>
 
 
 </dl></dd>
