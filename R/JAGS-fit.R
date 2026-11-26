@@ -179,12 +179,17 @@
 #'   to one deviating chain that a fixed value loses. A slowly mixing fit can
 #'   exceed the threshold although its chains agree, because the statistic
 #'   grows with the autocorrelation of the block's draws; a larger
-#'   \code{thin} is then the remedy, while more burn-in is the remedy for
-#'   chains that have not yet reached the same region.}
+#'   \code{thin} then helps when more widely spaced draws are less
+#'   correlated, while more burn-in is the remedy for chains that have not
+#'   yet reached the same region. The check needs 100 draws at the fit's
+#'   thinning: with \code{burnin} below \code{100 * thin} it does not run,
+#'   and with \code{burnin} at most \code{burnin_extend * thin} the block is
+#'   the whole burn-in, so raise \code{burnin} together with \code{thin}.}
 #'   \item{burnin_extend}{the number of final burn-in draws, taken every
 #'   \code{thin} iterations, that the readiness check assesses, and of each
 #'   extension of burn-in (\code{burnin_extend * thin} iterations); at least
-#'   \code{100}. Defaults to \code{500}.}
+#'   \code{100}. Defaults to \code{500}. With \code{burnin} at most
+#'   \code{burnin_extend * thin}, the block is the whole burn-in.}
 #'   \item{burnin_max_extend}{the largest number of extensions of burn-in, with
 #'   \code{autofit} only. Defaults to \code{10}. An extension after which the
 #'   last retained draw would have an iteration number beyond

@@ -236,7 +236,10 @@ off, and records no check. Each
 process runs `burnin - D * thin` unmonitored sweeps, then the `D * thin` sweeps
 of the block with the fit's monitors on at the fit's `thin` (no probability
 read-outs, never in the retained chunks) through the shared
-`.bt_rjags_samples()`, and keeps its live model; the coordinator checks the
+`.bt_rjags_samples()`, and keeps its live model. The block's draws are those
+JAGS records at the fit's `thin`, the first sweep of each window of `thin`
+sweeps as in sampling, so the last checked draw is `thin - 1` sweeps before
+the end of burn-in. The coordinator checks the
 blocks of all chains in the original order and, under `autofit`, asks for
 further blocks of `burnin_extend` draws (`burnin_extend * thin` sweeps, each
 checked alone) until ready, `burnin_max_extend` blocks, `max_time` on the
@@ -296,10 +299,13 @@ length (or the call-specific override), and starts sampling with zero additional
 burn-in. Record the adaptation settings and rebuild status for each extension.
 The incomplete-adaptation warning (`BayesTools_adaptation_incomplete`) and the
 readiness warning share the parent class `BayesTools_fit_diagnostic`. The
-readiness warning lists up to five values above the threshold, each printed
-with as many decimals as it takes to exceed the true threshold, and prints the
-limit with two decimals when exact and otherwise rounded down to three, so
-that no listed value reads as not above it.
+readiness warning lists up to five values above the threshold. It formats the
+limit first, with two decimals when that reads back as the threshold and
+otherwise rounded down to three, so that the printed limit never reads above
+the threshold (`1.7 + 0.9 / 6` is the double below 1.85 and prints 1.849).
+Each listed value then has as many decimals as it takes to read strictly above
+`max(threshold, printed limit)`, and where fifteen are not enough the shortest
+representation that reads back as the value.
 
 The optional `runtime_report` callback (stored as `attr(fit, "runtime_report")`,
 replayed by `JAGS_extend()` like `runtime_cache`) runs with

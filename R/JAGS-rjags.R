@@ -43,9 +43,11 @@
   if(block > 0L && length(rjags::list.samplers(live_model)) == 0L){
     block <- 0L
   }
-  # rjags refuses an update of zero iterations
-  if(burnin - block * thin > 0){
-    stats::update(live_model, n.iter = burnin - block * thin, progress.bar = progress)
+  # rjags refuses an update of zero iterations; the iterations of the block
+  # are counted in double arithmetic
+  unmonitored <- burnin - as.double(block) * thin
+  if(unmonitored > 0){
+    stats::update(live_model, n.iter = unmonitored, progress.bar = progress)
   }
   if(prepare){
     session$model <- live_model

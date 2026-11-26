@@ -33,7 +33,9 @@ JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, 
 
   check_int(chains, "chains", lower = check_mins[["chains"]], allow_NA = FALSE, call = call)
   .JAGS_check_adapt(adapt, lower = check_mins[["adapt"]], call = call)
-  check_int(burnin, "burnin", lower = check_mins[["burnin"]], allow_NA = FALSE, call = call)
+  # the first retained draw is numbered after the burn-in iterations, and the
+  # iteration numbers are integers
+  check_int(burnin, "burnin", lower = check_mins[["burnin"]], upper = .Machine$integer.max, allow_NA = FALSE, call = call)
   check_int(sample, "sample", lower = check_mins[["sample"]], allow_NA = FALSE, call = call)
   check_int(thin,   "thin",   lower = check_mins[["thin"]],   allow_NA = FALSE, call = call)
   check_bool(parallel, "parallel",                allow_NA = FALSE, call = call)
@@ -144,7 +146,11 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
   # 'burnin_max_Rhat = NULL' turns the check off, so these elements are
   # validated where present and never filled in.
   supplied <- function(name) name %in% names(autofit_control)
-  # a finite number of at least 1, or "auto" (.bt_burnin_threshold())
+  # a finite number of at least 1, or "auto" (.bt_burnin_threshold()); NULL
+  # turns the check off, an empty value is refused
+  if(!is.null(autofit_control[["burnin_max_Rhat"]]) && length(autofit_control[["burnin_max_Rhat"]]) == 0L){
+    stop(paste0(call, "The 'burnin_max_Rhat' argument must have length '1'."), call. = FALSE)
+  }
   if(is.character(autofit_control[["burnin_max_Rhat"]])){
     check_char(autofit_control[["burnin_max_Rhat"]], "burnin_max_Rhat", allow_values = "auto", allow_NA = FALSE, call = call)
     autofit_control[["burnin_max_Rhat"]] <- "auto"

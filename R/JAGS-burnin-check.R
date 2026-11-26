@@ -151,7 +151,7 @@
 
   blocks     <- list()
   draws      <- first
-  sweeps     <- as.integer(block * thin)
+  sweeps     <- as.integer(as.double(block) * thin)
   extensions <- 0L
   repeat{
     values <- sort(assess(draws), decreasing = TRUE)
@@ -186,11 +186,13 @@
   failing <- values[values > burnin_max_Rhat]
   list(
     burnin_max_Rhat = burnin_max_Rhat,
-    block           = as.integer(block * thin),
+    block           = blocks[[1L]]$sweeps,
     burnin_extend   = burnin_extend,
     thin            = thin,
     blocks          = do.call(rbind, blocks),
-    extension       = extensions * burnin_extend * thin,
+    # the type of 'burnin_extend' ('thin' is a whole number, and the room
+    # check keeps the product within the integer range)
+    extension       = extensions * burnin_extend * as.integer(thin),
     status          = switch(stop_reason, ready = "ready", not_assessable = "not_assessable", "not_ready"),
     stop_reason     = stop_reason,
     failing         = data.frame(parameter = names(failing), Rhat = unname(failing), stringsAsFactors = FALSE)
@@ -205,7 +207,9 @@
   }
   failing <- record$failing
   listed  <- utils::head(failing, 5L)
-  values  <- paste0(.bt_burnin_format_Rhat(listed$Rhat, record$burnin_max_Rhat), " for '",
+  limit   <- .bt_burnin_format_limit(record$burnin_max_Rhat)
+  bound   <- max(record$burnin_max_Rhat, as.numeric(limit))
+  values  <- paste0(.bt_burnin_format_Rhat(listed$Rhat, bound), " for '",
     listed$parameter, "'", collapse = ", ")
   if(nrow(failing) > 5L){
     values <- paste0(values, " and ", nrow(failing) - 5L, " more")
@@ -214,7 +218,7 @@
   paste0(
     "Chains did not agree at the end of burn-in",
     if(extensions > 0) paste0(" after ", extensions, ngettext(extensions, " extension", " extensions")),
-    ": R-hat ", values, " (limit ", .bt_burnin_format_limit(record$burnin_max_Rhat), "). ",
+    ": R-hat ", values, " (limit ", limit, "). ",
     switch(record$stop_reason,
       no_autofit = "Increase 'adapt' and 'burnin'; if the chains mix slowly, increase 'thin'. Or fit with 'autofit = TRUE'.",
       max_extend = ,
@@ -227,28 +231,46 @@
 }
 
 # The threshold with two decimals when that is exact (2.00, 2.15), otherwise
-# rounded down to three (1.925, 1.828 for 1.8286), so that a listed value,
-# which prints above the threshold, never reads as not above the limit. The
-# tolerance absorbs the rounding error of 1.7 + 0.9 / chains.
+# rounded down to three (1.925, 1.828 for 1.8286). The printed number, read
+# back as a double, is never above the threshold: 1.7 + 0.9 / 6 is the double
+# below 1.85 and prints 1.849.
 .bt_burnin_format_limit <- function(threshold){
 
-  if(abs(threshold - round(threshold, 2)) <= 1e-12 * threshold){
-    return(formatC(threshold, format = "f", digits = 2))
+  printed <- formatC(threshold, format = "f", digits = 2)
+  if(as.numeric(printed) == threshold){
+    return(printed)
   }
-  formatC(floor(threshold * 1000 * (1 + 1e-12)) / 1000, format = "f", digits = 3)
+  thousandths <- round(threshold * 1000)
+  printed <- formatC(thousandths / 1000, format = "f", digits = 3)
+  if(as.numeric(printed) > threshold){
+    printed <- formatC((thousandths - 1) / 1000, format = "f", digits = 3)
+  }
+  printed
 }
 
-# Values above the threshold with two decimals, or as many more as it takes
-# for the printed value to exceed the threshold (2.00001 above 2).
-.bt_burnin_format_Rhat <- function(values, threshold){
+# Values above 'bound' (the threshold, or the printed limit when that reads
+# higher) with two decimals, or as many more as it takes to read above it
+# (2.00001 above 2); where fifteen are not enough, the shortest
+# representation that reads back as the value (2.0000000000000004).
+.bt_burnin_format_Rhat <- function(values, bound){
 
   vapply(values, function(value){
-    digits <- 2L
-    while(is.finite(value) && digits < 15L &&
-          as.numeric(formatC(value, format = "f", digits = digits)) <= threshold){
-      digits <- digits + 1L
+    if(!is.finite(value)){
+      return(formatC(value))
     }
-    formatC(value, format = "f", digits = digits)
+    for(digits in 2:15){
+      printed <- formatC(value, format = "f", digits = digits)
+      if(as.numeric(printed) > bound){
+        return(printed)
+      }
+    }
+    for(digits in 15:17){
+      printed <- formatC(value, format = "g", digits = digits)
+      if(as.numeric(printed) == value){
+        break
+      }
+    }
+    printed
   }, character(1))
 }
 

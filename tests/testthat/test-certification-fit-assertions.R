@@ -6763,6 +6763,18 @@ test_that("a passing readiness check leaves the draws as they are with the check
   }
 })
 
+test_that("the automatic readiness threshold counts every chain of a parallel fit", {
+
+  skip_on_cran()
+  # four chains on two workers of two chains each: 1.7 + 0.9 / 4, not the
+  # value of a worker's two chains
+  fit <- JAGS_fit("model{ y ~ dnorm(mu, 1) }", data = list(y = 0.5),
+    prior_list = list(mu = prior("normal", list(0, 1))), chains = 4L, parallel = TRUE, cores = 2L,
+    adapt = 100L, burnin = 300L, sample = 100L, seed = 11L, autofit_control = .readiness_control())
+  expect_length(fit$mcmc, 4L)
+  expect_identical(attr(fit, "burnin_check")$burnin_max_Rhat, 1.925)
+})
+
 test_that("a model without samplers runs as with the readiness check off", {
 
   skip_on_cran()
