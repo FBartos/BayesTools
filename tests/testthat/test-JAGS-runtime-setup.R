@@ -666,6 +666,19 @@ test_that("the JAGS thread control changes nothing when the JAGS library is abse
   expect_identical(calls, list(NA_integer_))
 })
 
+test_that("an interrupt right after the count is set leaves the previous count", {
+
+  count <- 3L
+  testthat::local_mocked_bindings(.bt_jags_threads = function(threads = NA_integer_, libraries = .bt_jags_libraries){
+    previous <- count
+    if(!is.na(threads)) count <<- threads
+    if(identical(threads, 1L)) rlang::interrupt()
+    previous
+  })
+  tryCatch(.bt_with_single_threaded_jags(NULL), interrupt = function(condition) NULL)
+  expect_identical(count, 3L)
+})
+
 test_that("JAGS runs its linear algebra on one thread and the previous count returns", {
 
   original <- .bt_jags_threads()

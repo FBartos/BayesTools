@@ -11,7 +11,7 @@
  * runtime in statically. With the default thread count, every larger BLAS or
  * LAPACK call of a multivariate node (dmnorm, dwish, ...) starts a team of
  * threads, which costs milliseconds per call on a machine with many cores and
- * makes such models up to a thousand times slower than on one thread; the
+ * makes such models more than a thousand times slower than on one thread; the
  * draws were identical in every comparison. Neither OPENBLAS_NUM_THREADS nor
  * openblas_set_num_threads() reaches that copy, but the omp_set_num_threads()
  * the library exports does. That runtime is JAGS's own: R and other packages
@@ -23,9 +23,9 @@
  *
  * 'libraries' names the candidate JAGS libraries in order; the first one that
  * is loaded is used. 'threads' is one integer: with NA the count is only read,
- * otherwise it is set to 'threads'. Returns the count before the call, or NA when no candidate
- * is loaded, when the loaded one lacks either thread control, and on platforms
- * other than Windows.
+ * otherwise it is set to 'threads'. Returns the count before the call, or NA
+ * when no candidate is loaded, when the loaded one lacks either thread
+ * control, and on platforms other than Windows.
  */
 SEXP BayesTools_jags_threads(SEXP libraries, SEXP threads)
 {

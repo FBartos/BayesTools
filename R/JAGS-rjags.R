@@ -14,7 +14,7 @@
 # Evaluates 'expr' with JAGS's linear algebra on one thread and restores the
 # previous count on exit. The Windows build of JAGS 5 otherwise starts a team
 # of threads for every larger BLAS or LAPACK call, which makes models with
-# multivariate nodes up to a thousand times slower; the draws were identical
+# multivariate nodes more than a thousand times slower; the draws were identical
 # in every comparison.
 # Used where JAGS compiles, adapts or samples in a process: the steps of the
 # chain groups (serial and on PSOCK workers) and the data-block generator.
