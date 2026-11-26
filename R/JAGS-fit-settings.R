@@ -72,15 +72,12 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
     check_names = c(
       "max_Rhat", "min_ESS", "max_error", "max_SD_error", "max_time",
       "sample_extend", "restarts", "max_extend", "check_indicators",
-      "monitor", "allow_not_assessable"
+      "monitor"
     ),
     call = call
   )
   if(is.null(autofit_control[["check_indicators"]])){
     autofit_control[["check_indicators"]] <- FALSE
-  }
-  if(is.null(autofit_control[["allow_not_assessable"]])){
-    autofit_control[["allow_not_assessable"]] <- FALSE
   }
   check_real(autofit_control[["max_Rhat"]],     "max_Rhat",     lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
   check_real(autofit_control[["min_ESS"]],      "min_ESS",      lower = 0, allow_NULL = TRUE, allow_NA = FALSE, call = call)
@@ -115,12 +112,6 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
       call. = FALSE
     )
   }
-  check_bool(
-    autofit_control[["allow_not_assessable"]],
-    "allow_not_assessable",
-    allow_NA = FALSE,
-    call = call
-  )
   check_list(autofit_control[["max_time"]],     "max_time", check_names = c("time", "unit"), check_length = 2, allow_NULL = TRUE, call = call)
   if(!is.null(autofit_control[["max_time"]])){
     if(is.null(names(autofit_control[["max_time"]]))){
@@ -135,7 +126,15 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
     }
     check_char(autofit_control[["max_time"]][["unit"]], "max_time:unit", allow_values = c("secs", "mins", "hours", "days", "weeks"), allow_NA = FALSE, call = call)
   }
-  check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, allow_NA = FALSE, call = call)
+  # a positive whole number of draws, or "auto" (.bt_autofit_extension_size())
+  if(is.character(autofit_control[["sample_extend"]])){
+    check_char(autofit_control[["sample_extend"]], "sample_extend", allow_values = "auto", allow_NA = FALSE, call = call)
+    # the plain string, without names, which the fitting loops compare with
+    # identical()
+    autofit_control[["sample_extend"]] <- "auto"
+  }else{
+    check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, allow_NA = FALSE, call = call)
+  }
   check_int(autofit_control[["restarts"]], "restarts", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
   check_int(autofit_control[["max_extend"]], "max_extend", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
 

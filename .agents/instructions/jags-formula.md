@@ -187,6 +187,35 @@ auxiliary. `JAGS_check_convergence()` reports one message per failed
 criterion with the most extreme value, as 0.3.0 did, followed by the sentence
 that names the failing parameters (the first five and the number of the
 others); the `diagnostics` attribute holds the per-parameter values.
+Both automatic-fitting loops check through `.bt_autofit_check()`, with
+`allow_not_assessable = TRUE`: fitting stops once every diagnostic that can be
+assessed meets the criteria. Assessability is judged from the draws at each
+check, per diagnostic: a diagnostic that is not assessable then (a state no
+chain has visited yet, constant draws) neither extends the fit nor sizes an
+extension, so a quantity that only more draws would reveal is not waited for,
+while the computed diagnostics of the same quantity still count. A loop that
+stops this way signals `BayesTools_autofit_not_assessable` (parent
+`BayesTools_fit_diagnostic`) unless `silent`, with the messages of
+`JAGS_check_convergence()`, and does not store it in the `warnings`
+attribute, since RoBMA stores its own check's message. `autofit_control` has
+no `allow_not_assessable` element (removed after 0.4.0); the argument of
+`JAGS_check_convergence()` only decides what that check reports.
+With `autofit_control$sample_extend = "auto"` the check runs without
+`fail_fast`, so that every selected quantity is assessed, and
+`.bt_autofit_extension_size()` sizes the next extension from those same
+diagnostics when the loop is about to run it; it computes no diagnostics of
+its own. `JAGS_extend()` checks the supplied fit before its first extension,
+without R-hat for one chain, whose warning the later checks give. With
+`max_time`, `.bt_autofit_time_cap()` then shortens the extension, also below
+the 1000 minimum, to what the time left allows at the wall-clock rate observed
+on the `max_time` clock (the retained draws per chain run on that clock over
+its elapsed seconds), and stops the fitting below 100 draws, also once no time
+is left. The first `JAGS_extend()` extension has no rate yet and is not
+shortened. Every automatic extension is also at most
+`.bt_autofit_iteration_cap()`, the largest multiple of 100 retained draws per
+chain whose `draws * thin` sampling iterations fit rjags' signed-integer
+`n.iter`; sizes stay whole doubles until these caps apply. The fixed step
+keeps `fail_fast` and its size.
 
 Worker connection failures stop fitting retries; new initial values cannot
 repair the existing cluster. Preserve the original backend condition. Classify

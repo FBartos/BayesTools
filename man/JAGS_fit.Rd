@@ -21,8 +21,7 @@ JAGS_fit(
   autofit = FALSE,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
     0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
-    max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable =
-    FALSE),
+    max_extend = 10, check_indicators = FALSE, monitor = NULL),
   parallel = FALSE,
   cores = chains,
   silent = TRUE,
@@ -48,8 +47,7 @@ JAGS_extend(
   fit,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
     0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
-    max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable =
-    FALSE),
+    max_extend = 10, check_indicators = FALSE, monitor = NULL),
   parallel = FALSE,
   cores = NULL,
   silent = TRUE,
@@ -103,7 +101,20 @@ Each chain runs \code{sample * thin} sampling iterations.}
 \item{thin}{thinning interval for the MCMC samples, defaults to \code{1}}
 
 \item{autofit}{whether the models should be refitted until convergence criteria
-specified in \code{autofit_control}. Defaults to \code{FALSE}.}
+specified in \code{autofit_control}. Automatic fitting stops once every
+diagnostic that can be assessed meets its criterion, or at \code{max_time}
+or \code{max_extend}. Assessability is judged from the draws available at
+each check. Automatic fitting does not extend a fit for diagnostics that
+cannot be assessed then (a mixture component or indicator state that no
+chain has visited, draws that are constant), so a quantity that only more
+draws would reveal is not waited for; every diagnostic that can be assessed
+still extends the fit. A fit in which nothing can be assessed stops after
+its initial sampling (in \code{JAGS_extend()}, after its first extension).
+When automatic fitting stops with diagnostics that cannot be assessed, a
+warning of class \code{BayesTools_autofit_not_assessable} (also
+\code{BayesTools_fit_diagnostic}) names them unless \code{silent = TRUE};
+it is not stored in the fit's \code{warnings} attribute. Check the returned
+fit with \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}}. Defaults to \code{FALSE}.}
 
 \item{autofit_control}{a list of arguments controlling the autofit function.
 Convergence thresholds and \code{max_time$time} must be finite and non-missing.
@@ -124,7 +135,30 @@ when the automatic fitting function is stopped. The \code{unit} value
 corresponds to the \code{units} argument of \link[base]{difftime}.}
 \item{max_extend}{number of times after which the automatic fitting function is stopped.}
 \item{sample_extend}{number of samples between each convergence check. Defaults to
-\code{1000}.}
+\code{1000}. With \code{"auto"}, each extension is sized from the
+convergence check that failed, which then assesses every selected
+parameter: with \code{n} retained draws per chain and \code{f} the largest
+required growth over the parameters (\code{min_ESS / ESS},
+\code{(error / max_error)^2}, and \code{(SD_error / max_SD_error)^2} for
+the criteria that are set, and at least \code{2} for an R-hat above
+\code{max_Rhat}; diagnostics that are not assessable add nothing), the
+extension is \code{n * (f - 1) * 1.1} draws per chain rounded up to a
+multiple of 100, then at most \code{2 * n} rounded down to a multiple of
+100, then at least 1000 (the minimum wins when \code{2 * n} is smaller),
+and at most the largest multiple of 100 whose sampling iterations
+(draws times \code{thin}) stay within the backend's integer limit.
+With \code{max_time}, it is then at most the draws per chain that the
+time left allows at the rate observed so far (the time on the
+\code{max_time} clock divided by the retained draws per chain run since
+that clock started; in \code{JAGS_fit()} the clock starts before the
+initial run, so the rate includes its adaptation and burn-in), rounded
+down to a multiple of 100; when that is below 100, the fitting stops with
+the \code{max_time} warning. In \code{JAGS_extend()}, the first extension
+is sized from the check of the supplied fit and, with no rate observed
+yet, is not shortened. Without \code{max_time}, each extension of a fit
+that cannot converge multiplies the draws per chain by about 2.1 (a
+failed R-hat) and up to 3 (large ESS or error deficits), up to
+\code{max_extend}.}
 \item{restarts}{maximum number of fitting attempts when the model fails
 to initialize; every failed attempt but the last is retried with new
 initial values (\code{restarts = 1} fits once, without a retry). A
@@ -151,8 +185,6 @@ formulas monitor (such as random-effect correlation matrices and their
 Cholesky factors) are derived and not checked by default. The role of
 every fitted coordinate is stored in the \code{convergence_role} column
 of \code{\link[=parameter_coordinates]{parameter_coordinates()}}.}
-\item{allow_not_assessable}{whether undefined diagnostics for requested
-sampled parameters may be ignored. Defaults to \code{FALSE}.}
 }}
 
 \item{parallel}{whether to distribute chains over PSOCK worker processes.
@@ -195,7 +227,7 @@ data and a node that the model syntax defines deterministically (\code{<-} or
 block convergence. A
 node that is stochastic (\code{~}) or depends on a stochastic node is
 checked, and its constant draws are not assessable (see
-\code{autofit_control$allow_not_assessable}). A name that repeats a parameter
+\code{allow_not_assessable} in \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}}). A name that repeats a parameter
 of \code{prior_list} is refused. A parameter that a formula needs monitored,
 such as the scalar SD source of a random-effect block
 (\code{random_sd_source("tau")}), is added automatically and, when
@@ -428,7 +460,11 @@ condition.
 \code{JAGS_extend()} rebuilds the sampler from the stored states, adapts
 it for \code{adapt} iterations when needed, then appends draws without
 further burn-in. A saved and reloaded fit extends from the same state.
-Within one call, automatic extensions continue the serial sampler. JASP fits
+Its extensions continue, as automatic fitting in \code{JAGS_fit()}, until
+every diagnostic that can be assessed meets the criteria of
+\code{autofit_control} after an extension, or until \code{max_time} or
+\code{max_extend} stops them. Within one call, automatic extensions
+continue the serial sampler. JASP fits
 also keep parallel worker samplers through progress updates and automatic
 extensions. Other parallel fits rebuild at each extension. The returned fit stores
 ordinary R data and can be serialized with \code{saveRDS()}.

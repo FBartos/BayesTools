@@ -39,7 +39,20 @@
 #' Each chain runs \code{sample * thin} sampling iterations.
 #' @param thin thinning interval for the MCMC samples, defaults to \code{1}
 #' @param autofit whether the models should be refitted until convergence criteria
-#' specified in \code{autofit_control}. Defaults to \code{FALSE}.
+#' specified in \code{autofit_control}. Automatic fitting stops once every
+#' diagnostic that can be assessed meets its criterion, or at \code{max_time}
+#' or \code{max_extend}. Assessability is judged from the draws available at
+#' each check. Automatic fitting does not extend a fit for diagnostics that
+#' cannot be assessed then (a mixture component or indicator state that no
+#' chain has visited, draws that are constant), so a quantity that only more
+#' draws would reveal is not waited for; every diagnostic that can be assessed
+#' still extends the fit. A fit in which nothing can be assessed stops after
+#' its initial sampling (in \code{JAGS_extend()}, after its first extension).
+#' When automatic fitting stops with diagnostics that cannot be assessed, a
+#' warning of class \code{BayesTools_autofit_not_assessable} (also
+#' \code{BayesTools_fit_diagnostic}) names them unless \code{silent = TRUE};
+#' it is not stored in the fit's \code{warnings} attribute. Check the returned
+#' fit with [JAGS_check_convergence()]. Defaults to \code{FALSE}.
 #' @param autofit_control a list of arguments controlling the autofit function.
 #' Convergence thresholds and \code{max_time$time} must be finite and non-missing.
 #' Set a convergence threshold or \code{max_time} to \code{NULL} to disable that check.
@@ -59,7 +72,30 @@
 #'   corresponds to the \code{units} argument of \link[base]{difftime}.}
 #'   \item{max_extend}{number of times after which the automatic fitting function is stopped.}
 #'   \item{sample_extend}{number of samples between each convergence check. Defaults to
-#'   \code{1000}.}
+#'   \code{1000}. With \code{"auto"}, each extension is sized from the
+#'   convergence check that failed, which then assesses every selected
+#'   parameter: with \code{n} retained draws per chain and \code{f} the largest
+#'   required growth over the parameters (\code{min_ESS / ESS},
+#'   \code{(error / max_error)^2}, and \code{(SD_error / max_SD_error)^2} for
+#'   the criteria that are set, and at least \code{2} for an R-hat above
+#'   \code{max_Rhat}; diagnostics that are not assessable add nothing), the
+#'   extension is \code{n * (f - 1) * 1.1} draws per chain rounded up to a
+#'   multiple of 100, then at most \code{2 * n} rounded down to a multiple of
+#'   100, then at least 1000 (the minimum wins when \code{2 * n} is smaller),
+#'   and at most the largest multiple of 100 whose sampling iterations
+#'   (draws times \code{thin}) stay within the backend's integer limit.
+#'   With \code{max_time}, it is then at most the draws per chain that the
+#'   time left allows at the rate observed so far (the time on the
+#'   \code{max_time} clock divided by the retained draws per chain run since
+#'   that clock started; in \code{JAGS_fit()} the clock starts before the
+#'   initial run, so the rate includes its adaptation and burn-in), rounded
+#'   down to a multiple of 100; when that is below 100, the fitting stops with
+#'   the \code{max_time} warning. In \code{JAGS_extend()}, the first extension
+#'   is sized from the check of the supplied fit and, with no rate observed
+#'   yet, is not shortened. Without \code{max_time}, each extension of a fit
+#'   that cannot converge multiplies the draws per chain by about 2.1 (a
+#'   failed R-hat) and up to 3 (large ESS or error deficits), up to
+#'   \code{max_extend}.}
 #'   \item{restarts}{maximum number of fitting attempts when the model fails
 #'   to initialize; every failed attempt but the last is retried with new
 #'   initial values (\code{restarts = 1} fits once, without a retry). A
@@ -86,8 +122,6 @@
 #'   Cholesky factors) are derived and not checked by default. The role of
 #'   every fitted coordinate is stored in the \code{convergence_role} column
 #'   of [parameter_coordinates()].}
-#'   \item{allow_not_assessable}{whether undefined diagnostics for requested
-#'   sampled parameters may be ignored. Defaults to \code{FALSE}.}
 #' }
 #' @param parallel whether to distribute chains over PSOCK worker processes.
 #' Defaults to \code{FALSE}, which runs all chains in the calling process.
@@ -227,7 +261,7 @@
 #' block convergence. A
 #' node that is stochastic (\code{~}) or depends on a stochastic node is
 #' checked, and its constant draws are not assessable (see
-#' \code{autofit_control$allow_not_assessable}). A name that repeats a parameter
+#' \code{allow_not_assessable} in [JAGS_check_convergence()]). A name that repeats a parameter
 #' of \code{prior_list} is refused. A parameter that a formula needs monitored,
 #' such as the scalar SD source of a random-effect block
 #' (\code{random_sd_source("tau")}), is added automatically and, when
@@ -359,7 +393,11 @@
 #' \code{JAGS_extend()} rebuilds the sampler from the stored states, adapts
 #' it for \code{adapt} iterations when needed, then appends draws without
 #' further burn-in. A saved and reloaded fit extends from the same state.
-#' Within one call, automatic extensions continue the serial sampler. JASP fits
+#' Its extensions continue, as automatic fitting in \code{JAGS_fit()}, until
+#' every diagnostic that can be assessed meets the criteria of
+#' \code{autofit_control} after an extension, or until \code{max_time} or
+#' \code{max_extend} stops them. Within one call, automatic extensions
+#' continue the serial sampler. JASP fits
 #' also keep parallel worker samplers through progress updates and automatic
 #' extensions. Other parallel fits rebuild at each extension. The returned fit stores
 #' ordinary R data and can be serialized with \code{saveRDS()}.
@@ -485,7 +523,7 @@ NULL
 #' @rdname JAGS_fit
 JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
-                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable = FALSE),
+                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
                      add_parameters = NULL, required_packages = NULL,
                      formula_random_prior_list = NULL, formula_random_effects_compile_list = NULL,
@@ -764,7 +802,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     set.seed(seed)
   }
 
-  start_time <- Sys.time()
+  start_time <- .bt_autofit_clock()
   restart_warnings <- character()
   # incomplete-adaptation warnings of the backend runs that the fit keeps
   adaptation_warnings <- character()
@@ -881,21 +919,14 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       }
       convergence_coordinates
     }
+    # Fitting stops once every diagnostic that can be assessed meets the
+    # criteria, also when others are not assessable, and then warns about
+    # those (.bt_autofit_check()). sample_extend = "auto" sizes each extension
+    # from the diagnostics of the failed check, which then assesses every
+    # selected quantity.
+    auto_extend <- identical(autofit_control[["sample_extend"]], "auto")
     autofit_converged <- function(fit){
-      convergence_fit <- fit
-      attr(convergence_fit, "prior_list") <- prior_list
-      .bt_check_convergence(
-        fit = convergence_fit,
-        coordinates = autofit_coordinates(fit),
-        max_Rhat = autofit_control[["max_Rhat"]],
-        min_ESS = autofit_control[["min_ESS"]],
-        max_error = autofit_control[["max_error"]],
-        max_SD_error = autofit_control[["max_SD_error"]],
-        fail_fast = TRUE,
-        check_indicators = autofit_control[["check_indicators"]],
-        monitor = autofit_control[["monitor"]],
-        allow_not_assessable = autofit_control[["allow_not_assessable"]]
-      )
+      .bt_autofit_check(fit, autofit_coordinates(fit), prior_list, autofit_control)
     }
     converged <- autofit_converged(fit)
     itteration <- 1
@@ -906,16 +937,24 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
     while(!converged){
 
-      if(!is.null(autofit_control[["max_time"]]) && difftime(Sys.time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
-        warning_message <- "The automatic model fitting was terminated due to the 'max_time' constraint."
-        fit <- .bt_append_fit_warnings(fit, warning_message)
-        if(!silent){
-          warning(warning_message, immediate. = TRUE)
-        }
-        break
+      elapsed <- .bt_autofit_elapsed(start_time, autofit_control[["max_time"]])
+      stop_constraint <- if(!is.null(elapsed) && elapsed[["time"]] > autofit_control[["max_time"]][["time"]]){
+        "max_time"
+      }else if(!is.null(autofit_control[["max_extend"]]) && itteration > autofit_control[["max_extend"]]){
+        "max_extend"
       }
-      if(!is.null(autofit_control[["max_extend"]]) && itteration > autofit_control[["max_extend"]]){
-        warning_message <- "The automatic model fitting was terminated due to the 'max_extend' constraint."
+      if(is.null(stop_constraint) && auto_extend){
+        # at most what the time left allows at the rate of the draws so far;
+        # the clock started before the initial run, so the rate includes its
+        # adaptation and burn-in
+        time_cap <- .bt_autofit_time_cap(autofit_control[["max_time"]], elapsed[["secs"]],
+          draws = NROW(fit[["mcmc"]][[1L]]))
+        if(time_cap < 100){
+          stop_constraint <- "max_time"
+        }
+      }
+      if(!is.null(stop_constraint)){
+        warning_message <- paste0("The automatic model fitting was terminated due to the '", stop_constraint, "' constraint.")
         fit <- .bt_append_fit_warnings(fit, warning_message)
         if(!silent){
           warning(warning_message, immediate. = TRUE)
@@ -923,7 +962,13 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         break
       }
 
-      run <- .bt_run_extension(fit, sample = autofit_control[["sample_extend"]],
+      sample_extend <- if(auto_extend){
+        min(.bt_autofit_extension_size_from(converged, fit, autofit_control), time_cap,
+          .bt_autofit_iteration_cap(thin))
+      }else{
+        autofit_control[["sample_extend"]]
+      }
+      run <- .bt_run_extension(fit, sample = sample_extend,
         adapt = adapt, cl = cl, silent = silent)
       extension <- run$extension
       report_run(extension)
@@ -960,6 +1005,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       if(isTRUE(dots[["is_JASP"]]))
         .JASP_progress_bar_tick()
     }
+    .bt_autofit_warn_not_assessable(converged, silent)
   }
 
   # add information to the fitted object
@@ -1186,7 +1232,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 }
 
 #' @rdname JAGS_fit
-JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable = FALSE),
+JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL),
                         parallel = FALSE, cores = NULL, silent = TRUE,
                         runtime_setup = attr(fit, "runtime_setup", exact = TRUE),
                         runtime_cache = attr(fit, "runtime_cache", exact = TRUE),
@@ -1338,7 +1384,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     runtime_state <- NULL
   }
 
-  start_time <- .bt_jags_extend_time()
+  start_time <- .bt_autofit_clock()
+  supplied_draws <- NROW(fit[["mcmc"]][[1L]])
   iteration  <- 0
   converged  <- FALSE
   last_valid_fit <- fit
@@ -1346,19 +1393,37 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   last_valid_capture_warnings <- character()
   captured_after_success <- FALSE
   reports <- .bt_runtime_reports_empty()
+  # After each extension, fitting stops once every diagnostic that can be
+  # assessed meets the criteria, also when others are not assessable, and then
+  # warns about those (.bt_autofit_check()).
+  # sample_extend = "auto" sizes each extension when the loop is about to run
+  # it, from the diagnostics of the last failed check (assessing every
+  # selected quantity); the first one from a check of the supplied fit
+  auto_extend <- identical(autofit_control[["sample_extend"]], "auto")
+  extend_converged <- function(fit, max_Rhat = autofit_control[["max_Rhat"]]){
+    .bt_autofit_check(fit, coordinates, prior_list, autofit_control, max_Rhat = max_Rhat)
+  }
+  failed_check <- NULL
 
   while(!converged){
 
-    if(!is.null(autofit_control[["max_time"]]) && difftime(.bt_jags_extend_time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
-      warning_message <- "The automatic model fitting was terminated due to the 'max_time' constraint."
-      fit <- .bt_append_fit_warnings(fit, warning_message)
-      if(!silent){
-        warning(warning_message, immediate. = TRUE)
-      }
-      break
+    elapsed <- .bt_autofit_elapsed(start_time, autofit_control[["max_time"]])
+    stop_constraint <- if(!is.null(elapsed) && elapsed[["time"]] > autofit_control[["max_time"]][["time"]]){
+      "max_time"
+    }else if(!is.null(autofit_control[["max_extend"]]) && iteration >= autofit_control[["max_extend"]]){
+      "max_extend"
     }
-    if(!is.null(autofit_control[["max_extend"]]) && iteration >= autofit_control[["max_extend"]]){
-      warning_message <- "The automatic model fitting was terminated due to the 'max_extend' constraint."
+    if(is.null(stop_constraint) && auto_extend){
+      # at most what the time left allows at the rate of the draws of this
+      # call; its first extension has no rate yet and is not capped
+      time_cap <- .bt_autofit_time_cap(autofit_control[["max_time"]], elapsed[["secs"]],
+        draws = NROW(fit[["mcmc"]][[1L]]) - supplied_draws)
+      if(time_cap < 100){
+        stop_constraint <- "max_time"
+      }
+    }
+    if(!is.null(stop_constraint)){
+      warning_message <- paste0("The automatic model fitting was terminated due to the '", stop_constraint, "' constraint.")
       fit <- .bt_append_fit_warnings(fit, warning_message)
       if(!silent){
         warning(warning_message, immediate. = TRUE)
@@ -1366,7 +1431,19 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       break
     }
 
-    run <- .bt_run_extension(fit, sample = autofit_control[["sample_extend"]],
+    sample_extend <- if(auto_extend){
+      if(is.null(failed_check)){
+        # With one chain, the check skips R-hat with a warning that the check
+        # after this extension gives; this one only sizes the extension.
+        failed_check <- extend_converged(fit,
+          max_Rhat = if(chains > 1L) autofit_control[["max_Rhat"]])
+      }
+      min(.bt_autofit_extension_size_from(failed_check, fit, autofit_control), time_cap,
+        .bt_autofit_iteration_cap(fit[["thin"]]))
+    }else{
+      autofit_control[["sample_extend"]]
+    }
+    run <- .bt_run_extension(fit, sample = sample_extend,
       adapt = adapt, cl = cl, silent = silent)
     extension <- run$extension
     reports <- .bt_runtime_report_after_run(reports, runtime_report, extension,
@@ -1401,25 +1478,14 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     last_valid_runtime_state <- captured$state
     last_valid_capture_warnings <- captured$warnings
     captured_after_success <- TRUE
-    convergence_fit <- fit
-    attr(convergence_fit, "prior_list") <- prior_list
-    converged <- .bt_check_convergence(
-      fit = convergence_fit,
-      coordinates = coordinates,
-      max_Rhat = autofit_control[["max_Rhat"]],
-      min_ESS = autofit_control[["min_ESS"]],
-      max_error = autofit_control[["max_error"]],
-      max_SD_error = autofit_control[["max_SD_error"]],
-      fail_fast = TRUE,
-      check_indicators = autofit_control[["check_indicators"]],
-      monitor = autofit_control[["monitor"]],
-      allow_not_assessable = autofit_control[["allow_not_assessable"]]
-    )
+    converged <- extend_converged(fit)
 
     if(!converged){
       iteration <- iteration + 1
+      failed_check <- converged
     }
   }
+  .bt_autofit_warn_not_assessable(converged, silent)
 
   # add information to the fitted object
   fit[["live_model"]] <- NULL
@@ -1462,6 +1528,23 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   return(fit)
 }
 
-.bt_jags_extend_time <- function(){
+# The clock of the 'max_time' limit of automatic fitting.
+.bt_autofit_clock <- function(){
   Sys.time()
+}
+
+# The time on that clock since 'start_time', from one reading: 'time' in the
+# unit of 'max_time', which its limit is compared with, and 'secs' in
+# seconds, which the time cap of automatic extensions uses; NULL without a
+# limit, and the clock is then not read.
+.bt_autofit_elapsed <- function(start_time, max_time){
+
+  if(is.null(max_time)){
+    return(NULL)
+  }
+  now <- .bt_autofit_clock()
+  c(
+    time = as.numeric(difftime(now, start_time, units = max_time[["unit"]])),
+    secs = as.numeric(difftime(now, start_time, units = "secs"))
+  )
 }

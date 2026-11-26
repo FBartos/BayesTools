@@ -77,15 +77,20 @@ parameters.}
 
 \item{allow_not_assessable}{whether requested sampled parameters with
 undefined diagnostics may be ignored. Defaults to \code{FALSE}. A sampled
-column that never changes when its chains are pooled, including a constant
-model indicator, is not evidence of convergence and remains not assessable,
-as does a diagnostic whose computation failed. A diagnostic computed on
+column that does not change in the pooled draws of its chains, including a
+constant model indicator, is not evidence of convergence and is not
+assessable, as is a diagnostic whose computation failed; draws that later
+visit another value make it assessable. A diagnostic computed on
 draws that vary is a value, not an undefined result, and is assessed even
 when it is infinite or zero: chains that are each constant but at different
 values give an R-hat of \code{Inf} and an ESS of 0, which fail
 \code{max_Rhat} and \code{min_ESS} whatever this argument is. Their MCMC
 error (the standard error SD / sqrt(ESS) of an ESS of 0) is \code{Inf}, so
-\code{max_error} and \code{max_SD_error} fail as well.}
+\code{max_error} and \code{max_SD_error} fail as well. Automatic fitting in
+\code{\link[=JAGS_fit]{JAGS_fit()}} and \code{\link[=JAGS_extend]{JAGS_extend()}} judges assessability from the draws at
+each check and does not extend a fit for diagnostics that are not
+assessable then: it stops once every diagnostic that can be assessed
+satisfies the criteria.}
 }
 \value{
 \code{JAGS_check_convergence} returns a boolean indicating whether
