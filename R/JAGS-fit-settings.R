@@ -144,12 +144,18 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
   # 'burnin_max_Rhat = NULL' turns the check off, so these elements are
   # validated where present and never filled in.
   supplied <- function(name) name %in% names(autofit_control)
-  check_real(autofit_control[["burnin_max_Rhat"]], "burnin_max_Rhat", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
-  if(!is.null(autofit_control[["burnin_max_Rhat"]]) && !is.finite(autofit_control[["burnin_max_Rhat"]])){
-    stop(
-      paste0(call, "The 'burnin_max_Rhat' argument must contain only finite values."),
-      call. = FALSE
-    )
+  # a finite number of at least 1, or "auto" (.bt_burnin_threshold())
+  if(is.character(autofit_control[["burnin_max_Rhat"]])){
+    check_char(autofit_control[["burnin_max_Rhat"]], "burnin_max_Rhat", allow_values = "auto", allow_NA = FALSE, call = call)
+    autofit_control[["burnin_max_Rhat"]] <- "auto"
+  }else{
+    check_real(autofit_control[["burnin_max_Rhat"]], "burnin_max_Rhat", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
+    if(!is.null(autofit_control[["burnin_max_Rhat"]]) && !is.finite(autofit_control[["burnin_max_Rhat"]])){
+      stop(
+        paste0(call, "The 'burnin_max_Rhat' argument must contain only finite values."),
+        call. = FALSE
+      )
+    }
   }
   check_int(autofit_control[["burnin_extend"]], "burnin_extend", lower = 100, upper = .Machine$integer.max,
     allow_NULL = !supplied("burnin_extend"), allow_NA = FALSE, call = call)
@@ -164,11 +170,18 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
 # 'burnin_max_Rhat = NULL' turns the check off.
 .bt_burnin_check_settings <- function(autofit_control){
 
-  settings <- list(burnin_max_Rhat = 2, burnin_extend = 500, burnin_max_extend = 10)
+  settings <- list(burnin_max_Rhat = "auto", burnin_extend = 500, burnin_max_extend = 10)
   for(name in names(settings)){
     if(name %in% names(autofit_control)){
       settings[name] <- list(autofit_control[[name]])
     }
   }
   settings
+}
+
+# The threshold of the readiness check for a fit with 'chains' chains: "auto"
+# falls with the number of chains; a number, or NULL (check off), stays.
+.bt_burnin_threshold <- function(burnin_max_Rhat, chains){
+
+  if(identical(burnin_max_Rhat, "auto")) 1.7 + 0.9 / chains else burnin_max_Rhat
 }

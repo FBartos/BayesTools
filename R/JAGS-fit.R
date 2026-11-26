@@ -130,15 +130,19 @@
 #'   every fitted coordinate is stored in the \code{convergence_role} column
 #'   of [parameter_coordinates()].}
 #'   \item{burnin_max_Rhat}{the threshold of the readiness check between
-#'   burn-in and sampling. Defaults to \code{2}; an omitted element takes
-#'   its default and \code{NULL} turns the check off. The check runs, also
-#'   without \code{autofit}, in the initial fit of \code{JAGS_fit()} (afresh
-#'   in each restart attempt; not in \code{JAGS_extend()} or the automatic
-#'   extensions after sampling) when there are at least two chains, the block
-#'   of the last \code{min(burnin_extend, burnin)} iterations of burn-in has
-#'   at least 100 iterations, and JAGS assigns the model a sampler. The
-#'   iterations of the block run with the monitors on; their draws are
-#'   checked and then dropped. Each
+#'   burn-in and sampling. Defaults to \code{"auto"}, which is
+#'   \code{1.7 + 0.9 / chains} (\code{2.15} for two chains, \code{2} for
+#'   three, \code{1.925} for four); a number fixes the threshold, an omitted
+#'   element takes its default, and \code{NULL} turns the check off. The
+#'   check runs, also without \code{autofit}, in the initial fit of
+#'   \code{JAGS_fit()} (afresh in each restart attempt; not in
+#'   \code{JAGS_extend()} or the automatic extensions after sampling) when
+#'   there are at least two chains, the block of the last
+#'   \code{min(burnin_extend, floor(burnin / thin))} draws of burn-in, taken
+#'   every \code{thin} iterations as in sampling, has at least 100 draws, and
+#'   JAGS assigns the model a sampler. The iterations of the block (its draws
+#'   times \code{thin}) run with the monitors on; their draws are checked and
+#'   then dropped. Each
 #'   chain's block is split into halves, and the chains are ready when the
 #'   point estimate of the potential scale reduction factor over the
 #'   half-chains (\code{coda::gelman.diag()}) is at most \code{burnin_max_Rhat}
@@ -152,7 +156,8 @@
 #'   parents, as in a model without data) the chains cannot disagree, and the
 #'   whole burn-in runs unmonitored, as with the check off. When the chains are not
 #'   ready, a fit with \code{autofit} extends burn-in by blocks of
-#'   \code{burnin_extend} iterations, each checked alone, until they are
+#'   \code{burnin_extend} draws (\code{burnin_extend * thin} iterations),
+#'   each checked alone, until they are
 #'   ready, \code{burnin_max_extend} blocks were added, or \code{max_time} is
 #'   exceeded (checked before each block); a fit without \code{autofit} keeps
 #'   its burn-in. Chains that are still not ready start sampling; a warning
@@ -166,14 +171,19 @@
 #'   no sampler, but JAGS samples a monitored node without observed
 #'   descendants (such as a predictive quantity) from the chain's random-number
 #'   stream. The check cannot detect chains that are all in the same wrong
-#'   state. The default is chosen for three or four chains: one deviating
-#'   chain raises the statistic of a continuous quantity less the more chains
-#'   are run, so a fit with many chains (eight or more) may set a lower value.
-#'   A slowly mixing fit can exceed the threshold although its chains agree;
-#'   more burn-in then does not help, and the convergence check of the
-#'   retained draws reports the slow mixing.}
-#'   \item{burnin_extend}{the number of final burn-in iterations that the
-#'   readiness check assesses and of each extension of burn-in; at least
+#'   state. The automatic value falls with the number of chains: for chains
+#'   that agree but are autocorrelated, the statistic has the same typical
+#'   value for any number of chains but varies less the more chains are run,
+#'   so a threshold that falls with the number of chains keeps false alarms
+#'   from becoming more frequent with them and keeps part of the sensitivity
+#'   to one deviating chain that a fixed value loses. A slowly mixing fit can
+#'   exceed the threshold although its chains agree, because the statistic
+#'   grows with the autocorrelation of the block's draws; a larger
+#'   \code{thin} is then the remedy, while more burn-in is the remedy for
+#'   chains that have not yet reached the same region.}
+#'   \item{burnin_extend}{the number of final burn-in draws, taken every
+#'   \code{thin} iterations, that the readiness check assesses, and of each
+#'   extension of burn-in (\code{burnin_extend * thin} iterations); at least
 #'   \code{100}. Defaults to \code{500}.}
 #'   \item{burnin_max_extend}{the largest number of extensions of burn-in, with
 #'   \code{autofit} only. Defaults to \code{10}. An extension after which the
@@ -476,11 +486,13 @@
 #' \code{autofit_control}); it is \code{NULL} when the check did not run. It
 #' runs in the initial fit of \code{JAGS_fit()} only, afresh in each restart
 #' attempt, and not in \code{JAGS_extend()}, the automatic extensions after
-#' sampling, or a model without samplers. The record holds \code{burnin_max_Rhat}, \code{block} (the
-#' iterations of the checked end of the requested burn-in),
-#' \code{burnin_extend}, \code{blocks} (one row per checked block, with the
-#' iterations \code{sweeps} it ran and its largest value \code{Rhat} and
-#' \code{parameter}), \code{extension} (the iterations added to burn-in),
+#' sampling, or a model without samplers. The record holds
+#' \code{burnin_max_Rhat} (the threshold used, a number also when it was
+#' \code{"auto"}), \code{block} (the iterations of the checked end of the
+#' requested burn-in), \code{burnin_extend} (in draws), \code{thin} (the
+#' thinning of the checked draws), \code{blocks} (one row per checked block,
+#' with the iterations \code{sweeps} it ran and its largest value \code{Rhat}
+#' and \code{parameter}), \code{extension} (the iterations added to burn-in),
 #' \code{status} (\code{"ready"}, \code{"not_ready"}, or
 #' \code{"not_assessable"} when no quantity could be assessed, which makes no
 #' claim of readiness and extends nothing), \code{stop_reason}
@@ -626,7 +638,7 @@ NULL
 #' @rdname JAGS_fit
 JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
-                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, burnin_max_Rhat = 2, burnin_extend = 500, burnin_max_extend = 10),
+                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, burnin_max_Rhat = "auto", burnin_extend = 500, burnin_max_extend = 10),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
                      add_parameters = NULL, required_packages = NULL,
                      formula_random_prior_list = NULL, formula_random_effects_compile_list = NULL,
@@ -646,12 +658,14 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   model_syntax <- .check_JAGS_syntax(model_syntax)
   JAGS_check_and_list_fit_settings(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed)
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
-  # The readiness check between burn-in and sampling looks at the last
-  # 'burnin_extend' sweeps of burn-in (all of it when shorter), if they are at
-  # least 100 and there are at least two chains.
+  # The readiness check between burn-in and sampling looks at a block of the
+  # last 'burnin_extend' draws of burn-in at the fit's thinning (as many as
+  # burn-in holds when shorter), if they are at least 100 and there are at
+  # least two chains.
   burnin_settings <- .bt_burnin_check_settings(autofit_control)
-  readiness_block <- min(burnin_settings[["burnin_extend"]], burnin)
-  check_readiness <- !is.null(burnin_settings[["burnin_max_Rhat"]]) && chains >= 2 && readiness_block >= 100
+  burnin_max_Rhat <- .bt_burnin_threshold(burnin_settings[["burnin_max_Rhat"]], chains)
+  readiness_block <- min(burnin_settings[["burnin_extend"]], burnin %/% thin)
+  check_readiness <- !is.null(burnin_max_Rhat) && chains >= 2 && readiness_block >= 100
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(jags_modules, "jags_modules", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
@@ -988,12 +1002,13 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   }
   if(check_readiness){
     model_call$readiness <- list(
+      # in draws, taken every 'thin' iterations
       block           = as.integer(readiness_block),
-      burnin_max_Rhat = burnin_settings[["burnin_max_Rhat"]],
+      burnin_max_Rhat = burnin_max_Rhat,
       burnin_extend   = burnin_settings[["burnin_extend"]],
       max_extensions  = if(autofit) burnin_settings[["burnin_max_extend"]] else 0,
-      # the burn-in sweeps that keep the public iteration number of the last
-      # retained draw within the integer range of the draw geometry
+      # the burn-in iterations that keep the public iteration number of the
+      # last retained draw within the integer range of the draw geometry
       extension_room  = .Machine$integer.max -
         (as.double(adapt) + burnin + 1 + (as.double(sample) - 1) * thin),
       autofit         = autofit,

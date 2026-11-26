@@ -2453,7 +2453,7 @@ test_that("an automatic fit of a slowly mixing model reaches its ESS target in f
   # max_time stops "auto" as it stops the fixed step: here before any extension
   expect_warning(
     stopped <- fit_with("auto", max_time = list(time = 0, unit = "secs")),
-    "Increase 'adapt', 'burnin' or 'max_time'.", fixed = TRUE, class = "BayesTools_burnin_not_converged"
+    "Increase 'adapt', 'burnin' or 'thin'.", fixed = TRUE, class = "BayesTools_burnin_not_converged"
   )
   expect_identical(extensions(stopped), 0L)
   expect_identical(nrow(stopped$mcmc[[1L]]), 1000L)

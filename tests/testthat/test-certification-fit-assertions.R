@@ -6719,27 +6719,31 @@ test_that("a passing readiness check leaves the draws as they are with the check
   # every monitored node has an observed descendant, so monitoring the last
   # block of burn-in changes no sampler and no random number; the burn-in is
   # either the block itself or longer than it, so that its first part runs
-  # unmonitored (the default path)
-  fit_with <- function(check, burnin, burnin_extend, ...){
+  # unmonitored (the default path); the block holds draws at the fit's 'thin'
+  # (with thin = 3, 700 %/% 3 = 233 draws over 699 iterations, after one
+  # unmonitored iteration)
+  fit_with <- function(check, burnin, burnin_extend, thin, ...){
     JAGS_fit("model{ gate ~ dbern(0.4); y ~ dnorm(mu + gate, pow(sigma, -2)) }",
       data = list(y = 1.3), prior_list = list(mu = prior("normal", list(0, 1)),
         sigma = prior("normal", list(0, 1), list(0, Inf))),
       add_parameters = "gate", chains = 3L, cores = 2L, adapt = 200L, burnin = burnin, sample = 150L,
-      thin = 2L, seed = 2024L,
+      thin = thin, seed = 2024L,
       autofit_control = if(check) .readiness_control(burnin_extend = burnin_extend) else
         .readiness_control(burnin_max_Rhat = NULL), ...)
   }
-  for(setting in list(list(burnin = 400L, burnin_extend = 500, block = 400L),
-                     list(burnin = 700L, burnin_extend = 200, block = 200L)))
+  for(setting in list(list(burnin = 400L, burnin_extend = 500, thin = 2L, block = 400L),
+                     list(burnin = 700L, burnin_extend = 200, thin = 2L, block = 400L),
+                     list(burnin = 700L, burnin_extend = 500, thin = 3L, block = 699L)))
   for(parallel in c(FALSE, TRUE)) for(probabilities in list(NULL, c("gate", "mu"))) for(jasp in c(FALSE, TRUE)){
-    info <- paste("burnin", setting$burnin, "parallel", parallel, "probabilities", !is.null(probabilities),
-      "JASP", jasp)
-    on  <- fit_with(TRUE, setting$burnin, setting$burnin_extend, parallel = parallel,
+    info <- paste("burnin", setting$burnin, "thin", setting$thin, "parallel", parallel, "probabilities",
+      !is.null(probabilities), "JASP", jasp)
+    on  <- fit_with(TRUE, setting$burnin, setting$burnin_extend, setting$thin, parallel = parallel,
       sampler_probabilities = probabilities, is_JASP = jasp)
-    off <- fit_with(FALSE, setting$burnin, setting$burnin_extend, parallel = parallel,
+    off <- fit_with(FALSE, setting$burnin, setting$burnin_extend, setting$thin, parallel = parallel,
       sampler_probabilities = probabilities, is_JASP = jasp)
     expect_identical(attr(on, "burnin_check")$status, "ready", info = info)
     expect_identical(attr(on, "burnin_check")$block, setting$block, info = info)
+    expect_identical(attr(on, "burnin_check")$thin, setting$thin, info = info)
     expect_identical(attr(on, "burnin_check")$extension, 0, info = info)
     expect_null(attr(off, "burnin_check"), info = info)
     expect_identical(on$mcmc, off$mcmc, info = info)
@@ -6825,7 +6829,7 @@ test_that("a requested indicator state that first appears after burn-in does not
       ))), chains = 2L, adapt = 100L, burnin = 100L, sample = 2000L, seed = 11L, autofit = TRUE,
       autofit_control = .readiness_control(max_Rhat = NULL, min_ESS = NULL, max_error = NULL,
         max_SD_error = NULL, sample_extend = 100, max_extend = 1, monitor = "mu_indicator (state 3)",
-        burnin_max_Rhat = if(check) 2))
+        burnin_max_Rhat = if(check) "auto"))
   }
   on  <- fit_with(TRUE)
   off <- fit_with(FALSE)
@@ -6854,11 +6858,13 @@ test_that("chains in separated modes warn without autofit and extend burn-in up 
       autofit_control = .readiness_control(max_Rhat = NULL, min_ESS = NULL, max_error = NULL,
         max_SD_error = NULL, ...))
   }
+  # thin = 2: the check reads 150 draws over the last 300 iterations of
+  # burn-in, and an extension of 200 draws runs 400 iterations
   expect_warning(
     fit <- fit_with(FALSE),
-    paste0("The chains had not reached agreement at the end of burn-in: the split-chain R-hat of the ",
-      "last 300 burn-in iterations was [0-9.]+ for 'm' [(]above 'burnin_max_Rhat' of 2[)]. ",
-      "Increase 'adapt' and 'burnin', or fit with 'autofit = TRUE'."),
+    paste0("^Chains did not agree at the end of burn-in: R-hat [0-9.]+ for 'm' [(]limit 2[.]00[)][.] ",
+      "Increase 'adapt' and 'burnin'; if the chains mix slowly, increase 'thin'[.] Or fit with ",
+      "'autofit = TRUE'[.]$"),
     class = "BayesTools_burnin_not_converged"
   )
   signs <- vapply(fit$mcmc, function(chain) unique(sign(chain[, "m"])), numeric(1))
@@ -6866,24 +6872,25 @@ test_that("chains in separated modes warn without autofit and extend burn-in up 
   record <- attr(fit, "burnin_check")
   expect_identical(record[c("status", "stop_reason", "extension")],
     list(status = "not_ready", stop_reason = "no_autofit", extension = 0))
+  expect_identical(record[c("burnin_max_Rhat", "block", "thin")], list(burnin_max_Rhat = 2, block = 300L, thin = 2L))
   expect_gt(record$blocks$Rhat, 100)
   expect_identical(fit$burnin, 300L)
   expect_identical(attr(fit, "warnings"), BayesTools:::.bt_burnin_warning(record))
 
   expect_warning(
     fit <- fit_with(TRUE, burnin_extend = 200, burnin_max_extend = 2),
-    "after 2 extensions of 200 iterations",
+    "^Chains did not agree at the end of burn-in after 2 extensions: R-hat [0-9.]+ for 'm' [(]limit 2[.]00[)][.] Increase 'adapt', 'burnin' or 'thin'[.]$",
     class = "BayesTools_burnin_not_converged"
   )
   record <- attr(fit, "burnin_check")
   expect_identical(record$stop_reason, "max_extend")
-  expect_identical(record$blocks$sweeps, c(200L, 200L, 200L))
-  expect_identical(record$extension, 400)
-  expect_identical(fit$burnin, 700L)
-  expect_identical(JAGS_draw_geometry(fit)$chains$start, rep(801L, 3L))
-  expect_identical(JAGS_draw_geometry(fit)$chains$end, rep(801L + 99L * 2L, 3L))
+  expect_identical(record$blocks$sweeps, c(300L, 400L, 400L))
+  expect_identical(record$extension, 800)
+  expect_identical(fit$burnin, 1100L)
+  expect_identical(JAGS_draw_geometry(fit)$chains$start, rep(1201L, 3L))
+  expect_identical(JAGS_draw_geometry(fit)$chains$end, rep(1201L + 99L * 2L, 3L))
   for(chain in seq_len(3L)){
-    expect_identical(attr(fit$sampler_probabilities$gate[[chain]], "mcpar"), c(801, 999, 2))
+    expect_identical(attr(fit$sampler_probabilities$gate[[chain]], "mcpar"), c(1201, 1399, 2))
     expect_identical(as.numeric(fit$sampler_probabilities$gate[[chain]][, "selected"]),
       as.numeric(fit$mcmc[[chain]][, "gate"]))
   }

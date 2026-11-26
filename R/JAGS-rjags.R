@@ -2,9 +2,9 @@
 # setup and reporting. Keep JAGS to one thread per process for both serial
 # fits and PSOCK workers, including workers that own multiple chains.
 # With 'prepare', the compiled model stays in 'session' for later calls;
-# a positive 'block' then runs the last 'block' sweeps of burn-in with the
-# monitors on and returns their draws for the readiness check, or NULL for a
-# model without samplers.
+# a positive 'block' then runs the last 'block * thin' iterations of burn-in
+# with the monitors on and returns their 'block' draws (every 'thin'-th
+# iteration) for the readiness check, or NULL for a model without samplers.
 .bt_rjags_group <- function(inits, model, data, monitor, adapt, burnin, sample,
                             thin, silent, keep_live, live_model = NULL, probability_plan = NULL,
                             prepare = FALSE, block = 0L, session = .bt_rjags_worker_session){
@@ -44,14 +44,14 @@
     block <- 0L
   }
   # rjags refuses an update of zero iterations
-  if(burnin - block > 0){
-    stats::update(live_model, n.iter = burnin - block, progress.bar = progress)
+  if(burnin - block * thin > 0){
+    stats::update(live_model, n.iter = burnin - block * thin, progress.bar = progress)
   }
   if(prepare){
     session$model <- live_model
     session$chunks <- list()
     if(block > 0L){
-      return(.bt_rjags_burnin_block(block, monitor, progress, session))
+      return(.bt_rjags_burnin_block(block, thin, monitor, progress, session))
     }
     return(NULL)
   }
@@ -59,14 +59,15 @@
     live_model = live_model, session = NULL)
 }
 
-# A block of burn-in sweeps with the fit's monitors on, unthinned and without
-# probability read-outs, for the readiness check. Its draws never enter the
-# retained chunks. Monitoring does not change a sampler; JAGS forward-samples
-# a monitored node that is otherwise not sampled (one without observed
+# A block of 'draws' burn-in draws taken every 'thin' iterations ('draws *
+# thin' iterations) with the fit's monitors on and without probability
+# read-outs, for the readiness check. Its draws never enter the retained
+# chunks. Monitoring does not change a sampler; JAGS forward-samples a
+# monitored node that is otherwise not sampled (one without observed
 # descendants) from the chain's own generator.
-.bt_rjags_burnin_block <- function(sweeps, monitor, progress, session = .bt_rjags_worker_session){
+.bt_rjags_burnin_block <- function(draws, thin, monitor, progress, session = .bt_rjags_worker_session){
 
-  .bt_rjags_samples(session$model, monitor, sweeps, 1L, progress)
+  .bt_rjags_samples(session$model, monitor, draws, thin, progress)
 }
 
 # The burn-in blocks of the chain groups, as one mcmc.list in the original
@@ -265,9 +266,10 @@
 }
 
 # 'readiness' (initial fits only; NULL otherwise) asks for the readiness check
-# between burn-in and sampling: the length 'block' of the checked block of
-# burn-in, and the settings and coordinator callbacks of
-# .bt_burnin_readiness(). Its record is returned as the 'burnin_check' element.
+# between burn-in and sampling: the draws 'block' of the checked block of
+# burn-in (taken every 'thin' iterations), and the settings and coordinator
+# callbacks of .bt_burnin_readiness(). Its record is returned as the
+# 'burnin_check' element.
 .bt_rjags_run <- function(model, data, inits, monitor, adapt, burnin, sample,
                           thin, cl, silent, live_model = NULL, probability_plan = NULL,
                           jasp_prefix = NULL, retain_workers = FALSE, readiness = NULL){
@@ -325,14 +327,15 @@
     if(block > 0L && all(checked)){
       record <- .bt_burnin_readiness(
         first = .bt_rjags_merge_blocks(out, groups),
-        run_block = function(sweeps){
-          .bt_rjags_merge_blocks(run_groups(.bt_rjags_burnin_block, rep(list(sweeps), length(groups)),
-            monitor = monitor, progress = progress), groups)
+        run_block = function(draws){
+          .bt_rjags_merge_blocks(run_groups(.bt_rjags_burnin_block, rep(list(draws), length(groups)),
+            thin = thin, monitor = monitor, progress = progress), groups)
         },
         assess          = readiness$assess,
         burnin_max_Rhat = readiness$burnin_max_Rhat,
         block           = block,
         burnin_extend   = readiness$burnin_extend,
+        thin            = thin,
         max_extensions  = readiness$max_extensions,
         autofit         = readiness$autofit,
         time_exceeded   = readiness$time_exceeded,

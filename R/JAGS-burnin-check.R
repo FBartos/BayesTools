@@ -134,22 +134,24 @@
   states
 }
 
-# The check and its extensions. 'first' holds the draws of the last 'block'
-# sweeps of the requested burn-in; 'run_block(sweeps)' runs a further block
-# with the monitors on and returns its draws; 'assess(draws)' returns the
-# split-chain R-hat per assessable quantity. Without 'autofit' the chains are
-# not extended. With it, blocks of 'burnin_extend' sweeps are added (each
+# The check and its extensions. 'first' holds the last 'block' draws of the
+# requested burn-in, taken every 'thin' iterations; 'run_block(draws)' runs a
+# further block of 'draws * thin' iterations with the monitors on and returns
+# its draws; 'assess(draws)' returns the split-chain R-hat per assessable
+# quantity. Without 'autofit' the chains are not extended. With it, blocks of
+# 'burnin_extend' draws ('burnin_extend * thin' iterations) are added (each
 # checked alone) until the chains are ready, 'max_extensions' blocks were
-# added, a further block would exceed 'extension_room' (the burn-in sweeps
-# that keep the iteration number of the last retained draw within the integer
-# range), or 'time_exceeded()' (read before a block is started). Returns the
-# record stored in attr(fit, "burnin_check").
-.bt_burnin_readiness <- function(first, run_block, assess, burnin_max_Rhat, block, burnin_extend,
+# added, a further block would exceed 'extension_room' (the burn-in
+# iterations that keep the iteration number of the last retained draw within
+# the integer range), or 'time_exceeded()' (read before a block is started).
+# Returns the record stored in attr(fit, "burnin_check"), which counts its
+# 'block', the 'sweeps' of its blocks and the 'extension' in iterations.
+.bt_burnin_readiness <- function(first, run_block, assess, burnin_max_Rhat, block, burnin_extend, thin,
                                  max_extensions, autofit, time_exceeded, extension_room = Inf){
 
   blocks     <- list()
   draws      <- first
-  sweeps     <- block
+  sweeps     <- as.integer(block * thin)
   extensions <- 0L
   repeat{
     values <- sort(assess(draws), decreasing = TRUE)
@@ -168,7 +170,7 @@
       "no_autofit"
     }else if(extensions >= max_extensions){
       "max_extend"
-    }else if((extensions + 1) * burnin_extend > extension_room){
+    }else if((extensions + 1) * burnin_extend * thin > extension_room){
       "iteration_limit"
     }else if(time_exceeded()){
       "max_time"
@@ -177,17 +179,18 @@
       break
     }
     draws      <- run_block(burnin_extend)
-    sweeps     <- as.integer(burnin_extend)
+    sweeps     <- as.integer(burnin_extend * thin)
     extensions <- extensions + 1L
   }
 
   failing <- values[values > burnin_max_Rhat]
   list(
     burnin_max_Rhat = burnin_max_Rhat,
-    block           = block,
+    block           = as.integer(block * thin),
     burnin_extend   = burnin_extend,
+    thin            = thin,
     blocks          = do.call(rbind, blocks),
-    extension       = extensions * burnin_extend,
+    extension       = extensions * burnin_extend * thin,
     status          = switch(stop_reason, ready = "ready", not_assessable = "not_assessable", "not_ready"),
     stop_reason     = stop_reason,
     failing         = data.frame(parameter = names(failing), Rhat = unname(failing), stringsAsFactors = FALSE)
@@ -207,23 +210,32 @@
   if(nrow(failing) > 5L){
     values <- paste0(values, " and ", nrow(failing) - 5L, " more")
   }
-  extensions <- record$extension / record$burnin_extend
-  last_block <- utils::tail(record$blocks$sweeps, 1L)
+  extensions <- nrow(record$blocks) - 1L
   paste0(
-    "The chains had not reached agreement at the end of burn-in",
-    if(extensions > 0) paste0(" after ", extensions, ngettext(extensions, " extension", " extensions"),
-                              " of ", record$burnin_extend, " iterations"),
-    ": the split-chain R-hat of the last ", last_block, " burn-in iterations was ", values,
-    " (above 'burnin_max_Rhat' of ", record$burnin_max_Rhat, "). ",
+    "Chains did not agree at the end of burn-in",
+    if(extensions > 0) paste0(" after ", extensions, ngettext(extensions, " extension", " extensions")),
+    ": R-hat ", values, " (limit ", .bt_burnin_format_limit(record$burnin_max_Rhat), "). ",
     switch(record$stop_reason,
-      no_autofit = "Increase 'adapt' and 'burnin', or fit with 'autofit = TRUE'.",
-      max_extend = "Increase 'adapt', 'burnin' or 'burnin_max_extend'.",
-      max_time   = "Increase 'adapt', 'burnin' or 'max_time'.",
+      no_autofit = "Increase 'adapt' and 'burnin'; if the chains mix slowly, increase 'thin'. Or fit with 'autofit = TRUE'.",
+      max_extend = ,
+      max_time   = "Increase 'adapt', 'burnin' or 'thin'.",
       iteration_limit = paste0("A further extension would number the draws beyond the largest ",
         "iteration number (", .Machine$integer.max, "); reduce 'adapt' or the sampling iterations ",
         "('sample' times 'thin') to leave room for it.")
     )
   )
+}
+
+# The threshold with two decimals when that is exact (2.00, 2.15), otherwise
+# rounded down to three (1.925, 1.828 for 1.8286), so that a listed value,
+# which prints above the threshold, never reads as not above the limit. The
+# tolerance absorbs the rounding error of 1.7 + 0.9 / chains.
+.bt_burnin_format_limit <- function(threshold){
+
+  if(abs(threshold - round(threshold, 2)) <= 1e-12 * threshold){
+    return(formatC(threshold, format = "f", digits = 2))
+  }
+  formatC(floor(threshold * 1000 * (1 + 1e-12)) / 1000, format = "f", digits = 3)
 }
 
 # Values above the threshold with two decimals, or as many more as it takes

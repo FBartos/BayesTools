@@ -193,15 +193,15 @@ test_that("a requested indicator state is resolved whatever states the block vis
 
 # The extension loop with scripted assessments.
 .burnin_loop <- function(values, autofit = TRUE, max_extensions = 10, time_exceeded = function() FALSE,
-                         extension_room = Inf){
+                         extension_room = Inf, thin = 1L, burnin_max_Rhat = 1.5){
 
   calls <- new.env()
   calls$assess <- 0L
   calls$blocks <- integer()
   record <- BayesTools:::.bt_burnin_readiness(
     first = "first block",
-    run_block = function(sweeps){
-      calls$blocks <- c(calls$blocks, sweeps)
+    run_block = function(draws){
+      calls$blocks <- c(calls$blocks, draws)
       paste("block", length(calls$blocks))
     },
     assess = function(draws){
@@ -209,9 +209,10 @@ test_that("a requested indicator state is resolved whatever states the block vis
       calls$draws <- c(calls$draws, draws)
       values[[min(calls$assess, length(values))]]
     },
-    burnin_max_Rhat = 1.5,
+    burnin_max_Rhat = burnin_max_Rhat,
     block = 400L,
     burnin_extend = 500,
+    thin = thin,
     max_extensions = max_extensions,
     autofit = autofit,
     time_exceeded = time_exceeded,
@@ -289,45 +290,114 @@ test_that("the extension loop stops when ready, at the cap, at max_time and with
   expect_null(BayesTools:::.bt_burnin_warning(run$record))
 })
 
+test_that("with thinning the loop runs blocks of draws and records iterations", {
+
+  # the first block holds 400 draws, every third iteration, and each
+  # extension 500 draws: 1500 iterations
+  run <- .burnin_loop(list(c(a = 3), c(a = 3), c(a = 1.2)), thin = 3L)
+  expect_identical(run$calls$blocks, c(500, 500))
+  expect_identical(run$record[c("block", "burnin_extend", "thin", "extension", "status")],
+    list(block = 1200L, burnin_extend = 500, thin = 3L, extension = 3000, status = "ready"))
+  expect_identical(run$record$blocks$sweeps, c(1200L, 1500L, 1500L))
+
+  # the room for iteration numbers counts iterations: two blocks of 1500 fit
+  # in 3000, a third does not; none fits in 1499
+  run <- .burnin_loop(list(c(a = 3)), thin = 3L, extension_room = 3000)
+  expect_identical(run$record[c("stop_reason", "extension")], list(stop_reason = "iteration_limit", extension = 3000))
+  expect_identical(run$calls$blocks, c(500, 500))
+  run <- .burnin_loop(list(c(a = 3)), thin = 3L, extension_room = 1499)
+  expect_identical(run$record[c("stop_reason", "extension")], list(stop_reason = "iteration_limit", extension = 0))
+  expect_length(run$calls$blocks, 0L)
+})
+
 test_that("the warning names the quantities with the largest values and the remedy", {
 
   values <- c(p1 = Inf, p2 = 3.14159, p3 = 2.5, p4 = 2, p5 = 1.8, p6 = 1.6, p7 = 1.2)
   record <- .burnin_loop(list(values), autofit = FALSE)$record
   expect_identical(
     BayesTools:::.bt_burnin_warning(record),
-    paste0("The chains had not reached agreement at the end of burn-in: the split-chain R-hat of the ",
-      "last 400 burn-in iterations was Inf for 'p1', 3.14 for 'p2', 2.50 for 'p3', 2.00 for 'p4', ",
-      "1.80 for 'p5' and 1 more (above 'burnin_max_Rhat' of 1.5). Increase 'adapt' and 'burnin', or fit with ",
-      "'autofit = TRUE'.")
+    paste0("Chains did not agree at the end of burn-in: R-hat Inf for 'p1', 3.14 for 'p2', 2.50 for 'p3', ",
+      "2.00 for 'p4', 1.80 for 'p5' and 1 more (limit 1.50). Increase 'adapt' and 'burnin'; if the chains ",
+      "mix slowly, increase 'thin'. Or fit with 'autofit = TRUE'.")
   )
   # a value just above the threshold does not print as the threshold
   record <- .burnin_loop(list(c(mu = 1.50001, tau = 1.5049, nu = 1.5051)), autofit = FALSE)$record
   expect_identical(
     BayesTools:::.bt_burnin_warning(record),
-    paste0("The chains had not reached agreement at the end of burn-in: the split-chain R-hat of the ",
-      "last 400 burn-in iterations was 1.51 for 'nu', 1.505 for 'tau', 1.50001 for 'mu' (above ",
-      "'burnin_max_Rhat' of 1.5). Increase 'adapt' and 'burnin', or fit with 'autofit = TRUE'.")
+    paste0("Chains did not agree at the end of burn-in: R-hat 1.51 for 'nu', 1.505 for 'tau', 1.50001 for ",
+      "'mu' (limit 1.50). Increase 'adapt' and 'burnin'; if the chains mix slowly, increase 'thin'. Or fit ",
+      "with 'autofit = TRUE'.")
   )
+  # stopped by 'burnin_max_extend' or by 'max_time'
   record <- .burnin_loop(list(c(mu = 2)), max_extensions = 1)$record
   expect_identical(
     BayesTools:::.bt_burnin_warning(record),
-    paste0("The chains had not reached agreement at the end of burn-in after 1 extension of 500 ",
-      "iterations: the split-chain R-hat of the last 500 burn-in iterations was 2.00 for 'mu' (above ",
-      "'burnin_max_Rhat' of 1.5). Increase 'adapt', 'burnin' or 'burnin_max_extend'.")
+    paste0("Chains did not agree at the end of burn-in after 1 extension: R-hat 2.00 for 'mu' (limit 1.50). ",
+      "Increase 'adapt', 'burnin' or 'thin'.")
+  )
+  record <- .burnin_loop(list(c(mu = 2.31)), thin = 4L)$record
+  expect_identical(record$stop_reason, "max_extend")
+  expect_identical(
+    BayesTools:::.bt_burnin_warning(record),
+    paste0("Chains did not agree at the end of burn-in after 10 extensions: R-hat 2.31 for 'mu' (limit 1.50). ",
+      "Increase 'adapt', 'burnin' or 'thin'.")
+  )
+  reads <- 0L
+  record <- .burnin_loop(list(c(mu = 2)), time_exceeded = function(){
+    reads <<- reads + 1L
+    reads > 2L
+  })$record
+  expect_identical(record$stop_reason, "max_time")
+  expect_identical(
+    BayesTools:::.bt_burnin_warning(record),
+    paste0("Chains did not agree at the end of burn-in after 2 extensions: R-hat 2.00 for 'mu' (limit 1.50). ",
+      "Increase 'adapt', 'burnin' or 'thin'.")
   )
   record <- .burnin_loop(list(c(mu = 2)), time_exceeded = function() TRUE)$record
-  expect_match(BayesTools:::.bt_burnin_warning(record), "Increase 'adapt', 'burnin' or 'max_time'.", fixed = TRUE)
+  expect_identical(
+    BayesTools:::.bt_burnin_warning(record),
+    "Chains did not agree at the end of burn-in: R-hat 2.00 for 'mu' (limit 1.50). Increase 'adapt', 'burnin' or 'thin'."
+  )
+  # stopped by the iteration-number limit
   record <- .burnin_loop(list(c(mu = 2)), extension_room = 700)$record
   expect_identical(
     BayesTools:::.bt_burnin_warning(record),
-    paste0("The chains had not reached agreement at the end of burn-in after 1 extension of 500 ",
-      "iterations: the split-chain R-hat of the last 500 burn-in iterations was 2.00 for 'mu' (above ",
-      "'burnin_max_Rhat' of 1.5). A further extension would number the draws beyond the largest ",
-      "iteration number (2147483647); reduce 'adapt' or the sampling iterations ('sample' times 'thin') ",
-      "to leave room for it.")
+    paste0("Chains did not agree at the end of burn-in after 1 extension: R-hat 2.00 for 'mu' (limit 1.50). ",
+      "A further extension would number the draws beyond the largest iteration number (2147483647); reduce ",
+      "'adapt' or the sampling iterations ('sample' times 'thin') to leave room for it.")
   )
   expect_null(BayesTools:::.bt_burnin_warning(.burnin_loop(list(c(mu = 1.2)))$record))
   expect_null(BayesTools:::.bt_burnin_warning(NULL))
+})
+
+test_that("the printed limit never exceeds the threshold that a listed value exceeds", {
+
+  limit <- function(chains) BayesTools:::.bt_burnin_format_limit(1.7 + 0.9 / chains)
+  # two decimals when exact, otherwise rounded down to three
+  expect_identical(vapply(2:8, limit, character(1)),
+    c("2.15", "2.00", "1.925", "1.88", "1.85", "1.828", "1.812"))
+  expect_identical(BayesTools:::.bt_burnin_format_limit(1.5), "1.50")
+  expect_identical(BayesTools:::.bt_burnin_format_limit(1.2345), "1.234")
+
+  warning_for <- function(chains, values){
+    BayesTools:::.bt_burnin_warning(
+      .burnin_loop(list(values), autofit = FALSE, burnin_max_Rhat = 1.7 + 0.9 / chains)$record)
+  }
+  remedy <- " Increase 'adapt' and 'burnin'; if the chains mix slowly, increase 'thin'. Or fit with 'autofit = TRUE'."
+  # seven chains: 1.82857...; a value just above it prints with two decimals
+  expect_identical(warning_for(7L, c(mu = 1.8286, tau = 1.82858)),
+    paste0("Chains did not agree at the end of burn-in: R-hat 1.83 for 'mu', 1.83 for 'tau' (limit 1.828).", remedy))
+  # eight chains: 1.8125, printed 1.812; 1.8126 needs three decimals to exceed it
+  expect_identical(warning_for(8L, c(mu = 1.8126, tau = 1.81251)),
+    paste0("Chains did not agree at the end of burn-in: R-hat 1.813 for 'mu', 1.813 for 'tau' (limit 1.812).",
+      remedy))
+  # four chains: 1.925
+  expect_identical(warning_for(4L, c(mu = 1.9251)),
+    paste0("Chains did not agree at the end of burn-in: R-hat 1.93 for 'mu' (limit 1.925).", remedy))
+  for(chains in 2:8){
+    threshold <- 1.7 + 0.9 / chains
+    expect_lte(as.numeric(limit(chains)), threshold + 1e-12, label = paste(chains, "chains"))
+  }
 })
 
 test_that("the readiness settings default when omitted and validate when given", {
@@ -337,21 +407,37 @@ test_that("the readiness settings default when omitted and validate when given",
   settings <- function(...) BayesTools:::.bt_burnin_check_settings(
     JAGS_check_and_list_autofit_settings(utils::modifyList(base, list(...), keep.null = TRUE)))
 
-  expect_identical(settings(), list(burnin_max_Rhat = 2, burnin_extend = 500, burnin_max_extend = 10))
+  expect_identical(settings(), list(burnin_max_Rhat = "auto", burnin_extend = 500, burnin_max_extend = 10))
   # the validator does not add the elements, so that an omission stays one
   expect_false(any(grepl("^burnin_", names(JAGS_check_and_list_autofit_settings(base)))))
   expect_null(settings(burnin_max_Rhat = NULL)$burnin_max_Rhat)
   expect_identical(settings(burnin_max_Rhat = 1.2, burnin_extend = 100, burnin_max_extend = 0),
     list(burnin_max_Rhat = 1.2, burnin_extend = 100, burnin_max_extend = 0))
+  expect_identical(settings(burnin_max_Rhat = "auto")$burnin_max_Rhat, "auto")
+  # a named string is stored as the plain string
+  expect_identical(settings(burnin_max_Rhat = c(value = "auto"))$burnin_max_Rhat, "auto")
   expect_identical(
     JAGS_check_and_list_autofit_settings(c(base, list(burnin_max_Rhat = NULL)), skip_sample_extend = TRUE)$burnin_max_Rhat,
     NULL
   )
 
+  # "auto" resolves with the number of chains; a number or NULL stays
+  threshold <- BayesTools:::.bt_burnin_threshold
+  expect_identical(threshold("auto", 2), 1.7 + 0.9 / 2)
+  expect_equal(vapply(c(2, 3, 4, 7, 8), function(chains) threshold("auto", chains), numeric(1)),
+    c(2.15, 2, 1.925, 1.7 + 0.9 / 7, 1.8125), tolerance = 1e-15)
+  expect_identical(threshold(1.3, 4), 1.3)
+  expect_null(threshold(NULL, 4))
+
   invalid <- list(
     list(burnin_max_Rhat = 0.9, "'burnin_max_Rhat' must be equal or higher than 1."),
     list(burnin_max_Rhat = Inf, "The 'burnin_max_Rhat' argument must contain only finite values."),
     list(burnin_max_Rhat = NA_real_, "The 'burnin_max_Rhat' argument cannot contain NA/NaN values."),
+    list(burnin_max_Rhat = "Auto", "The 'Auto' values are not recognized by the 'burnin_max_Rhat' argument."),
+    list(burnin_max_Rhat = "", "The '' values are not recognized by the 'burnin_max_Rhat' argument."),
+    list(burnin_max_Rhat = c("auto", "auto"), "The 'burnin_max_Rhat' argument must have length '1'."),
+    list(burnin_max_Rhat = NA_character_, "The 'burnin_max_Rhat' argument cannot contain NA/NaN values."),
+    list(burnin_max_Rhat = TRUE, "The 'burnin_max_Rhat' argument must be a numeric vector."),
     list(burnin_extend = 99, "'burnin_extend' must be equal or higher than 100."),
     list(burnin_extend = NULL, "The 'burnin_extend' argument cannot be NULL."),
     list(burnin_extend = 250.5, "The 'burnin_extend' argument must be an integer vector."),
@@ -404,14 +490,15 @@ test_that("the readiness settings default when omitted and validate when given",
                                keep_live, live_model = NULL, probability_plan = NULL,
                                prepare = FALSE, block = 0L, session){
       state$groups[[length(state$groups) + 1L]] <- list(chains = length(inits), burnin = burnin,
-        block = block, prepare = prepare)
+        block = block, prepare = prepare, thin = thin)
       if(!prepare) return(batch(sample, thin))
       session$model <- "compiled"
       if(block > 0L) state$events <- c(state$events, "block")
       if(block > 0L) next_block() else NULL
     },
-    .bt_rjags_burnin_block = function(sweeps, monitor, progress, session){
-      state$sweeps <- c(state$sweeps, sweeps)
+    .bt_rjags_burnin_block = function(draws, thin, monitor, progress, session){
+      state$sweeps <- c(state$sweeps, draws)
+      state$block_thin <- c(state$block_thin, thin)
       state$events <- c(state$events, "block")
       next_block()
     },
@@ -472,6 +559,62 @@ test_that("the check runs on the last block of burn-in when it can and the fit r
   }
 })
 
+test_that("the block holds draws at the fit's thinning and the record counts its iterations", {
+
+  # burnin = 2000: min(500, 2000 %/% thin) draws over the last draws * thin
+  # iterations of burn-in
+  for(case in list(list(thin = 1L, draws = 500L, block = 500L),
+                   list(thin = 2L, draws = 500L, block = 1000L),
+                   list(thin = 4L, draws = 500L, block = 2000L),
+                   list(thin = 5L, draws = 400L, block = 2000L))){
+    info <- paste("thin", case$thin)
+    set.seed(1)
+    state <- .readiness_backend(list(.readiness_chains(n = case$draws)))
+    fit <- .readiness_fit(burnin = 2000, thin = case$thin)
+    expect_identical(state$groups[[1L]][c("burnin", "block", "prepare", "thin")],
+      list(burnin = 2000, block = case$draws, prepare = TRUE, thin = case$thin), info = info)
+    record <- attr(fit, "burnin_check")
+    expect_identical(record[c("block", "thin", "extension", "status")],
+      list(block = case$block, thin = case$thin, extension = 0, status = "ready"), info = info)
+    expect_identical(record$blocks$sweeps, case$block, info = info)
+    expect_identical(fit$burnin, 2000, info = info)
+  }
+  # thin = 30: 66 draws are too few, the check does not run
+  state <- .readiness_backend(list())
+  fit <- .readiness_fit(burnin = 2000, thin = 30L)
+  expect_identical(state$groups[[1L]][c("block", "prepare")], list(block = 0L, prepare = FALSE))
+  expect_null(attr(fit, "burnin_check"))
+
+  # a burn-in that is not a multiple of 'thin': 1000 %/% 3 = 333 draws over
+  # the last 999 iterations
+  state <- .readiness_backend(list(.readiness_chains(n = 333L)))
+  fit <- .readiness_fit(burnin = 1000, thin = 3L)
+  expect_identical(state$groups[[1L]]$block, 333L)
+  expect_identical(attr(fit, "burnin_check")[c("block", "thin")], list(block = 999L, thin = 3L))
+})
+
+test_that("a chain group runs the unmonitored part of burn-in, then the block at the fit's thinning", {
+
+  skip_if_not_installed("rjags")
+  run_group <- function(block, thin){
+    session <- new.env(parent = emptyenv())
+    inits <- lapply(1:2, function(chain) list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = chain))
+    draws <- BayesTools:::.bt_rjags_group(inits, "model{ mu ~ dnorm(0, 1)\n y ~ dnorm(mu, 1) }",
+      data = list(y = 0.5), monitor = "mu", adapt = 100L, burnin = 1000L, sample = 10L, thin = thin,
+      silent = TRUE, keep_live = FALSE, prepare = TRUE, block = block, session = session)
+    list(draws = draws, iteration = session$model$iter(), state = session$model$state(internal = TRUE))
+  }
+  # 1000 %/% 3 = 333 draws over the last 999 iterations, after one
+  # unmonitored iteration: the chains end where the unmonitored burn-in ends
+  off <- run_group(0L, 3L)
+  on  <- run_group(333L, 3L)
+  expect_null(off$draws)
+  expect_identical(vapply(on$draws, nrow, integer(1)), c(333L, 333L))
+  expect_identical(coda::thin(on$draws), 3)
+  expect_identical(on$iteration, off$iteration)
+  expect_identical(on$state, off$state)
+})
+
 test_that("a model without samplers is not checked", {
 
   # the chain group returns no block when the compiled model has no sampler
@@ -508,7 +651,7 @@ test_that("chains that disagree without autofit sample after one warning", {
   state <- .readiness_backend(list(.readiness_chains(shift = 10)))
   expect_warning(
     fit <- .readiness_fit(),
-    "The chains had not reached agreement at the end of burn-in: the split-chain R-hat",
+    "Chains did not agree at the end of burn-in: R-hat",
     class = "BayesTools_burnin_not_converged"
   )
   expect_length(state$sweeps, 0L)
@@ -580,22 +723,25 @@ test_that("automatic extensions and JAGS_extend() never run the check", {
 
 test_that("autofit extends burn-in in blocks and the iteration numbers count them", {
 
+  # thin = 2: blocks of 300 draws over 600 iterations each
   set.seed(3)
-  state <- .readiness_backend(list(.readiness_chains(shift = 10), .readiness_chains(shift = 10),
-    .readiness_chains()))
+  state <- .readiness_backend(list(.readiness_chains(shift = 10, n = 300L), .readiness_chains(shift = 10, n = 300L),
+    .readiness_chains(n = 300L)))
   fit <- .readiness_fit(autofit = TRUE, thin = 2L, burnin_extend = 300)
   expect_identical(state$groups[[1L]]$block, 300L)
   expect_identical(state$sweeps, c(300, 300))
+  expect_identical(state$block_thin, c(2L, 2L))
   record <- attr(fit, "burnin_check")
   expect_identical(record$status, "ready")
-  expect_identical(record$extension, 600)
-  expect_identical(record$blocks$sweeps, c(300L, 300L, 300L))
-  expect_identical(fit$burnin, 1200)
-  expect_identical(stats::start(fit$mcmc[[1L]]), 100 + 1200 + 1)
+  expect_identical(record[c("block", "burnin_extend", "thin", "extension")],
+    list(block = 600L, burnin_extend = 300, thin = 2L, extension = 1200))
+  expect_identical(record$blocks$sweeps, c(600L, 600L, 600L))
+  expect_identical(fit$burnin, 1800)
+  expect_identical(stats::start(fit$mcmc[[1L]]), 100 + 1800 + 1)
   expect_identical(coda::thin(fit$mcmc[[1L]]), 2)
   geometry <- JAGS_draw_geometry(fit)
-  expect_identical(geometry$chains$start, rep(1301L, 3L))
-  expect_identical(geometry$chains$end, rep(1301L + 199L * 2L, 3L))
+  expect_identical(geometry$chains$start, rep(1901L, 3L))
+  expect_identical(geometry$chains$end, rep(1901L + 199L * 2L, 3L))
   expect_null(attr(fit, "warnings"))
 
   # 'fit$burnin' keeps the type it was given
@@ -609,7 +755,7 @@ test_that("autofit extends burn-in in blocks and the iteration numbers count the
   state <- .readiness_backend(list(.readiness_chains(shift = 10)))
   expect_warning(
     fit <- .readiness_fit(autofit = TRUE, burnin_max_extend = 2),
-    "after 2 extensions of 500 iterations",
+    "after 2 extensions: R-hat",
     class = "BayesTools_burnin_not_converged"
   )
   expect_identical(attr(fit, "burnin_check")$stop_reason, "max_extend")
@@ -628,7 +774,7 @@ test_that("autofit extends burn-in in blocks and the iteration numbers count the
   state <- .readiness_backend(list(.readiness_chains(shift = 10)))
   expect_warning(
     fit <- .readiness_fit(autofit = TRUE, max_time = list(time = 100, unit = "secs")),
-    "Increase 'adapt', 'burnin' or 'max_time'.",
+    "after 1 extension: R-hat",
     fixed = TRUE
   )
   expect_identical(attr(fit, "burnin_check")$stop_reason, "max_time")
@@ -653,6 +799,22 @@ test_that("no extension numbers the draws beyond the integer range", {
   expect_identical(state$sweeps, 500)
   expect_identical(fit$burnin, 1100)
   expect_identical(JAGS_draw_geometry(fit)$chains$end, rep(limit - 200L, 3L))
+
+  # with thin = 2 a block of 500 draws runs 1000 iterations: the room after
+  # the last draw (adapt + 600 + 1 + 199 * 2) is 2000 iterations, so two
+  # blocks fit and the last draw reaches the limit exactly
+  state <- .readiness_backend(list(.readiness_chains(shift = 10, n = 300L), .readiness_chains(shift = 10)))
+  expect_warning(
+    fit <- .readiness_fit(autofit = TRUE, adapt = limit - 2999, burnin = 600, thin = 2L),
+    "A further extension would number the draws beyond the largest iteration number",
+    class = "BayesTools_burnin_not_converged"
+  )
+  record <- attr(fit, "burnin_check")
+  expect_identical(record[c("stop_reason", "extension")], list(stop_reason = "iteration_limit", extension = 2000))
+  expect_identical(record$blocks$sweeps, c(600L, 1000L, 1000L))
+  expect_identical(state$sweeps, c(500, 500))
+  expect_identical(fit$burnin, 2600)
+  expect_identical(JAGS_draw_geometry(fit)$chains$end, rep(limit, 3L))
 
   # sampling: the first automatic extension reaches the limit exactly, the
   # second would pass it and is not started; the fit keeps its draws

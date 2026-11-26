@@ -219,22 +219,26 @@ keeps `fail_fast` and its size.
 
 The readiness check between burn-in and sampling (`R/JAGS-burnin-check.R`)
 runs in the initial run of every `JAGS_fit()` with `burnin_max_Rhat` set, at
-least two chains and a block `W = min(burnin_extend, burnin)` of at least 100
-sweeps; never in `JAGS_extend()` or automatic extensions, and afresh in every
+least two chains and a block of `D = min(burnin_extend, burnin %/% thin)` draws
+at the fit's `thin` (the last `D * thin` iterations of burn-in) with `D` at
+least 100; never in `JAGS_extend()` or automatic extensions, and afresh in every
 restart attempt. The omitted `autofit_control` elements take their defaults
 (`.bt_burnin_check_settings()`); the validator does not fill them in, so that
-an explicit `burnin_max_Rhat = NULL` (off) differs from an omission. A model
+an explicit `burnin_max_Rhat = NULL` (off) differs from an omission. The
+default `"auto"` resolves to `1.7 + 0.9 / chains` (`.bt_burnin_threshold()`,
+where `JAGS_fit()` knows `chains`); the record stores the resolved number. A model
 whose compiled graph has no sampler (`rjags::list.samplers()` empty after
 adaptation, decided in each process before any burn-in sweep; the processes
 must agree, else an internal error) is not checked: JAGS draws every monitored
 node afresh in each sweep, so the check could only pass and monitoring would
 change the stream. It runs its whole burn-in unmonitored, as with the check
 off, and records no check. Each
-process runs `burnin - W` unmonitored sweeps, then the `W` sweeps of the block
-with the fit's monitors on (unthinned, no probability read-outs, never in the
-retained chunks) through the shared `.bt_rjags_samples()`, and keeps its live
-model; the coordinator checks the blocks of all chains in the original order
-and, under `autofit`, asks for further blocks of `burnin_extend` sweeps (each
+process runs `burnin - D * thin` unmonitored sweeps, then the `D * thin` sweeps
+of the block with the fit's monitors on at the fit's `thin` (no probability
+read-outs, never in the retained chunks) through the shared
+`.bt_rjags_samples()`, and keeps its live model; the coordinator checks the
+blocks of all chains in the original order and, under `autofit`, asks for
+further blocks of `burnin_extend` draws (`burnin_extend * thin` sweeps, each
 checked alone) until ready, `burnin_max_extend` blocks, `max_time` on the
 fit's clock (read before a block), or a block that would number the last
 retained draw beyond `.Machine$integer.max` (stop reason `iteration_limit`,
@@ -264,11 +268,12 @@ equal means, 1. No assessable quantity records
 is not retried as a sampler failure. Only the kept attempt signals
 `BayesTools_burnin_not_converged` (whatever `silent` is), after its initial
 sampling has finished and before any automatic extension (so that a discarded
-restart attempt warns nothing), and stores it once in the fit's warnings. `attr(fit, "burnin_check")` records the check, and
+restart attempt warns nothing), and stores it once in the fit's warnings. `attr(fit, "burnin_check")` records the check (with
+`thin`; `block`, `blocks$sweeps` and `extension` in sweeps), and
 `fit$burnin` and the public iteration numbers count the extension sweeps. A
 passing check leaves the draws, end states, samplers and warnings identical
-to the check off unless a monitored node has no observed descendants: JAGS
-forward-samples such a node only while it is monitored.
+to the check off, for any `thin`, unless a monitored node has no observed
+descendants: JAGS forward-samples such a node only while it is monitored.
 
 Worker connection failures stop fitting retries; new initial values cannot
 repair the existing cluster. Preserve the original backend condition. Classify
@@ -290,7 +295,11 @@ An explicit `JAGS_extend()` rebuilds the sampler, uses the recorded adaptation
 length (or the call-specific override), and starts sampling with zero additional
 burn-in. Record the adaptation settings and rebuild status for each extension.
 The incomplete-adaptation warning (`BayesTools_adaptation_incomplete`) and the
-readiness warning share the parent class `BayesTools_fit_diagnostic`.
+readiness warning share the parent class `BayesTools_fit_diagnostic`. The
+readiness warning lists up to five values above the threshold, each printed
+with as many decimals as it takes to exceed the true threshold, and prints the
+limit with two decimals when exact and otherwise rounded down to three, so
+that no listed value reads as not above it.
 
 The optional `runtime_report` callback (stored as `attr(fit, "runtime_report")`,
 replayed by `JAGS_extend()` like `runtime_cache`) runs with

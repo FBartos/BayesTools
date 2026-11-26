@@ -176,15 +176,19 @@ Cholesky factors) are derived and not checked by default. The role of
 every fitted coordinate is stored in the \code{convergence_role} column
 of \code{\link[=parameter_coordinates]{parameter_coordinates()}}.}
 \item{burnin_max_Rhat}{the threshold of the readiness check between
-burn-in and sampling. Defaults to \code{2}; an omitted element takes
-its default and \code{NULL} turns the check off. The check runs, also
-without \code{autofit}, in the initial fit of \code{JAGS_fit()} (afresh
-in each restart attempt; not in \code{JAGS_extend()} or the automatic
-extensions after sampling) when there are at least two chains, the block
-of the last \code{min(burnin_extend, burnin)} iterations of burn-in has
-at least 100 iterations, and JAGS assigns the model a sampler. The
-iterations of the block run with the monitors on; their draws are
-checked and then dropped. Each
+burn-in and sampling. Defaults to \code{"auto"}, which is
+\code{1.7 + 0.9 / chains} (\code{2.15} for two chains, \code{2} for
+three, \code{1.925} for four); a number fixes the threshold, an omitted
+element takes its default, and \code{NULL} turns the check off. The
+check runs, also without \code{autofit}, in the initial fit of
+\code{JAGS_fit()} (afresh in each restart attempt; not in
+\code{JAGS_extend()} or the automatic extensions after sampling) when
+there are at least two chains, the block of the last
+\code{min(burnin_extend, floor(burnin / thin))} draws of burn-in, taken
+every \code{thin} iterations as in sampling, has at least 100 draws, and
+JAGS assigns the model a sampler. The iterations of the block (its draws
+times \code{thin}) run with the monitors on; their draws are checked and
+then dropped. Each
 chain's block is split into halves, and the chains are ready when the
 point estimate of the potential scale reduction factor over the
 half-chains (\code{coda::gelman.diag()}) is at most \code{burnin_max_Rhat}
@@ -198,7 +202,8 @@ which JAGS assigns no sampler (every node is drawn directly given its
 parents, as in a model without data) the chains cannot disagree, and the
 whole burn-in runs unmonitored, as with the check off. When the chains are not
 ready, a fit with \code{autofit} extends burn-in by blocks of
-\code{burnin_extend} iterations, each checked alone, until they are
+\code{burnin_extend} draws (\code{burnin_extend * thin} iterations),
+each checked alone, until they are
 ready, \code{burnin_max_extend} blocks were added, or \code{max_time} is
 exceeded (checked before each block); a fit without \code{autofit} keeps
 its burn-in. Chains that are still not ready start sampling; a warning
@@ -212,14 +217,19 @@ draws, final states and samplers as with the check off: monitoring changes
 no sampler, but JAGS samples a monitored node without observed
 descendants (such as a predictive quantity) from the chain's random-number
 stream. The check cannot detect chains that are all in the same wrong
-state. The default is chosen for three or four chains: one deviating
-chain raises the statistic of a continuous quantity less the more chains
-are run, so a fit with many chains (eight or more) may set a lower value.
-A slowly mixing fit can exceed the threshold although its chains agree;
-more burn-in then does not help, and the convergence check of the
-retained draws reports the slow mixing.}
-\item{burnin_extend}{the number of final burn-in iterations that the
-readiness check assesses and of each extension of burn-in; at least
+state. The automatic value falls with the number of chains: for chains
+that agree but are autocorrelated, the statistic has the same typical
+value for any number of chains but varies less the more chains are run,
+so a threshold that falls with the number of chains keeps false alarms
+from becoming more frequent with them and keeps part of the sensitivity
+to one deviating chain that a fixed value loses. A slowly mixing fit can
+exceed the threshold although its chains agree, because the statistic
+grows with the autocorrelation of the block's draws; a larger
+\code{thin} is then the remedy, while more burn-in is the remedy for
+chains that have not yet reached the same region.}
+\item{burnin_extend}{the number of final burn-in draws, taken every
+\code{thin} iterations, that the readiness check assesses, and of each
+extension of burn-in (\code{burnin_extend * thin} iterations); at least
 \code{100}. Defaults to \code{500}.}
 \item{burnin_max_extend}{the largest number of extensions of burn-in, with
 \code{autofit} only. Defaults to \code{10}. An extension after which the
