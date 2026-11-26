@@ -232,8 +232,8 @@
 
 # The threshold with two decimals when that is exact (2.00, 2.15), otherwise
 # rounded down to three (1.925, 1.828 for 1.8286). The printed number, read
-# back as a double, is never above the threshold: 1.7 + 0.9 / 6 is the double
-# below 1.85 and prints 1.849.
+# back as a double, is never above the threshold: a given value just below
+# 1.501 prints 1.500.
 .bt_burnin_format_limit <- function(threshold){
 
   printed <- formatC(threshold, format = "f", digits = 2)

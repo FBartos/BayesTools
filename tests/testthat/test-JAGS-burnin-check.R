@@ -381,10 +381,12 @@ test_that("the printed limit never reads above the threshold and a listed value 
 
   limit <- BayesTools:::.bt_burnin_format_limit
   # two decimals when that reads back as the threshold, otherwise rounded
-  # down to three; 1.7 + 0.9 / 6 is the double below 1.85
-  automatic <- 1.7 + 0.9 / 2:12
+  # down to three; the automatic value of six chains is the double 1.85
+  automatic <- vapply(2:12, function(chains) BayesTools:::.bt_burnin_threshold("auto", chains), numeric(1))
   expect_identical(vapply(automatic, limit, character(1)),
-    c("2.15", "2.00", "1.925", "1.88", "1.849", "1.828", "1.812", "1.80", "1.79", "1.781", "1.775"))
+    c("2.15", "2.00", "1.925", "1.88", "1.85", "1.828", "1.812", "1.80", "1.79", "1.781", "1.775"))
+  # the sum 1.7 + 0.9 / 6 is the double below 1.85 and would print 1.849
+  expect_identical(limit(1.7 + 0.9 / 6), "1.849")
   expect_identical(limit(1.5), "1.50")
   expect_identical(limit(1.2345), "1.234")
   # a given value is never rounded up: just below 1.501 prints 1.500
@@ -396,7 +398,7 @@ test_that("the printed limit never reads above the threshold and a listed value 
     BayesTools:::.bt_burnin_warning(
       .burnin_loop(list(values), autofit = FALSE, burnin_max_Rhat = threshold)$record)
   }
-  warning_for <- function(chains, values) warning_at(1.7 + 0.9 / chains, values)
+  warning_for <- function(chains, values) warning_at(BayesTools:::.bt_burnin_threshold("auto", chains), values)
   printed <- function(threshold, value){
     message <- warning_at(threshold, c(mu = value))
     parts <- regmatches(message, regexec("R-hat ([^ ]+) for 'mu' \\(limit ([^)]+)\\)", message))[[1L]]
@@ -407,7 +409,7 @@ test_that("the printed limit never reads above the threshold and a listed value 
   # 1e-15 to 0.1, and steps of 0.0005 up to 0.02) reads above the printed
   # limit, which does not read above the threshold
   next_double <- function(x, steps) x + steps * 2^(floor(log2(x)) - 52)
-  for(threshold in c(automatic, 1.5, 1.05, 2.345678, 10, 1.5009999999999999, 1, 1.501 - 1e-13)){
+  for(threshold in c(automatic, 1.7 + 0.9 / 6, 1.5, 1.05, 2.345678, 10, 1.5009999999999999, 1, 1.501 - 1e-13)){
     grid <- c(next_double(threshold, 1:3), threshold * (1 + 10^-(15:1)), threshold + seq(0.0005, 0.02, by = 0.0005))
     expect_true(all(grid > threshold))
     shown <- vapply(grid, function(value) printed(threshold, value), numeric(2))
@@ -416,9 +418,10 @@ test_that("the printed limit never reads above the threshold and a listed value 
   }
 
   remedy <- " Increase 'adapt' and 'burnin'; if the chains mix slowly, increase 'thin'. Or fit with 'autofit = TRUE'."
-  # six chains: R-hat in [1.85, 1.855) reads above the limit 1.849
+  # six chains: R-hat in (1.85, 1.855) takes a third decimal to read above
+  # the limit 1.85
   expect_identical(warning_for(6L, c(mu = 1.854, tau = 1.852)),
-    paste0("Chains did not agree at the end of burn-in: R-hat 1.85 for 'mu', 1.85 for 'tau' (limit 1.849).", remedy))
+    paste0("Chains did not agree at the end of burn-in: R-hat 1.854 for 'mu', 1.852 for 'tau' (limit 1.85).", remedy))
   # where fifteen decimals are not enough: the shortest representation that
   # reads back as the value
   expect_identical(warning_at(2, c(mu = 2 + 2 * .Machine$double.eps)),
@@ -458,9 +461,14 @@ test_that("the readiness settings default when omitted and validate when given",
 
   # "auto" resolves with the number of chains; a number or NULL stays
   threshold <- BayesTools:::.bt_burnin_threshold
-  expect_identical(threshold("auto", 2), 1.7 + 0.9 / 2)
+  expect_identical(threshold("auto", 2), 2.15)
   expect_equal(vapply(c(2, 3, 4, 7, 8), function(chains) threshold("auto", chains), numeric(1)),
     c(2.15, 2, 1.925, 1.7 + 0.9 / 7, 1.8125), tolerance = 1e-15)
+  # one division: the double nearest the exact value (the sum 1.7 + 0.9 / 6
+  # is the double below 1.85)
+  expect_identical(threshold("auto", 6), 1.85)
+  expect_identical(vapply(c(3, 4, 5, 8, 12), function(chains) threshold("auto", chains), numeric(1)),
+    c(2, 1.925, 1.88, 1.8125, 1.775))
   expect_identical(threshold(1.3, 4), 1.3)
   expect_null(threshold(NULL, 4))
 

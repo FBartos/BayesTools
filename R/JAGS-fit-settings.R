@@ -187,7 +187,10 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
 
 # The threshold of the readiness check for a fit with 'chains' chains: "auto"
 # falls with the number of chains; a number, or NULL (check off), stays.
+# "auto" is 1.7 + 0.9 / chains, computed as one division so that the result is
+# the double nearest the exact value (1.85 for six chains; the sum gives the
+# double below it).
 .bt_burnin_threshold <- function(burnin_max_Rhat, chains){
 
-  if(identical(burnin_max_Rhat, "auto")) 1.7 + 0.9 / chains else burnin_max_Rhat
+  if(identical(burnin_max_Rhat, "auto")) (17 * chains + 9) / (10 * chains) else burnin_max_Rhat
 }

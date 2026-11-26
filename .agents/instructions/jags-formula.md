@@ -302,7 +302,8 @@ readiness warning share the parent class `BayesTools_fit_diagnostic`. The
 readiness warning lists up to five values above the threshold. It formats the
 limit first, with two decimals when that reads back as the threshold and
 otherwise rounded down to three, so that the printed limit never reads above
-the threshold (`1.7 + 0.9 / 6` is the double below 1.85 and prints 1.849).
+the threshold (a given value just below 1.501 prints 1.500; the automatic
+value is computed as one division, so six chains give the double 1.85).
 Each listed value then has as many decimals as it takes to read strictly above
 `max(threshold, printed limit)`, and where fifteen are not enough the shortest
 representation that reads back as the value.
