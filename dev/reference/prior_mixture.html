@@ -18,7 +18,7 @@ This is a more generic version of the prior_spike_and_slab function."><meta name
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9017</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9018</span>
       </span>
     </div>
 
@@ -102,6 +102,21 @@ Defaults to <code>NULL</code> (i.e., <code>is_null</code> is used.</p></dd>
     <p>A prior object of class <code>prior.mixture</code> (with the classes of a
 factor, ordered or simple mixture where the components have them) that
 holds the component priors with their <code>prior_weights</code> and <code>components</code>.</p>
+    </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>The <code>prior_weights</code> of the components are their prior odds,
+and any positive finite weights construct a mixture. Weights that cannot be
+normalized in double precision (their sum, accumulated in double precision,
+overflows or is below <code>.Machine$double.xmin</code>) are refused when a
+component is drawn from them: when the mixture is sampled (<code><a href="prior_functions_methods.html">rng()</a></code>,
+initial values, prior draws) or fitted (its JAGS prior). The error has class
+<code>BayesTools_mixture_weights_unnormalizable</code>, which inherits
+<code>BayesTools_prior_input</code>, and the fields <code>prior_weights</code> and
+<code>total</code> (their sum in double precision). Rescaling all weights by a
+common factor that makes their sum representable keeps the odds. A
+component whose prior probability underflows to zero is never drawn from
+the prior, and a mixture with a single component is never refused.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>

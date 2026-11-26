@@ -18,7 +18,7 @@ The prior can be visualized by the plot function."><meta name="robots" content="
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9017</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9018</span>
       </span>
     </div>
 
@@ -186,7 +186,11 @@ The truncation is automatically set to the bounds of the support.</p></dd>
 The value is passed into the model fitting function, which creates models
 corresponding to all combinations of prior distributions for each of
 the model parameters and sets the model priors odds to the product
-of its prior distributions.</p></dd>
+of its prior distributions. A <code><a href="prior_mixture.html">prior_mixture()</a></code> whose weights
+cannot be normalized in double precision (their sum overflows or is below
+<code>.Machine$double.xmin</code>) is refused when it is sampled or fitted;
+rescaling all of its weights by a common factor that makes their sum
+representable keeps the odds.</p></dd>
 
 </dl></div>
     <div id="value">

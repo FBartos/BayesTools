@@ -20,7 +20,7 @@ the publication weights in those bins."><meta name="robots" content="noindex"><!
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9017</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9018</span>
       </span>
     </div>
 
@@ -114,7 +114,11 @@ supported and fixes the most significant bin to <code>omega = 1</code>.</p></dd>
 
 
 <dt id="arg-prior-weights">prior_weights<a class="anchor" aria-label="anchor" href="#arg-prior-weights"></a></dt>
-<dd><p>prior odds associated with a given distribution.</p></dd>
+<dd><p>prior odds associated with a given distribution. A
+<code><a href="prior_mixture.html">prior_mixture()</a></code> whose weights cannot be normalized in double
+precision (their sum overflows or is below <code>.Machine$double.xmin</code>) is
+refused when it is sampled or fitted; rescaling all of its weights by a
+common factor that makes their sum representable keeps the odds.</p></dd>
 
 
 <dt id="arg-model">model<a class="anchor" aria-label="anchor" href="#arg-model"></a></dt>

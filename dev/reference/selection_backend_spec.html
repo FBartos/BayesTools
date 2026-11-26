@@ -3,7 +3,9 @@
 p-hacking prior objects into active backend parameters. The returned object
 contains stable p/z geometry, JAGS prior/transform code, monitor names,
 initial values, and data constants. Set include_init = FALSE for
-deterministic metadata without drawing unused initial values."><meta name="robots" content="noindex"><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js" integrity="sha256-nvJJv9wWKEm88qvoQl9ekL2J+k/RWIsaSScxxlsrv8k=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/config/TeX-AMS-MML_HTMLorMML.js" integrity="sha256-84DKXVJXs0/F8OTMzX4UR909+jtl4G7SPypPavF+GfA=" crossorigin="anonymous"></script><!--[if lt IE 9]>
+deterministic metadata without drawing unused initial values. The initial
+values of a mixture cover every branch, and its bias_indicator
+starts at a branch drawn from the prior weights."><meta name="robots" content="noindex"><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js" integrity="sha256-nvJJv9wWKEm88qvoQl9ekL2J+k/RWIsaSScxxlsrv8k=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/config/TeX-AMS-MML_HTMLorMML.js" integrity="sha256-84DKXVJXs0/F8OTMzX4UR909+jtl4G7SPypPavF+GfA=" crossorigin="anonymous"></script><!--[if lt IE 9]>
 <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
 <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
 <![endif]--></head><body data-spy="scroll" data-target="#toc">
@@ -21,7 +23,7 @@ deterministic metadata without drawing unused initial values."><meta name="robot
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9017</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9018</span>
       </span>
     </div>
 
@@ -73,7 +75,9 @@ deterministic metadata without drawing unused initial values."><meta name="robot
 p-hacking prior objects into active backend parameters. The returned object
 contains stable p/z geometry, JAGS prior/transform code, monitor names,
 initial values, and data constants. Set <code>include_init = FALSE</code> for
-deterministic metadata without drawing unused initial values.</p>
+deterministic metadata without drawing unused initial values. The initial
+values of a mixture cover every branch, and its <code>bias_indicator</code>
+starts at a branch drawn from the prior weights.</p>
     </div>
 
     <div id="ref-usage">
@@ -92,7 +96,9 @@ deterministic metadata without drawing unused initial values.</p>
 
 <dl><dt id="arg-priors">priors<a class="anchor" aria-label="anchor" href="#arg-priors"></a></dt>
 <dd><p>a selection prior, p-hacking prior, composed bias prior,
-<code><a href="prior.html">prior_none()</a></code>, <code><a href="prior_mixture.html">prior_mixture()</a></code>, or a list of those priors.</p></dd>
+<code><a href="prior.html">prior_none()</a></code>, <code><a href="prior_mixture.html">prior_mixture()</a></code>, or a list of those priors. Several
+priors whose <code>prior_weights</code> cannot be normalized are refused, as a
+<code><a href="prior_mixture.html">prior_mixture()</a></code> is when it is sampled or fitted.</p></dd>
 
 
 <dt id="arg-backend">backend<a class="anchor" aria-label="anchor" href="#arg-backend"></a></dt>
