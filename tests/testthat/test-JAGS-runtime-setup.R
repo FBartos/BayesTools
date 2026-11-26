@@ -640,3 +640,94 @@ test_that("runtime reports reach real worker processes", {
   expect_identical(vapply(values, `[[`, integer(1L), "process_id"), 1:2)
   expect_identical(vapply(values, `[[`, character(1L), "role"), rep("worker", 2L))
 })
+
+test_that("the JAGS thread control changes nothing when the JAGS library is absent", {
+
+  missing <- "BayesTools-test-missing-library.dll"
+  expect_identical(.bt_jags_threads(libraries = missing), NA_integer_)
+  expect_identical(.bt_jags_threads(1L, libraries = missing), NA_integer_)
+  expect_identical(.bt_jags_threads(1L, libraries = c(NA_character_, missing)), NA_integer_)
+  expect_error(.bt_jags_threads(0L), "'threads' must be NA or a positive integer.", fixed = TRUE)
+  for(invalid in list(1.9, c(2L, 0L), integer(0), "1", NULL)){
+    expect_error(.bt_jags_threads(invalid), "'threads' must be one integer.", fixed = TRUE)
+  }
+  if(.Platform$OS.type != "windows"){
+    expect_identical(.bt_jags_threads(), NA_integer_)
+    expect_identical(.bt_jags_threads(1L), NA_integer_)
+  }
+
+  # without a thread control the helper evaluates its expression and sets nothing
+  calls <- list()
+  testthat::local_mocked_bindings(.bt_jags_threads = function(threads = NA_integer_, libraries = .bt_jags_libraries){
+    calls[[length(calls) + 1L]] <<- threads
+    NA_integer_
+  })
+  expect_identical(.bt_with_single_threaded_jags("value"), "value")
+  expect_identical(calls, list(NA_integer_))
+})
+
+test_that("an interrupt right after the count is set leaves the previous count", {
+
+  count <- 3L
+  testthat::local_mocked_bindings(.bt_jags_threads = function(threads = NA_integer_, libraries = .bt_jags_libraries){
+    previous <- count
+    if(!is.na(threads)) count <<- threads
+    if(identical(threads, 1L)) rlang::interrupt()
+    previous
+  })
+  tryCatch(.bt_with_single_threaded_jags(NULL), interrupt = function(condition) NULL)
+  expect_identical(count, 3L)
+})
+
+test_that("JAGS runs its linear algebra on one thread and the previous count returns", {
+
+  original <- .bt_jags_threads()
+  skip_if(is.na(original), "The loaded JAGS library exports no OpenMP thread control (only its Windows build does).")
+  withr::defer(.bt_jags_threads(original))
+
+  missing <- "BayesTools-test-missing-library.dll"
+  expect_identical(.bt_jags_threads(3L), original)
+  expect_identical(.bt_jags_threads(1L, libraries = missing), NA_integer_)
+  expect_identical(.bt_jags_threads(), 3L)
+  expect_identical(.bt_jags_threads(libraries = c(missing, .bt_jags_libraries)), 3L)
+  # a loaded library without the thread controls, and rejected counts, change nothing
+  expect_identical(.bt_jags_threads(1L, libraries = "R.dll"), NA_integer_)
+  for(invalid in list(1.9, c(2L, 0L), integer(0), 0L)){
+    expect_error(.bt_jags_threads(invalid))
+  }
+  expect_identical(.bt_jags_threads(), 3L)
+
+  expect_identical(.bt_with_single_threaded_jags(.bt_jags_threads()), 1L)
+  expect_identical(.bt_jags_threads(), 3L)
+  expect_identical(.bt_with_single_threaded_jags(.bt_with_single_threaded_jags(.bt_jags_threads())), 1L)
+  expect_identical(.bt_jags_threads(), 3L)
+  expect_error(.bt_with_single_threaded_jags(stop("sampler failed")), "sampler failed", fixed = TRUE)
+  expect_identical(.bt_jags_threads(), 3L)
+  tryCatch(.bt_with_single_threaded_jags(rlang::interrupt()), interrupt = function(condition) NULL)
+  expect_identical(.bt_jags_threads(), 3L)
+
+  # a serial chain group
+  testthat::local_mocked_bindings(.bt_rjags_group = function(...) list(threads = .bt_jags_threads()))
+  out <- .bt_rjags_run(model = "", data = list(), inits = list(1L, 2L), monitor = "mu", adapt = 100L,
+    burnin = 100L, sample = 100L, thin = 1L, cl = NULL, silent = TRUE)
+  expect_identical(out$threads, 1L)
+  expect_identical(.bt_jags_threads(), 3L)
+
+  # a step of a PSOCK worker, also a failing one
+  expect_identical(.bt_rjags_worker(NULL, function(input) .bt_jags_threads())$value, 1L)
+  expect_identical(.bt_jags_threads(), 3L)
+  expect_s3_class(.bt_rjags_worker(NULL, function(input) stop("worker failed"))$value, "error")
+  expect_identical(.bt_jags_threads(), 3L)
+
+  # the generator of a BUGS data block
+  compiled <- NULL
+  testthat::local_mocked_bindings(jags.model = function(...){
+    compiled <<- .bt_jags_threads()
+    list(data = function() list(x2 = 2))
+  }, .package = "rjags")
+  prepared <- .bt_rjags_realize_data("data{\n  x2 <- 2 * x\n}\nmodel{\n  y ~ dnorm(x2, 1)\n}",
+    list(x = 1, y = 0.5), 1L, "y")
+  expect_identical(compiled, 1L)
+  expect_identical(prepared$data$x2, 2)
+  expect_identical(.bt_jags_threads(), 3L)
+})

@@ -199,7 +199,8 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
     "BayesTools_draw_fingerprint",
     "BayesTools_native_range_environment",
     "BayesTools_decimal_read",
-    "BayesTools_prepare_finite_readout"
+    "BayesTools_prepare_finite_readout",
+    "BayesTools_jags_threads"
   )
 }
 
