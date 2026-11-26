@@ -86,11 +86,16 @@ test_that("runtime topology reaches every process and cleanup follows worker exi
   expect_length(contexts, 6L)
 })
 
-test_that("backend transport classification preserves the original condition", {
+test_that("a failed worker call is a transport failure and other errors keep their class", {
 
   backend <- function(...) list(...)
   arguments <- list(value = 3, monitor = c("mu", "tau"))
-  expect_identical(.JAGS_run_backend(backend, arguments, parallel = TRUE), arguments)
+  expect_identical(.JAGS_run_backend(backend, arguments), arguments)
+  run <- function(){
+    .JAGS_run_backend(.bt_rjags_run, list(model = "", data = list(), inits = list(1L, 2L),
+      monitor = "mu", adapt = 100L, burnin = 100L, sample = 100L, thin = 1L, cl = list(1L, 2L),
+      silent = TRUE))
+  }
 
   for(message in c("error reading from connection", "error writing to connection",
       "invalid connection", "connection is not open",
@@ -98,22 +103,32 @@ test_that("backend transport classification preserves the original condition", {
       "error writing to socket", "worker socket is unavailable",
       "connection closed by remote host", "connection refused",
       "broken pipe", "connection reset by peer",
-      "one node produced an error: error writing to connection")){
+      "one node produced an error: error writing to connection", "unknown failure")){
     original <- simpleError(message, call = quote(unserialize(node$con)))
-    failing_backend <- function(...) stop(original)
-    condition <- .JAGS_run_backend(failing_backend, list(), parallel = TRUE)
+    testthat::local_mocked_bindings(clusterApply = function(...) stop(original), .package = "parallel")
+    condition <- run()
     expect_s3_class(condition, "BayesTools_JAGS_worker_connection_error")
     expect_identical(condition$parent, original)
     expect_match(conditionMessage(condition), message, fixed = TRUE)
     expect_match(conditionMessage(condition), "Automatic retries were stopped.", fixed = TRUE)
 
-    # A local backend may fail on an unrelated file connection. Without a
-    # worker topology, preserve its original condition and retry policy.
-    expect_identical(.JAGS_run_backend(failing_backend, list(), parallel = FALSE), original)
+    # The same error outside a worker call (a local backend on an unrelated
+    # file connection, or the coordinator) keeps its condition and retry policy.
+    expect_identical(.JAGS_run_backend(function(...) stop(original), list()), original)
   }
-  original <- simpleError("Node inconsistent with parents")
-  expect_identical(.JAGS_run_backend(function(...) stop(original), list(),
-    parallel = TRUE), original)
+
+  # an error that a worker returns is not a transport failure, whatever its wording
+  returned <- simpleError("error reading from connection")
+  testthat::local_mocked_bindings(
+    clusterApply = function(cl, x, fun, ...) lapply(x, function(input) list(value = returned, warnings = list())),
+    .package = "parallel"
+  )
+  expect_identical(run(), returned)
+  for(original in list(simpleError("Node inconsistent with parents"), errorCondition(
+      "The requested convergence monitor 'connection[2]' is not available in the fitted model.",
+      class = "BayesTools_parameter_not_found"))){
+    expect_identical(.JAGS_run_backend(function(...) stop(original), list()), original)
+  }
 })
 
 test_that("parallel transport failures stop initialization retries immediately", {
@@ -137,12 +152,13 @@ test_that("parallel transport failures stop initialization retries immediately",
     .bt_attach_fit_contract = function(fit, ...) fit,
     .package = "BayesTools"
   )
+  # the worker call of the first attempt fails
   testthat::local_mocked_bindings(
-    .bt_rjags_fit = function(...){
+    clusterApply = function(...){
       calls <<- calls + 1L
       stop(original)
     },
-    .package = "BayesTools"
+    .package = "parallel"
   )
   for(silent in c(TRUE, FALSE)){
     calls <- stops <- 0L
@@ -347,13 +363,14 @@ test_that("fit retries and extensions use the actual current worker topology", {
     "start worker", "stop", "finish coordinator"))
 
   # A failed parallel extension retains usable draws, while reporting the
-  # worker transport failure instead of suggesting another initialization.
+  # worker transport failure (as the failed worker call classifies it)
+  # instead of suggesting another initialization.
   setup_failure <- FALSE
   extension_calls <- 0L
   testthat::local_mocked_bindings(
     .bt_rjags_extend = function(...){
       extension_calls <<- extension_calls + 1L
-      stop("error reading from connection")
+      stop(.JAGS_worker_connection_error(simpleError("error reading from connection")))
     },
     .package = "BayesTools"
   )

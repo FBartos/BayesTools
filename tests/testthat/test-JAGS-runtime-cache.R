@@ -303,6 +303,14 @@ test_that("runtime cache capture warnings are recorded in the fit warnings", {
   .report_test_script(new.env(parent = emptyenv()), ...)
 }
 
+# A scripted backend failure: a message, or a condition such as a classed
+# transport failure.
+.report_test_stop <- function(error){
+
+  if(inherits(error, "condition")) stop(error)
+  stop(error, call. = FALSE)
+}
+
 .report_test_backend <- function(state, env = parent.frame()){
 
   basic_fit <- contract_test_backend_fit(2L)
@@ -324,14 +332,14 @@ test_that("runtime cache capture warnings are recorded in the fit warnings", {
     .bt_rjags_fit = function(...){
       state$runs <- state$runs + 1L
       state$pending <- state$pending + 1L
-      if(state$runs %in% state$fail_runs) stop(state$run_error, call. = FALSE)
+      if(state$runs %in% state$fail_runs) .report_test_stop(state$run_error)
       basic_fit
     },
     .bt_rjags_extend = function(fit, ...){
       state$extensions <- state$extensions + 1L
       state$pending <- state$pending + 1L
       state$objects <- c(state$objects, list(fit))
-      if(state$extensions %in% state$fail_extensions) stop(state$extend_error, call. = FALSE)
+      if(state$extensions %in% state$fail_extensions) .report_test_stop(state$extend_error)
       fit
     },
     .package = "BayesTools", .env = env
@@ -539,7 +547,8 @@ test_that("runtime reports drop failed attempts and failed extensions but still 
 test_that("runtime reports are not requested from workers after a connection failure", {
 
   entry <- .report_test_entry
-  connection <- "error reading from connection"
+  # a transport failure, as the failed worker call classifies it
+  connection <- .JAGS_worker_connection_error(simpleError("error reading from connection"))
   state <- .report_test_backend(.report_test_state())
   report <- .report_test_callback(state)
 

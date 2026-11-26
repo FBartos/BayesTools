@@ -45,7 +45,7 @@ test_that("JAGS_fit() hands the driver the same model text and data with default
     call <- NULL
     modules <- NULL
     testthat::local_mocked_bindings(
-      .JAGS_run_backend = function(fun, model_call, parallel){
+      .JAGS_run_backend = function(fun, model_call){
         call <<- model_call
         stop(structure(class = c("captured_call", "condition"), list(message = "", call = NULL)))
       },

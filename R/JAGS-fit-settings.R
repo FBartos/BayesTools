@@ -33,7 +33,9 @@ JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, 
 
   check_int(chains, "chains", lower = check_mins[["chains"]], allow_NA = FALSE, call = call)
   .JAGS_check_adapt(adapt, lower = check_mins[["adapt"]], call = call)
-  check_int(burnin, "burnin", lower = check_mins[["burnin"]], allow_NA = FALSE, call = call)
+  # the first retained draw is numbered after the burn-in iterations, and the
+  # iteration numbers are integers
+  check_int(burnin, "burnin", lower = check_mins[["burnin"]], upper = .Machine$integer.max, allow_NA = FALSE, call = call)
   check_int(sample, "sample", lower = check_mins[["sample"]], allow_NA = FALSE, call = call)
   check_int(thin,   "thin",   lower = check_mins[["thin"]],   allow_NA = FALSE, call = call)
   check_bool(parallel, "parallel",                allow_NA = FALSE, call = call)
@@ -72,15 +74,13 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
     check_names = c(
       "max_Rhat", "min_ESS", "max_error", "max_SD_error", "max_time",
       "sample_extend", "restarts", "max_extend", "check_indicators",
-      "monitor", "allow_not_assessable"
+      "monitor",
+      "burnin_max_Rhat", "burnin_extend", "burnin_max_extend"
     ),
     call = call
   )
   if(is.null(autofit_control[["check_indicators"]])){
     autofit_control[["check_indicators"]] <- FALSE
-  }
-  if(is.null(autofit_control[["allow_not_assessable"]])){
-    autofit_control[["allow_not_assessable"]] <- FALSE
   }
   check_real(autofit_control[["max_Rhat"]],     "max_Rhat",     lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
   check_real(autofit_control[["min_ESS"]],      "min_ESS",      lower = 0, allow_NULL = TRUE, allow_NA = FALSE, call = call)
@@ -115,12 +115,6 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
       call. = FALSE
     )
   }
-  check_bool(
-    autofit_control[["allow_not_assessable"]],
-    "allow_not_assessable",
-    allow_NA = FALSE,
-    call = call
-  )
   check_list(autofit_control[["max_time"]],     "max_time", check_names = c("time", "unit"), check_length = 2, allow_NULL = TRUE, call = call)
   if(!is.null(autofit_control[["max_time"]])){
     if(is.null(names(autofit_control[["max_time"]]))){
@@ -135,9 +129,68 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
     }
     check_char(autofit_control[["max_time"]][["unit"]], "max_time:unit", allow_values = c("secs", "mins", "hours", "days", "weeks"), allow_NA = FALSE, call = call)
   }
-  check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, allow_NA = FALSE, call = call)
+  # a positive whole number of draws, or "auto" (.bt_autofit_extension_size())
+  if(is.character(autofit_control[["sample_extend"]])){
+    check_char(autofit_control[["sample_extend"]], "sample_extend", allow_values = "auto", allow_NA = FALSE, call = call)
+    # the plain string, without names, which the fitting loops compare with
+    # identical()
+    autofit_control[["sample_extend"]] <- "auto"
+  }else{
+    check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, allow_NA = FALSE, call = call)
+  }
   check_int(autofit_control[["restarts"]], "restarts", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
   check_int(autofit_control[["max_extend"]], "max_extend", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
 
+  # The readiness check between burn-in and sampling: an omitted element takes
+  # its default (.bt_burnin_check_settings()) and an explicit
+  # 'burnin_max_Rhat = NULL' turns the check off, so these elements are
+  # validated where present and never filled in.
+  supplied <- function(name) name %in% names(autofit_control)
+  # a finite number of at least 1, or "auto" (.bt_burnin_threshold()); NULL
+  # turns the check off, an empty value is refused
+  if(!is.null(autofit_control[["burnin_max_Rhat"]]) && length(autofit_control[["burnin_max_Rhat"]]) == 0L){
+    stop(paste0(call, "The 'burnin_max_Rhat' argument must have length '1'."), call. = FALSE)
+  }
+  if(is.character(autofit_control[["burnin_max_Rhat"]])){
+    check_char(autofit_control[["burnin_max_Rhat"]], "burnin_max_Rhat", allow_values = "auto", allow_NA = FALSE, call = call)
+    autofit_control[["burnin_max_Rhat"]] <- "auto"
+  }else{
+    check_real(autofit_control[["burnin_max_Rhat"]], "burnin_max_Rhat", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
+    if(!is.null(autofit_control[["burnin_max_Rhat"]]) && !is.finite(autofit_control[["burnin_max_Rhat"]])){
+      stop(
+        paste0(call, "The 'burnin_max_Rhat' argument must contain only finite values."),
+        call. = FALSE
+      )
+    }
+  }
+  check_int(autofit_control[["burnin_extend"]], "burnin_extend", lower = 100, upper = .Machine$integer.max,
+    allow_NULL = !supplied("burnin_extend"), allow_NA = FALSE, call = call)
+  check_int(autofit_control[["burnin_max_extend"]], "burnin_max_extend", lower = 0,
+    allow_NULL = !supplied("burnin_max_extend"), allow_NA = FALSE, call = call)
+
   return(invisible(autofit_control))
+}
+
+# The settings of the readiness check between burn-in and sampling. Unlike the
+# convergence criteria, an omitted element takes its default; an explicit
+# 'burnin_max_Rhat = NULL' turns the check off.
+.bt_burnin_check_settings <- function(autofit_control){
+
+  settings <- list(burnin_max_Rhat = "auto", burnin_extend = 500, burnin_max_extend = 10)
+  for(name in names(settings)){
+    if(name %in% names(autofit_control)){
+      settings[name] <- list(autofit_control[[name]])
+    }
+  }
+  settings
+}
+
+# The threshold of the readiness check for a fit with 'chains' chains: "auto"
+# falls with the number of chains; a number, or NULL (check off), stays.
+# "auto" is 1.7 + 0.9 / chains, computed as one division so that the result is
+# the double nearest the exact value (1.85 for six chains; the sum gives the
+# double below it).
+.bt_burnin_threshold <- function(burnin_max_Rhat, chains){
+
+  if(identical(burnin_max_Rhat, "auto")) (17 * chains + 9) / (10 * chains) else burnin_max_Rhat
 }
