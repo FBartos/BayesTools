@@ -32,7 +32,11 @@ JAGS_check_and_list_autofit_settings(
 
 \item{adapt}{number of samples used for adapting the MCMC chains, defaults to \code{500}}
 
-\item{burnin}{number of burnin iterations of the MCMC chains, defaults to \code{1000}}
+\item{burnin}{number of burnin iterations of the MCMC chains, defaults to
+\code{1000}. Its last iterations are checked for agreement of the chains
+before sampling starts, and with \code{autofit} burn-in can be extended (see
+\code{burnin_max_Rhat} in \code{autofit_control}); \code{fit$burnin} holds
+the burn-in that was run.}
 
 \item{sample}{number of draws to retain per chain, defaults to \code{4000}.
 Each chain runs \code{sample * thin} sampling iterations.}
@@ -141,7 +145,10 @@ is sized from the check of the supplied fit and, with no rate observed
 yet, is not shortened. Without \code{max_time}, each extension of a fit
 that cannot converge multiplies the draws per chain by about 2.1 (a
 failed R-hat) and up to 3 (large ESS or error deficits), up to
-\code{max_extend}.}
+\code{max_extend}. An
+extension, of either kind, whose last draw would have an iteration
+number beyond \code{.Machine$integer.max} is not started: the fitting
+stops with the last fit and a warning of its own.}
 \item{restarts}{maximum number of fitting attempts when the model fails
 to initialize; every failed attempt but the last is retried with new
 initial values (\code{restarts = 1} fits once, without a retry). A
@@ -168,6 +175,76 @@ formulas monitor (such as random-effect correlation matrices and their
 Cholesky factors) are derived and not checked by default. The role of
 every fitted coordinate is stored in the \code{convergence_role} column
 of \code{\link[=parameter_coordinates]{parameter_coordinates()}}.}
+\item{burnin_max_Rhat}{the threshold of the readiness check between
+burn-in and sampling. Defaults to \code{"auto"}, which is
+\code{1.7 + 0.9 / chains} (\code{2.15} for two chains, \code{2} for
+three, \code{1.925} for four); a number fixes the threshold, an omitted
+element takes its default, and \code{NULL} turns the check off. The
+check runs, also without \code{autofit}, in the initial fit of
+\code{JAGS_fit()} (afresh in each restart attempt; not in
+\code{JAGS_extend()} or the automatic extensions after sampling) when
+there are at least two chains, the block of the last
+\code{min(burnin_extend, floor(burnin / thin))} draws of burn-in, taken
+every \code{thin} iterations as in sampling, has at least 100 draws, and
+JAGS assigns the model a sampler. The iterations of the block (its draws
+times \code{thin}) run with the monitors on; their draws are checked and
+then dropped. Each
+chain's block is split into halves, and the chains are ready when the
+point estimate of the potential scale reduction factor over the
+half-chains (\code{coda::gelman.diag()}) is at most \code{burnin_max_Rhat}
+for every quantity that the convergence check assesses (the selection of
+\code{monitor} and \code{check_indicators}; a requested state of an
+indicator, such as \code{"mu_indicator (state 3)"}, that the block does
+not visit is not assessable there). A quantity that is constant over the
+half-chains, or not finite in each of them, is not assessable; one that
+is not finite in some half-chains only fails the check. In a model to
+which JAGS assigns no sampler (every node is drawn directly given its
+parents, as in a model without data) the chains cannot disagree, and the
+whole burn-in runs unmonitored, as with the check off. When the chains are not
+ready, a fit with \code{autofit} extends burn-in by blocks of
+\code{burnin_extend} draws (\code{burnin_extend * thin} iterations),
+each checked alone, until they are
+ready, \code{burnin_max_extend} blocks were added, or \code{max_time} is
+exceeded (checked before each block); a fit without \code{autofit} keeps
+its burn-in. Chains that are still not ready start sampling; a warning
+of class \code{BayesTools_burnin_not_converged} (also
+\code{BayesTools_fit_diagnostic}) is issued once that initial sampling
+of the attempt the fit keeps has finished (a restart attempt that is
+discarded warns nothing), before any automatic extension, whatever
+\code{silent} is, and kept in the fit's \code{warnings} attribute. When no monitored node lacks
+observed descendants, a fit whose chains are ready at once has the same
+draws, final states and samplers as with the check off: monitoring changes
+no sampler, but JAGS samples a monitored node without observed
+descendants (such as a predictive quantity) from the chain's random-number
+stream. The check cannot detect chains that are all in the same wrong
+state. The automatic value falls with the number of chains: for chains
+that agree but are autocorrelated, the statistic has the same typical
+value for any number of chains but varies less the more chains are run,
+so a threshold that falls with the number of chains keeps false alarms
+from becoming more frequent with them and keeps part of the sensitivity
+to one deviating chain that a fixed value loses. A slowly mixing fit can
+exceed the threshold although its chains agree, because the statistic
+grows with the autocorrelation of the block's draws; a larger
+\code{thin} then helps when more widely spaced draws are less
+correlated, while more burn-in is the remedy for chains that have not
+yet reached the same region. The check needs 100 draws at the fit's
+thinning: with \code{burnin} below \code{100 * thin} it does not run,
+and when it runs with \code{burnin} at most \code{burnin_extend * thin},
+the block holds every complete window of \code{thin} iterations of
+burn-in (the first \code{burnin \%\% thin} iterations run unmonitored),
+so raise \code{burnin} together with \code{thin}.}
+\item{burnin_extend}{the number of final burn-in draws, taken every
+\code{thin} iterations, that the readiness check assesses, and of each
+extension of burn-in (\code{burnin_extend * thin} iterations); at least
+\code{100}. Defaults to \code{500}. When the check runs with
+\code{burnin} at most \code{burnin_extend * thin}, its block holds every
+complete window of \code{thin} iterations of burn-in, and the first
+\code{burnin \%\% thin} iterations run unmonitored.}
+\item{burnin_max_extend}{the largest number of extensions of burn-in, with
+\code{autofit} only. Defaults to \code{10}. An extension after which the
+last retained draw would have an iteration number beyond
+\code{.Machine$integer.max} is not run; the warning then names that
+limit.}
 }}
 
 \item{skip_sample_extend}{whether \code{sample_extend}

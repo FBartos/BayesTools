@@ -6702,3 +6702,245 @@ model{
   ))
   .sampler_test_expect_checks(checks, "stochastic gate ancestry")
 })
+
+# ============================================================================ #
+# SECTION: Readiness check between burn-in and sampling
+# ============================================================================ #
+.readiness_control <- function(...){
+
+  utils::modifyList(list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05,
+    max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10),
+    list(...), keep.null = TRUE)
+}
+
+test_that("a passing readiness check leaves the draws as they are with the check off", {
+
+  skip_on_cran()
+  # every monitored node has an observed descendant, so monitoring the last
+  # block of burn-in changes no sampler and no random number; the burn-in is
+  # either the block itself or longer than it, so that its first part runs
+  # unmonitored (the default path); the block holds draws at the fit's 'thin'
+  # (with thin = 3, 700 %/% 3 = 233 draws over 699 iterations, after one
+  # unmonitored iteration)
+  fit_with <- function(check, burnin, burnin_extend, thin, ...){
+    JAGS_fit("model{ gate ~ dbern(0.4); y ~ dnorm(mu + gate, pow(sigma, -2)) }",
+      data = list(y = 1.3), prior_list = list(mu = prior("normal", list(0, 1)),
+        sigma = prior("normal", list(0, 1), list(0, Inf))),
+      add_parameters = "gate", chains = 3L, cores = 2L, adapt = 200L, burnin = burnin, sample = 150L,
+      thin = thin, seed = 2024L,
+      autofit_control = if(check) .readiness_control(burnin_extend = burnin_extend) else
+        .readiness_control(burnin_max_Rhat = NULL), ...)
+  }
+  for(setting in list(list(burnin = 400L, burnin_extend = 500, thin = 2L, block = 400L),
+                     list(burnin = 700L, burnin_extend = 200, thin = 2L, block = 400L),
+                     list(burnin = 700L, burnin_extend = 500, thin = 3L, block = 699L)))
+  for(parallel in c(FALSE, TRUE)) for(probabilities in list(NULL, c("gate", "mu"))) for(jasp in c(FALSE, TRUE)){
+    info <- paste("burnin", setting$burnin, "thin", setting$thin, "parallel", parallel, "probabilities",
+      !is.null(probabilities), "JASP", jasp)
+    on  <- fit_with(TRUE, setting$burnin, setting$burnin_extend, setting$thin, parallel = parallel,
+      sampler_probabilities = probabilities, is_JASP = jasp)
+    off <- fit_with(FALSE, setting$burnin, setting$burnin_extend, setting$thin, parallel = parallel,
+      sampler_probabilities = probabilities, is_JASP = jasp)
+    expect_identical(attr(on, "burnin_check")$status, "ready", info = info)
+    expect_identical(attr(on, "burnin_check")$block, setting$block, info = info)
+    expect_identical(attr(on, "burnin_check")$thin, setting$thin, info = info)
+    expect_identical(attr(on, "burnin_check")$extension, 0, info = info)
+    expect_null(attr(off, "burnin_check"), info = info)
+    expect_identical(on$mcmc, off$mcmc, info = info)
+    expect_identical(on$end_state, off$end_state, info = info)
+    expect_identical(on$samplers, off$samplers, info = info)
+    expect_identical(on$sampler_probabilities, off$sampler_probabilities, info = info)
+    expect_identical(attr(on, "warnings"), attr(off, "warnings"), info = info)
+    expect_identical(on$burnin, setting$burnin, info = info)
+    expect_identical(on$burnin, off$burnin, info = info)
+    expect_identical(stats::start(on$mcmc[[1L]]), 200 + setting$burnin + 1, info = info)
+    for(node in names(on$sampler_probabilities)){
+      if(!is.null(on$sampler_probabilities[[node]])){
+        expect_identical(stats::start(on$sampler_probabilities[[node]][[1L]]), 200 + setting$burnin + 1,
+          info = info)
+      }
+    }
+  }
+})
+
+test_that("the automatic readiness threshold counts every chain of a parallel fit", {
+
+  skip_on_cran()
+  # four chains on two workers of two chains each: 1.7 + 0.9 / 4, not the
+  # value of a worker's two chains
+  fit <- JAGS_fit("model{ y ~ dnorm(mu, 1) }", data = list(y = 0.5),
+    prior_list = list(mu = prior("normal", list(0, 1))), chains = 4L, parallel = TRUE, cores = 2L,
+    adapt = 100L, burnin = 300L, sample = 100L, seed = 11L, autofit_control = .readiness_control())
+  expect_length(fit$mcmc, 4L)
+  expect_identical(attr(fit, "burnin_check")$burnin_max_Rhat, 1.925)
+})
+
+test_that("a model without samplers runs as with the readiness check off", {
+
+  skip_on_cran()
+  # without data JAGS assigns no sampler and draws every node afresh in each
+  # sweep: the check is skipped and the whole burn-in runs unmonitored
+  fit_with <- function(check, ...){
+    JAGS_fit("model{}", data = NULL, prior_list = list(mu = prior("normal", list(0, 1)),
+        sigma = prior("normal", list(0, 1), list(0, Inf))),
+      chains = 3L, cores = 2L, adapt = 100L, burnin = 700L, sample = 150L, seed = 31L,
+      autofit_control = if(check) .readiness_control(burnin_extend = 200) else
+        .readiness_control(burnin_max_Rhat = NULL), ...)
+  }
+  for(parallel in c(FALSE, TRUE)) for(jasp in c(FALSE, TRUE)){
+    info <- paste("parallel", parallel, "JASP", jasp)
+    on  <- fit_with(TRUE, parallel = parallel, is_JASP = jasp)
+    off <- fit_with(FALSE, parallel = parallel, is_JASP = jasp)
+    expect_identical(nrow(on$samplers), 0L, info = info)
+    expect_null(attr(on, "burnin_check"), info = info)
+    expect_identical(on$mcmc, off$mcmc, info = info)
+    expect_identical(on$end_state, off$end_state, info = info)
+    expect_identical(attr(on, "warnings"), attr(off, "warnings"), info = info)
+    expect_identical(on$burnin, 700L, info = info)
+  }
+})
+
+test_that("a monitored predictive node changes the stream of a passing check, not the model", {
+
+  skip_on_cran()
+  # JAGS samples a node without observed descendants only while it is monitored
+  set.seed(5)
+  y <- stats::rnorm(10, 0.5)
+  fit_with <- function(check, add_parameters){
+    JAGS_fit("model{ for(i in 1:N){ y[i] ~ dnorm(mu, 1) }\n ypred ~ dnorm(mu, 1) }",
+      data = list(y = y, N = 10L), prior_list = list(mu = prior("normal", list(0, 1))),
+      add_parameters = add_parameters, chains = 3L, adapt = 100L, burnin = 300L, sample = 3000L,
+      seed = 77L,
+      autofit_control = if(check) .readiness_control() else .readiness_control(burnin_max_Rhat = NULL))
+  }
+  on <- fit_with(TRUE, "ypred")
+  expect_identical(attr(on, "burnin_check")$status, "ready")
+  expect_false(identical(on$mcmc, fit_with(FALSE, "ypred")$mcmc))
+  expect_identical(fit_with(TRUE, NULL)$mcmc, fit_with(FALSE, NULL)$mcmc)
+
+  # the conjugate posterior N(sum(y) / 11, 1 / 11) and its predictive N(., 1 + 1 / 11),
+  # within four Monte Carlo standard errors (the draws are close to independent)
+  draws <- do.call(rbind, lapply(on$mcmc, as.matrix))
+  n <- nrow(draws)
+  expect_lt(abs(mean(draws[, "mu"]) - sum(y) / 11), 4 * sqrt(1 / 11 / n))
+  expect_lt(abs(mean(draws[, "ypred"]) - sum(y) / 11), 4 * sqrt((1 + 1 / 11) / n))
+  expect_lt(abs(stats::var(draws[, "ypred"]) - (1 + 1 / 11)), 4 * (1 + 1 / 11) * sqrt(2 / n))
+})
+
+test_that("a requested indicator state that first appears after burn-in does not stop the fit", {
+
+  skip_on_cran()
+  # the third component has a prior weight of 0.004: with this seed no chain
+  # visits it in the checked block of burn-in, but the retained draws do
+  fit_with <- function(check){
+    JAGS_fit("model{ y ~ dnorm(mu, 1) }", data = list(y = 0),
+      prior_list = list(mu = prior_mixture(list(
+        prior("normal", list(0, 1), prior_weights = 0.498),
+        prior("normal", list(0, 1), prior_weights = 0.498),
+        prior("normal", list(0, 1), prior_weights = 0.004)
+      ))), chains = 2L, adapt = 100L, burnin = 100L, sample = 2000L, seed = 11L, autofit = TRUE,
+      autofit_control = .readiness_control(max_Rhat = NULL, min_ESS = NULL, max_error = NULL,
+        max_SD_error = NULL, sample_extend = 100, max_extend = 1, monitor = "mu_indicator (state 3)",
+        burnin_max_Rhat = if(check) "auto"))
+  }
+  on  <- fit_with(TRUE)
+  off <- fit_with(FALSE)
+  expect_s3_class(on, "BayesTools_fit")
+  record <- attr(on, "burnin_check")
+  expect_identical(record[c("status", "stop_reason", "extension")],
+    list(status = "not_assessable", stop_reason = "not_assessable", extension = 0))
+  states <- unlist(lapply(on$mcmc, function(chain) chain[, "mu_indicator"]))
+  expect_gt(sum(states == 3), 0)
+  expect_identical(on$mcmc, off$mcmc)
+  expect_true(JAGS_check_convergence(on, monitor = "mu_indicator (state 3)", max_Rhat = NULL,
+    min_ESS = NULL, max_error = NULL, max_SD_error = NULL))
+})
+
+test_that("chains in separated modes warn without autofit and extend burn-in up to the cap with it", {
+
+  skip_on_cran()
+  # y ~ N(m^2, 0.1^2) with y = 16 has modes at m = -4 and 4 and no mass
+  # between them; with this seed the chains start from the prior in both. The
+  # gate records its probability trace.
+  fit_with <- function(autofit, ...){
+    JAGS_fit("model{ y ~ dnorm(pow(m, 2), 100)\n gate ~ dbern(0.4)\n z ~ dnorm(gate, 1) }",
+      data = list(y = 16, z = 0.3), prior_list = list(m = prior("normal", list(0, 5))),
+      add_parameters = "gate", sampler_probabilities = "gate", chains = 3L, adapt = 100L,
+      burnin = 300L, sample = 100L, thin = 2L, seed = 1L, autofit = autofit, silent = TRUE,
+      autofit_control = .readiness_control(max_Rhat = NULL, min_ESS = NULL, max_error = NULL,
+        max_SD_error = NULL, ...))
+  }
+  # thin = 2: the check reads 150 draws over the last 300 iterations of
+  # burn-in, and an extension of 200 draws runs 400 iterations
+  expect_warning(
+    fit <- fit_with(FALSE),
+    paste0("^Chains did not agree at the end of burn-in: R-hat [0-9.]+ for 'm' [(]limit 2[.]00[)][.] ",
+      "Increase 'adapt' and 'burnin'; if the chains mix slowly, increase 'thin'[.] Or fit with ",
+      "'autofit = TRUE'[.]$"),
+    class = "BayesTools_burnin_not_converged"
+  )
+  signs <- vapply(fit$mcmc, function(chain) unique(sign(chain[, "m"])), numeric(1))
+  expect_identical(signs, c(-1, 1, -1))
+  record <- attr(fit, "burnin_check")
+  expect_identical(record[c("status", "stop_reason", "extension")],
+    list(status = "not_ready", stop_reason = "no_autofit", extension = 0))
+  expect_identical(record[c("burnin_max_Rhat", "block", "thin")], list(burnin_max_Rhat = 2, block = 300L, thin = 2L))
+  expect_gt(record$blocks$Rhat, 100)
+  expect_identical(fit$burnin, 300L)
+  expect_identical(attr(fit, "warnings"), BayesTools:::.bt_burnin_warning(record))
+
+  expect_warning(
+    fit <- fit_with(TRUE, burnin_extend = 200, burnin_max_extend = 2),
+    "^Chains did not agree at the end of burn-in after 2 extensions: R-hat [0-9.]+ for 'm' [(]limit 2[.]00[)][.] Increase 'adapt', 'burnin' or 'thin'[.]$",
+    class = "BayesTools_burnin_not_converged"
+  )
+  record <- attr(fit, "burnin_check")
+  expect_identical(record$stop_reason, "max_extend")
+  expect_identical(record$blocks$sweeps, c(300L, 400L, 400L))
+  expect_identical(record$extension, 800)
+  expect_identical(fit$burnin, 1100L)
+  expect_identical(JAGS_draw_geometry(fit)$chains$start, rep(1201L, 3L))
+  expect_identical(JAGS_draw_geometry(fit)$chains$end, rep(1201L + 99L * 2L, 3L))
+  for(chain in seq_len(3L)){
+    expect_identical(attr(fit$sampler_probabilities$gate[[chain]], "mcpar"), c(1201, 1399, 2))
+    expect_identical(as.numeric(fit$sampler_probabilities$gate[[chain]][, "selected"]),
+      as.numeric(fit$mcmc[[chain]][, "gate"]))
+  }
+  expect_identical(vapply(fit$mcmc, function(chain) unique(sign(chain[, "m"])), numeric(1)), signs)
+})
+
+test_that("no compiled model is left on a worker after a failure in a burn-in block", {
+
+  skip_on_cran()
+  cl <- .JAGS_runtime_cluster_start(cores = 2, chains = 3, packages = "BayesTools", warn = FALSE)
+  on.exit(.JAGS_runtime_cluster_stop(cl), add = TRUE)
+  worker_models <- function(){
+    probe <- function() !is.null(BayesTools:::.bt_rjags_worker_session$model)
+    environment(probe) <- baseenv()
+    unlist(parallel::clusterCall(cl, probe))
+  }
+  model <- "model{ for(i in 1:2){ mu[i] ~ dnorm(0, 1) }\n y ~ dnorm(mu[1] + mu[2], 1) }"
+  inits <- lapply(1:3, function(chain) list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = chain))
+  readiness <- function(assess){
+    list(block = 100L, burnin_max_Rhat = 1.5, burnin_extend = 100, max_extensions = 0, autofit = FALSE,
+      time_exceeded = function() FALSE, assess = assess)
+  }
+  fit_with <- function(monitor, assess){
+    .bt_rjags_fit(model, list(y = 0.5), inits, monitor, adapt = 100L, burnin = 200L, sample = 100L,
+      thin = 1L, cl = cl, readiness = readiness(assess))
+  }
+
+  # the check fails on the coordinator after every worker ran its block
+  expect_error(fit_with("mu", function(draws) stop("check failed")), "check failed")
+  expect_identical(worker_models(), c(FALSE, FALSE))
+  # the monitored block fails on the workers
+  expect_warning(
+    expect_error(fit_with("mu[1:3]", function(draws) c(mu = 1))),
+    "Failed to set value trace monitor for mu[1:3]", fixed = TRUE
+  )
+  expect_identical(worker_models(), c(FALSE, FALSE))
+  # a successful fit that does not retain its workers releases them too
+  fit <- fit_with("mu", function(draws) c(mu = 1))
+  expect_identical(attr(fit, "burnin_check")$status, "ready")
+  expect_identical(worker_models(), c(FALSE, FALSE))
+})

@@ -34,7 +34,11 @@
 #' \code{NULL} uses the setting of the initial fit. A value supplied to
 #' \code{JAGS_extend()} applies to that call only: the returned fit keeps the
 #' initial setting, which later calls without \code{adapt} use again.
-#' @param burnin number of burnin iterations of the MCMC chains, defaults to \code{1000}
+#' @param burnin number of burnin iterations of the MCMC chains, defaults to
+#' \code{1000}. Its last iterations are checked for agreement of the chains
+#' before sampling starts, and with \code{autofit} burn-in can be extended (see
+#' \code{burnin_max_Rhat} in \code{autofit_control}); \code{fit$burnin} holds
+#' the burn-in that was run.
 #' @param sample number of draws to retain per chain, defaults to \code{4000}.
 #' Each chain runs \code{sample * thin} sampling iterations.
 #' @param thin thinning interval for the MCMC samples, defaults to \code{1}
@@ -95,7 +99,10 @@
 #'   yet, is not shortened. Without \code{max_time}, each extension of a fit
 #'   that cannot converge multiplies the draws per chain by about 2.1 (a
 #'   failed R-hat) and up to 3 (large ESS or error deficits), up to
-#'   \code{max_extend}.}
+#'   \code{max_extend}. An
+#'   extension, of either kind, whose last draw would have an iteration
+#'   number beyond \code{.Machine$integer.max} is not started: the fitting
+#'   stops with the last fit and a warning of its own.}
 #'   \item{restarts}{maximum number of fitting attempts when the model fails
 #'   to initialize; every failed attempt but the last is retried with new
 #'   initial values (\code{restarts = 1} fits once, without a retry). A
@@ -122,6 +129,76 @@
 #'   Cholesky factors) are derived and not checked by default. The role of
 #'   every fitted coordinate is stored in the \code{convergence_role} column
 #'   of [parameter_coordinates()].}
+#'   \item{burnin_max_Rhat}{the threshold of the readiness check between
+#'   burn-in and sampling. Defaults to \code{"auto"}, which is
+#'   \code{1.7 + 0.9 / chains} (\code{2.15} for two chains, \code{2} for
+#'   three, \code{1.925} for four); a number fixes the threshold, an omitted
+#'   element takes its default, and \code{NULL} turns the check off. The
+#'   check runs, also without \code{autofit}, in the initial fit of
+#'   \code{JAGS_fit()} (afresh in each restart attempt; not in
+#'   \code{JAGS_extend()} or the automatic extensions after sampling) when
+#'   there are at least two chains, the block of the last
+#'   \code{min(burnin_extend, floor(burnin / thin))} draws of burn-in, taken
+#'   every \code{thin} iterations as in sampling, has at least 100 draws, and
+#'   JAGS assigns the model a sampler. The iterations of the block (its draws
+#'   times \code{thin}) run with the monitors on; their draws are checked and
+#'   then dropped. Each
+#'   chain's block is split into halves, and the chains are ready when the
+#'   point estimate of the potential scale reduction factor over the
+#'   half-chains (\code{coda::gelman.diag()}) is at most \code{burnin_max_Rhat}
+#'   for every quantity that the convergence check assesses (the selection of
+#'   \code{monitor} and \code{check_indicators}; a requested state of an
+#'   indicator, such as \code{"mu_indicator (state 3)"}, that the block does
+#'   not visit is not assessable there). A quantity that is constant over the
+#'   half-chains, or not finite in each of them, is not assessable; one that
+#'   is not finite in some half-chains only fails the check. In a model to
+#'   which JAGS assigns no sampler (every node is drawn directly given its
+#'   parents, as in a model without data) the chains cannot disagree, and the
+#'   whole burn-in runs unmonitored, as with the check off. When the chains are not
+#'   ready, a fit with \code{autofit} extends burn-in by blocks of
+#'   \code{burnin_extend} draws (\code{burnin_extend * thin} iterations),
+#'   each checked alone, until they are
+#'   ready, \code{burnin_max_extend} blocks were added, or \code{max_time} is
+#'   exceeded (checked before each block); a fit without \code{autofit} keeps
+#'   its burn-in. Chains that are still not ready start sampling; a warning
+#'   of class \code{BayesTools_burnin_not_converged} (also
+#'   \code{BayesTools_fit_diagnostic}) is issued once that initial sampling
+#'   of the attempt the fit keeps has finished (a restart attempt that is
+#'   discarded warns nothing), before any automatic extension, whatever
+#'   \code{silent} is, and kept in the fit's \code{warnings} attribute. When no monitored node lacks
+#'   observed descendants, a fit whose chains are ready at once has the same
+#'   draws, final states and samplers as with the check off: monitoring changes
+#'   no sampler, but JAGS samples a monitored node without observed
+#'   descendants (such as a predictive quantity) from the chain's random-number
+#'   stream. The check cannot detect chains that are all in the same wrong
+#'   state. The automatic value falls with the number of chains: for chains
+#'   that agree but are autocorrelated, the statistic has the same typical
+#'   value for any number of chains but varies less the more chains are run,
+#'   so a threshold that falls with the number of chains keeps false alarms
+#'   from becoming more frequent with them and keeps part of the sensitivity
+#'   to one deviating chain that a fixed value loses. A slowly mixing fit can
+#'   exceed the threshold although its chains agree, because the statistic
+#'   grows with the autocorrelation of the block's draws; a larger
+#'   \code{thin} then helps when more widely spaced draws are less
+#'   correlated, while more burn-in is the remedy for chains that have not
+#'   yet reached the same region. The check needs 100 draws at the fit's
+#'   thinning: with \code{burnin} below \code{100 * thin} it does not run,
+#'   and when it runs with \code{burnin} at most \code{burnin_extend * thin},
+#'   the block holds every complete window of \code{thin} iterations of
+#'   burn-in (the first \code{burnin \%\% thin} iterations run unmonitored),
+#'   so raise \code{burnin} together with \code{thin}.}
+#'   \item{burnin_extend}{the number of final burn-in draws, taken every
+#'   \code{thin} iterations, that the readiness check assesses, and of each
+#'   extension of burn-in (\code{burnin_extend * thin} iterations); at least
+#'   \code{100}. Defaults to \code{500}. When the check runs with
+#'   \code{burnin} at most \code{burnin_extend * thin}, its block holds every
+#'   complete window of \code{thin} iterations of burn-in, and the first
+#'   \code{burnin \%\% thin} iterations run unmonitored.}
+#'   \item{burnin_max_extend}{the largest number of extensions of burn-in, with
+#'   \code{autofit} only. Defaults to \code{10}. An extension after which the
+#'   last retained draw would have an iteration number beyond
+#'   \code{.Machine$integer.max} is not run; the warning then names that
+#'   limit.}
 #' }
 #' @param parallel whether to distribute chains over PSOCK worker processes.
 #' Defaults to \code{FALSE}, which runs all chains in the calling process.
@@ -408,8 +485,32 @@
 #' per backend extension (automatic extensions of \code{JAGS_fit()} and the
 #' extensions of \code{JAGS_extend()}) giving the \code{adapt} passed to the
 #' backend and whether the backend \code{rebuilt} the sampler, the only case in
-#' which it adapts. Warnings of the backend that adaptation was incomplete are
-#' issued and also kept in the fit's \code{warnings} attribute.
+#' which it adapts. Warnings of the backend that adaptation was incomplete
+#' (class \code{BayesTools_adaptation_incomplete}, also
+#' \code{BayesTools_fit_diagnostic}) are issued and also kept in the fit's
+#' \code{warnings} attribute.
+#'
+#' The \code{burnin_check} attribute of a fit records the readiness check
+#' between burn-in and sampling (see \code{burnin_max_Rhat} in
+#' \code{autofit_control}); it is \code{NULL} when the check did not run. It
+#' runs in the initial fit of \code{JAGS_fit()} only, afresh in each restart
+#' attempt, and not in \code{JAGS_extend()}, the automatic extensions after
+#' sampling, or a model without samplers. The record holds
+#' \code{burnin_max_Rhat} (the threshold used, a number also when it was
+#' \code{"auto"}), \code{block} (the iterations of the checked end of the
+#' requested burn-in), \code{burnin_extend} (in draws), \code{thin} (the
+#' thinning of the checked draws), \code{blocks} (one row per checked block,
+#' with the iterations \code{sweeps} it ran and its largest value \code{Rhat}
+#' and \code{parameter}), \code{extension} (the iterations added to burn-in),
+#' \code{status} (\code{"ready"}, \code{"not_ready"}, or
+#' \code{"not_assessable"} when no quantity could be assessed, which makes no
+#' claim of readiness and extends nothing), \code{stop_reason}
+#' (\code{"ready"}, \code{"max_extend"}, \code{"max_time"},
+#' \code{"iteration_limit"}, \code{"no_autofit"}, or \code{"not_assessable"}),
+#' and \code{failing} (the
+#' quantities of the last block above the threshold, with their values).
+#' \code{fit$burnin} is the burn-in that was run, and the iteration numbers
+#' of the draws and of \code{sampler_probabilities} count it.
 #'
 #' @seealso [JAGS_check_convergence()]
 #'
@@ -466,14 +567,37 @@ NULL
   list(value = value, warnings = messages)
 }
 
+# Whether 'sample' more draws per chain keep the public iteration number of
+# the fit's last draw within the integer range of the draw geometry (the
+# chains' coda timing). An extension that would leave it is not started.
+# Chains without timing have no iteration numbers to keep in range.
+.bt_extension_fits_iterations <- function(fit, sample){
+
+  timing <- lapply(fit[["mcmc"]], attr, which = "mcpar", exact = TRUE)
+  if(length(timing) == 0L || any(lengths(timing) != 3L)){
+    return(TRUE)
+  }
+  last <- max(vapply(timing, function(mcpar) as.double(mcpar[[2L]]), numeric(1)))
+  last + as.double(sample) * timing[[1L]][[3L]] <= .Machine$integer.max
+}
+
+# The warning of automatic fitting stopped by the integer range of the
+# iteration numbers.
+.bt_iteration_limit_message <- function(sample){
+
+  paste0("The automatic model fitting was terminated due to the iteration limit: an extension of ",
+    sample, " draws per chain would number the draws beyond the largest iteration number (",
+    .Machine$integer.max, "). Use a smaller 'adapt', 'burnin', or 'sample' times 'thin' ",
+    "to leave room for extensions.")
+}
+
 # A JASP fit keeps its compiled samplers in its private workers through autofit.
 .bt_run_extension <- function(fit, sample, adapt, cl, silent){
 
   rebuilt <- if(is.null(cl)) is.null(fit[["live_model"]]) else !isTRUE(fit[["live_model"]])
   run <- .bt_collect_adaptation_warnings(.JAGS_run_backend(
     .bt_rjags_extend,
-    list(fit = fit, sample = sample, adapt = as.integer(adapt), cl = cl, silent = silent),
-    parallel = !is.null(cl)
+    list(fit = fit, sample = sample, adapt = as.integer(adapt), cl = cl, silent = silent)
   ))
   list(
     extension = run$value,
@@ -523,7 +647,7 @@ NULL
 #' @rdname JAGS_fit
 JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
-                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL),
+                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, burnin_max_Rhat = "auto", burnin_extend = 500, burnin_max_extend = 10),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
                      add_parameters = NULL, required_packages = NULL,
                      formula_random_prior_list = NULL, formula_random_effects_compile_list = NULL,
@@ -543,6 +667,14 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   model_syntax <- .check_JAGS_syntax(model_syntax)
   JAGS_check_and_list_fit_settings(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed)
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
+  # The readiness check between burn-in and sampling looks at a block of the
+  # last 'burnin_extend' draws of burn-in at the fit's thinning (as many as
+  # burn-in holds when shorter), if they are at least 100 and there are at
+  # least two chains.
+  burnin_settings <- .bt_burnin_check_settings(autofit_control)
+  burnin_max_Rhat <- .bt_burnin_threshold(burnin_settings[["burnin_max_Rhat"]], chains)
+  readiness_block <- min(burnin_settings[["burnin_extend"]], burnin %/% thin)
+  check_readiness <- !is.null(burnin_max_Rhat) && chains >= 2 && readiness_block >= 100
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(jags_modules, "jags_modules", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
@@ -728,7 +860,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   )
   model_syntax <- backend_monitor$model_syntax
   backend_anchor <- backend_monitor$backend_anchor
-  if(autofit){
+  if(autofit || check_readiness){
     .bt_convergence_validate_monitor_names(
       monitor = autofit_control[["monitor"]],
       monitored_names = backend_monitor$monitor
@@ -803,9 +935,15 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   }
 
   start_time <- .bt_autofit_clock()
+  max_time_exceeded <- function(){
+    elapsed <- .bt_autofit_elapsed(start_time, autofit_control[["max_time"]])
+    !is.null(elapsed) && elapsed[["time"]] > autofit_control[["max_time"]][["time"]]
+  }
   restart_warnings <- character()
   # incomplete-adaptation warnings of the backend runs that the fit keeps
   adaptation_warnings <- character()
+  # the warning of chains that were not ready at the end of burn-in
+  burnin_warnings <- character()
   adaptation <- .bt_adaptation_record(adapt)
   # the runtime reports of the backend runs that the fit keeps
   reports <- .bt_runtime_reports_empty()
@@ -813,16 +951,27 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     reports <<- .bt_runtime_report_after_run(reports, runtime_report, result,
       chains, if(parallel) cl else NULL)
   }
+  # set while the readiness check assesses a block of burn-in
+  assessing <- FALSE
   run_initial <- function(call){
+    assessing <<- FALSE
     run <- withRestarts(
-      .bt_collect_adaptation_warnings(.JAGS_run_backend(.bt_rjags_fit, call, parallel)),
+      .bt_collect_adaptation_warnings(.JAGS_run_backend(.bt_rjags_fit, call)),
       BayesTools_jasp_progress_error = function(e, ran){
         if(ran) report_run(e)
         stop(e)
       })
     report_run(run$value)
+    # An error of the readiness check itself (such as a convergence monitor
+    # that the fitted columns do not contain) is not a sampler failure that
+    # new initial values could repair.
+    if(assessing){
+      stop(run$value)
+    }
     if(!inherits(run$value, "error")){
       adaptation_warnings <<- run$warnings
+      # only the attempt that the fit keeps warns
+      burnin_warnings <<- .bt_burnin_warn(attr(run$value, "burnin_check", exact = TRUE))
     }
     run$value
   }
@@ -831,6 +980,61 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     model_call$inits[[1L]][[".RNG.seed"]], model_call$monitor), error = identity)
   if(!inherits(prepared, "error")){
     model_call[c("model", "data")] <- prepared
+  }
+  # A BUGS data block can generate observations. Determine convergence roles
+  # from the actual sampled model and its realized, fully observed inputs.
+  sampling_model <- model_call$model
+  data_names <- names(model_call$data)[vapply(model_call$data, function(x) !anyNA(x), logical(1))]
+  # The convergence roles of the fitted coordinates, as the parameter map
+  # stores them, give the selection of the readiness check and of automatic
+  # fitting. The coordinates are built once, from the first columns the
+  # backend returns, and again only for different columns.
+  coordinates_cache <- NULL
+  fit_coordinates <- function(columns){
+    if(is.null(coordinates_cache) || !identical(coordinates_cache$columns, columns)){
+      coordinates_cache <<- list(
+        columns = columns,
+        coordinates = .bt_build_parameter_coordinates(
+          columns = columns,
+          monitor_names = model_call$monitor,
+          prior_list = prior_list,
+          formula_design = formula_design_info,
+          formula_scale = formula_scale_info,
+          backend_anchor = backend_anchor,
+          add_parameters = add_parameters,
+          model_syntax = sampling_model,
+          data_names = data_names
+        )
+      )
+    }
+    coordinates_cache$coordinates
+  }
+  if(check_readiness){
+    model_call$readiness <- list(
+      # in draws, taken every 'thin' iterations
+      block           = as.integer(readiness_block),
+      burnin_max_Rhat = burnin_max_Rhat,
+      burnin_extend   = burnin_settings[["burnin_extend"]],
+      max_extensions  = if(autofit) burnin_settings[["burnin_max_extend"]] else 0,
+      # the burn-in iterations that keep the public iteration number of the
+      # last retained draw within the integer range of the draw geometry
+      extension_room  = .Machine$integer.max -
+        (as.double(adapt) + burnin + 1 + (as.double(sample) - 1) * thin),
+      autofit         = autofit,
+      time_exceeded   = max_time_exceeded,
+      assess          = function(draws){
+        assessing <<- TRUE
+        values <- .bt_burnin_block_Rhat(
+          block = draws,
+          coordinates = fit_coordinates(colnames(draws[[1L]])),
+          prior_list = prior_list,
+          monitor = autofit_control[["monitor"]],
+          check_indicators = autofit_control[["check_indicators"]]
+        )
+        assessing <<- FALSE
+        values
+      }
+    )
   }
   if(inherits(prepared, "error")){
     fit <- prepared
@@ -879,11 +1083,6 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   if(inherits(fit, "error") & !silent)
     warning(paste0("The model estimation failed with the following error: ", fit$message), immediate. = TRUE)
 
-  # A BUGS data block can generate observations. Determine convergence roles
-  # from the actual sampled model and its realized, fully observed inputs.
-  sampling_model <- model_call$model
-  data_names <- names(model_call$data)[vapply(model_call$data, function(x) !anyNA(x), logical(1))]
-
   extension_failed <- FALSE
   last_valid_runtime_state <- NULL
   last_valid_capture_warnings <- character()
@@ -899,25 +1098,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     last_valid_capture_warnings <- captured$warnings
     captured_after_success <- TRUE
 
-    # The convergence roles of the fitted coordinates, as the parameter map
-    # stores them, give the selection of the public default check. The
-    # coordinates are built once, from the first fit's columns.
-    convergence_coordinates <- NULL
     autofit_coordinates <- function(fit){
-      if(is.null(convergence_coordinates)){
-        convergence_coordinates <<- .bt_build_parameter_coordinates(
-          columns = colnames(.extract_posterior_samples(fit, as_list = FALSE)),
-          monitor_names = model_call$monitor,
-          prior_list = prior_list,
-          formula_design = formula_design_info,
-          formula_scale = formula_scale_info,
-          backend_anchor = backend_anchor,
-          add_parameters = add_parameters,
-          model_syntax = sampling_model,
-          data_names = data_names
-        )
-      }
-      convergence_coordinates
+      fit_coordinates(colnames(.extract_posterior_samples(fit, as_list = FALSE)))
     }
     # Fitting stops once every diagnostic that can be assessed meets the
     # criteria, also when others are not assessable, and then warns about
@@ -967,6 +1149,14 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
           .bt_autofit_iteration_cap(thin))
       }else{
         autofit_control[["sample_extend"]]
+      }
+      if(!.bt_extension_fits_iterations(fit, sample_extend)){
+        warning_message <- .bt_iteration_limit_message(sample_extend)
+        fit <- .bt_append_fit_warnings(fit, warning_message)
+        if(!silent){
+          warning(warning_message, immediate. = TRUE)
+        }
+        break
       }
       run <- .bt_run_extension(fit, sample = sample_extend,
         adapt = adapt, cl = cl, silent = silent)
@@ -1027,7 +1217,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   attr(fit, "sampler_declarations") <- sampler_declarations$declarations
   if(!inherits(fit, "error")){
     attr(fit, "adaptation") <- adaptation
-    fit <- .bt_append_fit_warnings(fit, c(restart_warnings, adaptation_warnings))
+    fit <- .bt_append_fit_warnings(fit, c(restart_warnings, adaptation_warnings, burnin_warnings))
   }
   if(!is.null(formula_scale_info)){
     # Keep formula_scale as a nested list keyed by parameter name
@@ -1442,6 +1632,14 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
         .bt_autofit_iteration_cap(fit[["thin"]]))
     }else{
       autofit_control[["sample_extend"]]
+    }
+    if(!.bt_extension_fits_iterations(fit, sample_extend)){
+      warning_message <- .bt_iteration_limit_message(sample_extend)
+      fit <- .bt_append_fit_warnings(fit, warning_message)
+      if(!silent){
+        warning(warning_message, immediate. = TRUE)
+      }
+      break
     }
     run <- .bt_run_extension(fit, sample = sample_extend,
       adapt = adapt, cl = cl, silent = silent)

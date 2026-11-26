@@ -1599,6 +1599,18 @@ test_that("JAGS_extend issues and keeps incomplete-adaptation warnings", {
   expect_identical(attr(extended, "warnings"), message)
 })
 
+test_that("the incomplete-adaptation warning belongs to the fit diagnostics", {
+
+  testthat::local_mocked_bindings(adapt = function(...) FALSE, .package = "rjags")
+  condition <- tryCatch(.bt_rjags_group(
+    inits = list(list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = 1L)),
+    model = "model{ mu ~ dnorm(0, 1)\n y ~ dnorm(mu, 1) }", data = list(y = 0.5), monitor = "mu",
+    adapt = 10L, burnin = 0L, sample = 10L, thin = 1L, silent = TRUE, keep_live = FALSE
+  ), warning = identity)
+  expect_identical(class(condition)[1:2], c("BayesTools_adaptation_incomplete", "BayesTools_fit_diagnostic"))
+  expect_identical(conditionMessage(condition), "The JAGS adaptation phase was incomplete after 10 iterations.")
+})
+
 test_that("JAGS_fit forwards its adaptation to automatic extensions", {
 
   backend_fit <- function(...){
@@ -2422,7 +2434,13 @@ test_that("an automatic fit of a slowly mixing model reaches its ESS target in f
 
   fixed <- fit_with(1000)
   auto <- fit_with("auto")
-  expect_false(reached(fit_with(1000, max_time = list(time = 0, unit = "secs"))))
+  # without time, the readiness check also stops extending burn-in, and the
+  # chains (which disagree after 100 sweeps) start sampling with its warning
+  expect_warning(
+    stopped_fixed <- fit_with(1000, max_time = list(time = 0, unit = "secs")),
+    class = "BayesTools_burnin_not_converged"
+  )
+  expect_false(reached(stopped_fixed))
   expect_true(reached(fixed))
   expect_true(reached(auto))
   expect_null(attr(fixed, "warnings"))
@@ -2433,11 +2451,17 @@ test_that("an automatic fit of a slowly mixing model reaches its ESS target in f
   expect_lt(extensions(auto), extensions(fixed))
 
   # max_time stops "auto" as it stops the fixed step: here before any extension
-  stopped <- fit_with("auto", max_time = list(time = 0, unit = "secs"))
+  expect_warning(
+    stopped <- fit_with("auto", max_time = list(time = 0, unit = "secs")),
+    "Increase 'adapt', 'burnin' or 'thin'.", fixed = TRUE, class = "BayesTools_burnin_not_converged"
+  )
   expect_identical(extensions(stopped), 0L)
   expect_identical(nrow(stopped$mcmc[[1L]]), 1000L)
-  expect_identical(attr(stopped, "warnings"),
-    "The automatic model fitting was terminated due to the 'max_time' constraint.")
+  expect_identical(attr(stopped, "burnin_check")$stop_reason, "max_time")
+  expect_identical(attr(stopped, "warnings"), c(
+    "The automatic model fitting was terminated due to the 'max_time' constraint.",
+    BayesTools:::.bt_burnin_warning(attr(stopped, "burnin_check"))
+  ))
 })
 
 test_that("an automatic fit stops at once when only a component that no chain visits is not assessable", {

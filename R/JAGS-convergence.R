@@ -253,24 +253,7 @@ JAGS_check_convergence <- function(
     return(.bt_convergence_result(logical(), diagnostics, NULL))
   }
 
-  if(is.null(monitor)){
-    selected_parameters <- metadata$parameter[
-      metadata$role %in% c("sampled", "structural") |
-        (check_indicators & metadata$role == "indicator")
-    ]
-  }else{
-    selected_parameters <- .bt_convergence_resolve_monitor(
-      monitor,
-      metadata$parameter,
-      metadata$source
-    )
-    if(check_indicators){
-      selected_parameters <- unique(c(
-        selected_parameters,
-        metadata$parameter[metadata$role == "indicator"]
-      ))
-    }
-  }
+  selected_parameters <- .bt_convergence_select(metadata, monitor, check_indicators)
 
   if(nrow(metadata) == 0L){
     diagnostics <- .bt_convergence_diagnostics(character())
@@ -438,6 +421,32 @@ JAGS_check_convergence <- function(
     mcmc_samples_list = mcmc_samples_list,
     targets = list(samples = samples, metadata = metadata)
   )
+}
+
+# The parameters that a convergence check assesses: the sampled and structural
+# ones and, with 'check_indicators', the indicators; or those that 'monitor'
+# requests, with the indicators added under 'check_indicators'. The readiness
+# check between burn-in and sampling uses the same selection.
+.bt_convergence_select <- function(metadata, monitor, check_indicators){
+
+  if(is.null(monitor)){
+    return(metadata$parameter[
+      metadata$role %in% c("sampled", "structural") |
+        (check_indicators & metadata$role == "indicator")
+    ])
+  }
+  selected_parameters <- .bt_convergence_resolve_monitor(
+    monitor,
+    metadata$parameter,
+    metadata$source
+  )
+  if(check_indicators){
+    selected_parameters <- unique(c(
+      selected_parameters,
+      metadata$parameter[metadata$role == "indicator"]
+    ))
+  }
+  selected_parameters
 }
 
 .bt_convergence_monitor_base <- function(parameters){

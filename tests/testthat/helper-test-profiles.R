@@ -70,6 +70,7 @@ bayestools_test_profile_contexts <- list(
     "parameter-relationships",
     "JAGS-bridge-marginal-random",
     "JAGS-bridgesampling-wrapper",
+    "JAGS-burnin-check",
     "JAGS-convergence",
     "JAGS-deterministic-nodes",
     "JAGS-diagnostic-plot-data",

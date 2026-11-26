@@ -197,26 +197,25 @@ JAGS_runtime_cluster_stop <- function(cl){
 }
 
 
-.JAGS_run_backend <- function(fun, args, parallel){
+# A failed backend run is returned as its condition, with its class. A
+# parallel worker transport failure arrives classed where the worker call
+# failed (.JAGS_worker_connection_error()).
+.JAGS_run_backend <- function(fun, args){
 
-  result <- tryCatch(do.call(fun, args), error = identity)
-  if(!parallel || !inherits(result, "error")) return(result)
-  # PSOCK can wrap worker conditions in text, so the original socket condition's
-  # class/call need not survive. These transport failures cannot be repaired by
-  # changing JAGS initial values and reusing the same worker connections.
-  # Match the connection/socket class rather than a closed list of phrases:
-  # unknown wording in that class is fail-closed (no retry), not treated as a
-  # restartable JAGS sampler error.
-  transport_failure <- grepl(
-    "\\bconnection\\b|\\bsocket\\b|broken pipe",
-    conditionMessage(result), ignore.case = TRUE
-  )
-  if(!transport_failure) return(result)
+  tryCatch(do.call(fun, args), error = identity)
+}
+
+# A failure of a call to the parallel workers itself (not an error that a
+# worker returned): PSOCK can wrap the socket condition in text, so its
+# class/call need not survive, and any wording is fail-closed (no retry). New
+# JAGS initial values cannot repair the same worker connections.
+.JAGS_worker_connection_error <- function(condition){
+
   errorCondition(
     paste0("Parallel JAGS worker communication failed. Automatic retries were stopped. ",
       "Inspect the first backend error and worker output before refitting. Backend error: ",
-      conditionMessage(result)),
-    class = "BayesTools_JAGS_worker_connection_error", parent = result
+      conditionMessage(condition)),
+    class = "BayesTools_JAGS_worker_connection_error", parent = condition
   )
 }
 
