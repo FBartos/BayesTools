@@ -1423,6 +1423,80 @@ test_that("runtime reports come from the process of a serial fit and from every 
   expect_null(attr(parallel_fit, "warnings"))
 })
 
+test_that("serial fits and parallel workers run JAGS's linear algebra on one thread and restore the count", {
+
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  original <- .bt_jags_threads()
+  skip_if(is.na(original), "The loaded JAGS library exports no OpenMP thread control (only its Windows build does).")
+  withr::defer(.bt_jags_threads(original))
+  withr::local_options(BayesTools_test_jags_threads = NULL)
+  traced <- c("jags.model", "adapt", "coda.samples")
+  withr::defer(for(fun in traced) suppressMessages(untrace(fun, where = asNamespace("rjags"))))
+
+  set.seed(1)
+  data <- list(y = rnorm(20, 0.5, 1), N = 20)
+  prior_list <- list(mu = prior("normal", list(0, 1)))
+  model_syntax <- "model{
+    for(i in 1:N){
+      y[i] ~ dnorm(mu, 1)
+    }
+  }"
+  # Every process that runs chains starts from three threads and records the
+  # count at the entry of each rjags call that compiles, adapts or samples.
+  setup <- function(context){
+
+    if(context$phase != "start" || context$role == "coordinator") return(NULL)
+    state <- new.env(parent = emptyenv())
+    BayesTools:::.bt_jags_threads(3L)
+    state$before <- BayesTools:::.bt_jags_threads()
+    state$during <- integer()
+    options(BayesTools_test_jags_threads = state)
+    tracer <- quote(local({
+      state <- getOption("BayesTools_test_jags_threads")
+      state$during <- c(state$during, BayesTools:::.bt_jags_threads())
+    }))
+    for(fun in c("jags.model", "adapt", "coda.samples")){
+      suppressMessages(trace(fun, tracer = tracer, where = asNamespace("rjags"), print = FALSE))
+    }
+    NULL
+  }
+  report <- function(context){
+
+    state <- getOption("BayesTools_test_jags_threads")
+    list(role = context$role, before = state$before, during = state$during,
+      after = BayesTools:::.bt_jags_threads())
+  }
+  environment(setup) <- baseenv()
+  environment(report) <- baseenv()
+  fit_with <- function(...){
+    JAGS_fit(model_syntax = model_syntax, data = data, prior_list = prior_list,
+      chains = 2, adapt = 100, burnin = 100, sample = 200, seed = 1, silent = TRUE,
+      runtime_setup = setup, runtime_report = report, ...)
+  }
+  expect_one_thread <- function(fit, role, processes){
+    expect_s3_class(fit, "BayesTools_fit")
+    runs <- attr(fit, "runtime_report_values")
+    expect_length(runs, 1L)
+    expect_length(runs[[1L]], processes)
+    for(process in runs[[1L]]){
+      expect_identical(process$role, role)
+      expect_identical(process$before, 3L)
+      # at least compilation, adaptation and sampling
+      expect_gte(length(process$during), 3L)
+      expect_identical(unique(process$during), 1L)
+      expect_identical(process$after, 3L)
+    }
+  }
+
+  serial <- fit_with()
+  expect_one_thread(serial, "local", 1L)
+  expect_identical(.bt_jags_threads(), 3L)
+  parallel_fit <- fit_with(parallel = TRUE, cores = 2)
+  expect_one_thread(parallel_fit, "worker", 2L)
+  expect_identical(.bt_jags_threads(), 3L)
+})
+
 # ============================================================================ #
 # CENTRALIZED LIVE-FIT TESTS FROM test-JAGS-fit-lm-oracles.R
 # ============================================================================ #

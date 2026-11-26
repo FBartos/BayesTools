@@ -281,6 +281,16 @@ passing check leaves the draws, end states, samplers and warnings identical
 to the check off, for any `thin`, unless a monitored node has no observed
 descendants: JAGS forward-samples such a node only while it is monitored.
 
+The Windows build of JAGS 5 links its own OpenBLAS and OpenMP runtime; with
+the default thread count every larger BLAS or LAPACK call starts a thread
+team, which makes models with multivariate nodes up to hundreds of times
+slower without changing the draws. Every step of a chain group (serial and on
+each PSOCK worker) and the data-block generator therefore run inside
+`.bt_with_single_threaded_jags()`, which sets that library's own
+`omp_set_num_threads()` to one (`src/r-jags-threads.c`) and restores the
+previous count on exit; elsewhere, or without the library's thread controls,
+nothing is changed, and neither option nor environment variable is involved.
+
 Worker connection failures stop fitting retries; new initial values cannot
 repair the existing cluster. Preserve the original backend condition. Classify
 a transport failure where the worker call fails: an error raised by the
