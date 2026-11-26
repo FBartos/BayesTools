@@ -18,7 +18,7 @@ a model and samples it using rjags."><meta name="robots" content="noindex"><!-- 
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9016</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9017</span>
       </span>
     </div>
 
@@ -87,7 +87,8 @@ a model and samples it using <span class="pkg">rjags</span>.</p>
 <span>  autofit <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  autofit_control <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>max_Rhat <span class="op">=</span> <span class="fl">1.05</span>, min_ESS <span class="op">=</span> <span class="fl">500</span>, max_error <span class="op">=</span> <span class="fl">0.01</span>, max_SD_error <span class="op">=</span></span>
 <span>    <span class="fl">0.05</span>, max_time <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>time <span class="op">=</span> <span class="fl">60</span>, unit <span class="op">=</span> <span class="st">"mins"</span><span class="op">)</span>, sample_extend <span class="op">=</span> <span class="fl">1000</span>, restarts <span class="op">=</span> <span class="fl">10</span>,</span>
-<span>    max_extend <span class="op">=</span> <span class="fl">10</span>, check_indicators <span class="op">=</span> <span class="cn">FALSE</span>, monitor <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span>,</span>
+<span>    max_extend <span class="op">=</span> <span class="fl">10</span>, check_indicators <span class="op">=</span> <span class="cn">FALSE</span>, monitor <span class="op">=</span> <span class="cn">NULL</span>, burnin_max_Rhat <span class="op">=</span> <span class="st">"auto"</span>,</span>
+<span>    burnin_extend <span class="op">=</span> <span class="fl">500</span>, burnin_max_extend <span class="op">=</span> <span class="fl">10</span><span class="op">)</span>,</span>
 <span>  parallel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  cores <span class="op">=</span> <span class="va">chains</span>,</span>
 <span>  silent <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -182,7 +183,11 @@ initial setting, which later calls without <code>adapt</code> use again.</p></dd
 
 
 <dt id="arg-burnin">burnin<a class="anchor" aria-label="anchor" href="#arg-burnin"></a></dt>
-<dd><p>number of burnin iterations of the MCMC chains, defaults to <code>1000</code></p></dd>
+<dd><p>number of burnin iterations of the MCMC chains, defaults to
+<code>1000</code>. Its last iterations are checked for agreement of the chains
+before sampling starts, and with <code>autofit</code> burn-in can be extended (see
+<code>burnin_max_Rhat</code> in <code>autofit_control</code>); <code>fit$burnin</code> holds
+the burn-in that was run.</p></dd>
 
 
 <dt id="arg-sample">sample<a class="anchor" aria-label="anchor" href="#arg-sample"></a></dt>
@@ -266,7 +271,10 @@ is sized from the check of the supplied fit and, with no rate observed
 yet, is not shortened. Without <code>max_time</code>, each extension of a fit
 that cannot converge multiplies the draws per chain by about 2.1 (a
 failed R-hat) and up to 3 (large ESS or error deficits), up to
-<code>max_extend</code>.</p></dd>
+<code>max_extend</code>. An
+extension, of either kind, whose last draw would have an iteration
+number beyond <code>.Machine$integer.max</code> is not started: the fitting
+stops with the last fit and a warning of its own.</p></dd>
 
 <dt>restarts</dt>
 <dd><p>maximum number of fitting attempts when the model fails
@@ -299,6 +307,82 @@ formulas monitor (such as random-effect correlation matrices and their
 Cholesky factors) are derived and not checked by default. The role of
 every fitted coordinate is stored in the <code>convergence_role</code> column
 of <code><a href="parameter_map.html">parameter_coordinates()</a></code>.</p></dd>
+
+<dt>burnin_max_Rhat</dt>
+<dd><p>the threshold of the readiness check between
+burn-in and sampling. Defaults to <code>"auto"</code>, which is
+<code>1.7 + 0.9 / chains</code> (<code>2.15</code> for two chains, <code>2</code> for
+three, <code>1.925</code> for four); a number fixes the threshold, an omitted
+element takes its default, and <code>NULL</code> turns the check off. The
+check runs, also without <code>autofit</code>, in the initial fit of
+<code>JAGS_fit()</code> (afresh in each restart attempt; not in
+<code>JAGS_extend()</code> or the automatic extensions after sampling) when
+there are at least two chains, the block of the last
+<code>min(burnin_extend, floor(burnin / thin))</code> draws of burn-in, taken
+every <code>thin</code> iterations as in sampling, has at least 100 draws, and
+JAGS assigns the model a sampler. The iterations of the block (its draws
+times <code>thin</code>) run with the monitors on; their draws are checked and
+then dropped. Each
+chain's block is split into halves, and the chains are ready when the
+point estimate of the potential scale reduction factor over the
+half-chains (<code><a href="https://rdrr.io/pkg/coda/man/gelman.diag.html" class="external-link">coda::gelman.diag()</a></code>) is at most <code>burnin_max_Rhat</code>
+for every quantity that the convergence check assesses (the selection of
+<code>monitor</code> and <code>check_indicators</code>; a requested state of an
+indicator, such as <code>"mu_indicator (state 3)"</code>, that the block does
+not visit is not assessable there). A quantity that is constant over the
+half-chains, or not finite in each of them, is not assessable; one that
+is not finite in some half-chains only fails the check. In a model to
+which JAGS assigns no sampler (every node is drawn directly given its
+parents, as in a model without data) the chains cannot disagree, and the
+whole burn-in runs unmonitored, as with the check off. When the chains are not
+ready, a fit with <code>autofit</code> extends burn-in by blocks of
+<code>burnin_extend</code> draws (<code>burnin_extend * thin</code> iterations),
+each checked alone, until they are
+ready, <code>burnin_max_extend</code> blocks were added, or <code>max_time</code> is
+exceeded (checked before each block); a fit without <code>autofit</code> keeps
+its burn-in. Chains that are still not ready start sampling; a warning
+of class <code>BayesTools_burnin_not_converged</code> (also
+<code>BayesTools_fit_diagnostic</code>) is issued once that initial sampling
+of the attempt the fit keeps has finished (a restart attempt that is
+discarded warns nothing), before any automatic extension, whatever
+<code>silent</code> is, and kept in the fit's <code>warnings</code> attribute. When no monitored node lacks
+observed descendants, a fit whose chains are ready at once has the same
+draws, final states and samplers as with the check off: monitoring changes
+no sampler, but JAGS samples a monitored node without observed
+descendants (such as a predictive quantity) from the chain's random-number
+stream. The check cannot detect chains that are all in the same wrong
+state. The automatic value falls with the number of chains: for chains
+that agree but are autocorrelated, the statistic has the same typical
+value for any number of chains but varies less the more chains are run,
+so a threshold that falls with the number of chains keeps false alarms
+from becoming more frequent with them and keeps part of the sensitivity
+to one deviating chain that a fixed value loses. A slowly mixing fit can
+exceed the threshold although its chains agree, because the statistic
+grows with the autocorrelation of the block's draws; a larger
+<code>thin</code> then helps when more widely spaced draws are less
+correlated, while more burn-in is the remedy for chains that have not
+yet reached the same region. The check needs 100 draws at the fit's
+thinning: with <code>burnin</code> below <code>100 * thin</code> it does not run,
+and when it runs with <code>burnin</code> at most <code>burnin_extend * thin</code>,
+the block holds every complete window of <code>thin</code> iterations of
+burn-in (the first <code>burnin %% thin</code> iterations run unmonitored),
+so raise <code>burnin</code> together with <code>thin</code>.</p></dd>
+
+<dt>burnin_extend</dt>
+<dd><p>the number of final burn-in draws, taken every
+<code>thin</code> iterations, that the readiness check assesses, and of each
+extension of burn-in (<code>burnin_extend * thin</code> iterations); at least
+<code>100</code>. Defaults to <code>500</code>. When the check runs with
+<code>burnin</code> at most <code>burnin_extend * thin</code>, its block holds every
+complete window of <code>thin</code> iterations of burn-in, and the first
+<code>burnin %% thin</code> iterations run unmonitored.</p></dd>
+
+<dt>burnin_max_extend</dt>
+<dd><p>the largest number of extensions of burn-in, with
+<code>autofit</code> only. Defaults to <code>10</code>. An extension after which the
+last retained draw would have an iteration number beyond
+<code>.Machine$integer.max</code> is not run; the warning then names that
+limit.</p></dd>
 
 
 </dl></dd>
@@ -522,10 +606,6 @@ Callback packages must be listed in <code>required_packages</code>. Passing
 <code>NULL</code> disables the report.</p></dd>
 
 
-<dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>additional hidden arguments</p></dd>
-
-
 <dt id="arg-sampler-joint">sampler_joint<a class="anchor" aria-label="anchor" href="#arg-sampler-joint"></a></dt>
 <dd><p>optional package callback accepting <code>prior_list</code>,
 <code>formula_design</code> and <code>data</code>. It receives the combined bound prior list,
@@ -591,6 +671,10 @@ keep their ordinary parameterization. The <code>nested_weights</code> entry in
 sharing was used or the reason it was declined. Defaults to <code>FALSE</code>.</p></dd>
 
 
+<dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
+<dd><p>additional hidden arguments</p></dd>
+
+
 <dt id="arg-fit">fit<a class="anchor" aria-label="anchor" href="#arg-fit"></a></dt>
 <dd><p>a 'BayesTools_fit' object (created by <code>JAGS_fit()</code> function) to be
 extended. A derived-draw view signals
@@ -631,8 +715,31 @@ ordinary R data and can be serialized with <code><a href="https://rdrr.io/r/base
 per backend extension (automatic extensions of <code>JAGS_fit()</code> and the
 extensions of <code>JAGS_extend()</code>) giving the <code>adapt</code> passed to the
 backend and whether the backend <code>rebuilt</code> the sampler, the only case in
-which it adapts. Warnings of the backend that adaptation was incomplete are
-issued and also kept in the fit's <code>warnings</code> attribute.</p>
+which it adapts. Warnings of the backend that adaptation was incomplete
+(class <code>BayesTools_adaptation_incomplete</code>, also
+<code>BayesTools_fit_diagnostic</code>) are issued and also kept in the fit's
+<code>warnings</code> attribute.</p>
+<p>The <code>burnin_check</code> attribute of a fit records the readiness check
+between burn-in and sampling (see <code>burnin_max_Rhat</code> in
+<code>autofit_control</code>); it is <code>NULL</code> when the check did not run. It
+runs in the initial fit of <code>JAGS_fit()</code> only, afresh in each restart
+attempt, and not in <code>JAGS_extend()</code>, the automatic extensions after
+sampling, or a model without samplers. The record holds
+<code>burnin_max_Rhat</code> (the threshold used, a number also when it was
+<code>"auto"</code>), <code>block</code> (the iterations of the checked end of the
+requested burn-in), <code>burnin_extend</code> (in draws), <code>thin</code> (the
+thinning of the checked draws), <code>blocks</code> (one row per checked block,
+with the iterations <code>sweeps</code> it ran and its largest value <code>Rhat</code>
+and <code>parameter</code>), <code>extension</code> (the iterations added to burn-in),
+<code>status</code> (<code>"ready"</code>, <code>"not_ready"</code>, or
+<code>"not_assessable"</code> when no quantity could be assessed, which makes no
+claim of readiness and extends nothing), <code>stop_reason</code>
+(<code>"ready"</code>, <code>"max_extend"</code>, <code>"max_time"</code>,
+<code>"iteration_limit"</code>, <code>"no_autofit"</code>, or <code>"not_assessable"</code>),
+and <code>failing</code> (the
+quantities of the last block above the threshold, with their values).
+<code>fit$burnin</code> is the burn-in that was run, and the iteration numbers
+of the draws and of <code>sampler_probabilities</code> count it.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
