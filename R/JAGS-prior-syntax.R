@@ -541,6 +541,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
       stop("Mixture of publication bias and standard priors is not supported.")
 
     prior_weights <- attr(prior_list, "prior_weights")
+    .check_mixture_prior_weights(prior_weights)
     if(any(has_selection) || any(has_phacking)){
       spec <- selection_backend_spec(prior_list, include_init = FALSE)
       syntax <- .JAGS_selection_backend_syntax(spec)
@@ -574,8 +575,13 @@ JAGS_add_priors           <- function(syntax, prior_list){
   }else{
 
     prior_weights    <- attr(prior_list, "prior_weights")
+    .check_mixture_prior_weights(prior_weights)
     prior_weights <- if(numeric_literals){
-      vapply(prior_weights,.prior_ordered_format_number,character(1))
+      # JAGS draws from the weights it reads from these literals, which can
+      # differ from the stored weights in the last digits
+      literals <- vapply(prior_weights,.prior_ordered_format_number,character(1))
+      .check_mixture_prior_weights(.JAGS_read_number(literals))
+      literals
     }else{
       .JAGS_prior_number(prior_weights)
     }

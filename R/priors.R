@@ -67,7 +67,11 @@
 #' The value is passed into the model fitting function, which creates models
 #' corresponding to all combinations of prior distributions for each of
 #' the model parameters and sets the model priors odds to the product
-#' of its prior distributions.
+#' of its prior distributions. A \code{prior_mixture()} whose weights
+#' cannot be normalized in double precision (their sum overflows or is below
+#' \code{.Machine$double.xmin}) is refused when it is sampled or fitted;
+#' rescaling all of its weights by a common factor that makes their sum
+#' representable keeps the odds.
 #'
 #' @details Moment and inverse-moment priors are symmetric nonlocal priors
 #' with zero density at \code{location}. The \code{mode} parameter is the
@@ -635,6 +639,19 @@ prior_spike_and_slab <- function(prior_parameter,
 #' @param components a character vector indicating which of the prior distributions
 #' belong to the same mixture component (this is an alternative specification to the \code{is_null} argument).
 #' Defaults to \code{NULL} (i.e., \code{is_null} is used.
+#'
+#' @details The \code{prior_weights} of the components are their prior odds,
+#' and any positive finite weights construct a mixture. Weights that cannot be
+#' normalized in double precision (their sum, accumulated in double precision,
+#' overflows or is below \code{.Machine$double.xmin}) are refused when a
+#' component is drawn from them: when the mixture is sampled (\code{rng()},
+#' initial values, prior draws) or fitted (its JAGS prior). The error has class
+#' \code{BayesTools_mixture_weights_unnormalizable}, which inherits
+#' \code{BayesTools_prior_input}, and the fields \code{prior_weights} and
+#' \code{total} (their sum in double precision). Rescaling all weights by a
+#' common factor that makes their sum representable keeps the odds. A
+#' component whose prior probability underflows to zero is never drawn from
+#' the prior, and a mixture with a single component is never refused.
 #'
 #' @return A prior object of class \code{prior.mixture} (with the classes of a
 #' factor, ordered or simple mixture where the components have them) that

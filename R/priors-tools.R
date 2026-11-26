@@ -725,6 +725,63 @@ is.prior.regularized_term <- function(x){
 
   return()
 }
+# The prior weights of one mixture are odds. Constructors and the analytic
+# probability routes (which work on the log scale) accept any positive finite
+# weights. Where a component is drawn from the weights (R's sample() and
+# sample.int() in rng(), the initial values and the prior replays) or the
+# weights are emitted for JAGS's dcat() to draw from, they are normalized by
+# their sum: accumulated in double precision in component order by sample()
+# and JAGS, and by R's sum() (in extended precision where the platform has it)
+# in the factor-mixture prior draws. A sum that overflows turns every
+# probability into zero, and one component is always drawn; JAGS draws from a
+# subnormal sum with the wrong proportions (it scales the sum by a uniform
+# draw). Such weights are refused there rather than rescaled: a common factor
+# keeps the odds, and rescaling here would set small positive weights to zero.
+# A component whose share of a normal sum underflows to zero is admitted; it is
+# simply never drawn from the prior. A single component is always drawn,
+# whatever its weight.
+.check_mixture_prior_weights <- function(prior_weights){
+
+  if(!is.numeric(prior_weights) || length(prior_weights) < 2L){
+    return(invisible(TRUE))
+  }
+  prior_weights <- as.double(prior_weights)
+  total <- 0
+  for(weight in prior_weights){
+    total <- total + weight
+  }
+
+  weights_text <- paste0("The mixture 'prior_weights' (",
+                         paste(vapply(prior_weights, format, character(1), digits = 3), collapse = ", "),
+                         ") cannot be normalized: ")
+  common_factor <- paste("Rescale all 'prior_weights' by a common factor that makes their sum",
+                         "representable; the prior odds stay the same.")
+  if(!is.finite(total) || !is.finite(sum(prior_weights))){
+    .mixture_prior_weights_stop(
+      paste0(weights_text, "their sum overflows in double precision. ", common_factor),
+      prior_weights, Inf)
+  }
+  if(total < .Machine$double.xmin){
+    .mixture_prior_weights_stop(
+      paste0(weights_text, "their sum (", format(total, digits = 17),
+             ") is too small to be represented at full double precision. ", common_factor),
+      prior_weights, total)
+  }
+
+  invisible(TRUE)
+}
+.mixture_prior_weights_stop <- function(message, prior_weights, total){
+
+  stop(structure(
+    list(
+      message       = message,
+      call          = NULL,
+      prior_weights = prior_weights,
+      total         = total
+    ),
+    class = c("BayesTools_mixture_weights_unnormalizable", "BayesTools_prior_input", "error", "condition")
+  ))
+}
 .check_prior_list_unique_names <- function(prior_list, name = "prior_list"){
 
   prior_names <- names(prior_list)

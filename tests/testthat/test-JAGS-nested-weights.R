@@ -55,6 +55,16 @@ test_that("nested initial values preserve active physical weights and the label"
   expanded <- .bt_dnode_omega("omega", fit_priors$bias)
   original <- .bt_dnode_omega("omega", priors$bias)
 
+  # the generated initial values start in a branch drawn from the prior
+  # weights (.4, .2, .2, .2), so every label reaches the nested coordinates
+  generated <- JAGS_get_inits(fit_priors, chains = 40, seed = 1)
+  labels <- vapply(generated, function(chain_inits) chain_inits$bias_indicator, integer(1))
+  expect_setequal(unique(labels), seq_along(branches))
+  for(chain_inits in generated){
+    expect_true(all(unlist(chain_inits[plan$nodes]) > 0 & unlist(chain_inits[plan$nodes]) < 1))
+    expect_false(any(names(init) %in% names(chain_inits)))
+  }
+
   for(label in seq_along(branches)){
     old <- c(init, list(bias_indicator = label))
     new <- .bt_nested_weights_init(plan, old, branches)

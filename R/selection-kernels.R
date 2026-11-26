@@ -21,7 +21,11 @@
 #' \code{"quadratic"}.
 #' @param alpha prior distribution for the p-hacking severity parameter.
 #' @param report_scale reporting scale for deterministic summaries.
-#' @param prior_weights prior odds associated with a given distribution.
+#' @param prior_weights prior odds associated with a given distribution. A
+#' \code{prior_mixture()} whose weights cannot be normalized in double
+#' precision (their sum overflows or is below \code{.Machine$double.xmin}) is
+#' refused when it is sampled or fitted; rescaling all of its weights by a
+#' common factor that makes their sum representable keeps the odds.
 #'
 #' @return \code{prior_phacking()} returns an object of class \code{"prior"}.
 #'
@@ -331,10 +335,14 @@ phack_backend_constants <- function(form, source, destination, target = .025){
 #' p-hacking prior objects into active backend parameters. The returned object
 #' contains stable p/z geometry, JAGS prior/transform code, monitor names,
 #' initial values, and data constants. Set \code{include_init = FALSE} for
-#' deterministic metadata without drawing unused initial values.
+#' deterministic metadata without drawing unused initial values. The initial
+#' values of a mixture cover every branch, and its \code{bias_indicator}
+#' starts at a branch drawn from the prior weights.
 #'
 #' @param priors a selection prior, p-hacking prior, composed bias prior,
-#' \code{prior_none()}, \code{prior_mixture()}, or a list of those priors.
+#' \code{prior_none()}, \code{prior_mixture()}, or a list of those priors. Several
+#' priors whose \code{prior_weights} cannot be normalized are refused, as a
+#' \code{prior_mixture()} is when it is sampled or fitted.
 #' @param backend backend target. Currently only \code{"jags"} is supported.
 #' @param names named list of backend parameter names for the public nodes
 #' (\code{omega}, \code{alpha}, \code{pi_null}, \code{beta_null},
@@ -408,6 +416,10 @@ selection_backend_spec <- function(priors,
 
   prior_weights <- .selection_backend_prior_weights(branches)
   uses_indicator <- length(branches) > 1L
+  # the 'dcat()' prior and the starting branch draw from these weights
+  if(uses_indicator){
+    .check_mixture_prior_weights(prior_weights)
+  }
 
   prior_code <- character()
   transform_code <- character()

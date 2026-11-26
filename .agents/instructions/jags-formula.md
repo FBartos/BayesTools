@@ -171,6 +171,9 @@ take their seeds from the separate stream of `.JAGS_restart_seeds()`. Every
 path that seeds JAGS chains uses these helpers; never derive seeds as
 `seed + chain` or `seed + attempt`, which makes adjacent seeds share streams.
 Seeded functions restore the caller's `.Random.seed` and `RNGkind()`.
+Every mixture, selection and p-hacking bias mixtures included, initializes all
+components and draws its starting component from its prior weights
+(`.rng_mixture_components()`) inside this seeded scope.
 `JAGS_extend()` has no seed: it continues the stored generator state of every
 chain, and no extension replays the streams of the fit.
 

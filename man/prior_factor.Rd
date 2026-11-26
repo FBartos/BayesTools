@@ -80,7 +80,11 @@ The truncation is automatically set to the bounds of the support.}
 The value is passed into the model fitting function, which creates models
 corresponding to all combinations of prior distributions for each of
 the model parameters and sets the model priors odds to the product
-of its prior distributions.}
+of its prior distributions. A \code{prior_mixture()} whose weights
+cannot be normalized in double precision (their sum overflows or is below
+\code{.Machine$double.xmin}) is refused when it is sampled or fitted;
+rescaling all of its weights by a common factor that makes their sum
+representable keeps the odds.}
 
 \item{contrast}{type of contrast for the prior distribution. The possible options are
 \describe{
