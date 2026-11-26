@@ -38,10 +38,10 @@ component is drawn from them: when the mixture is sampled (\code{rng()},
 initial values, prior draws) or fitted (its JAGS prior). The error has class
 \code{BayesTools_mixture_weights_unnormalizable}, which inherits
 \code{BayesTools_prior_input}, and the fields \code{prior_weights} and
-\code{total} (their sum in double precision). Dividing all weights by a
-common factor, for example by their largest value, keeps the odds and
-avoids the error. A component whose prior probability underflows to zero is
-never drawn from the prior.
+\code{total} (their sum in double precision). Rescaling all weights by a
+common factor that makes their sum representable keeps the odds. A
+component whose prior probability underflows to zero is never drawn from
+the prior, and a mixture with a single component is never refused.
 }
 \seealso{
 \code{\link[=prior]{prior()}}

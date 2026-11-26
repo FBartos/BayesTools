@@ -986,13 +986,16 @@ test_that("mixture prior weights that cannot be normalized are refused where a c
   # sum that overflows or is subnormal is refused rather than rescaled.
   unnormalizable <- "BayesTools_mixture_weights_unnormalizable"
   refusal <- function(expr) tryCatch(expr, BayesTools_mixture_weights_unnormalizable = function(condition) condition)
-  common_factor <- "Divide all 'prior_weights' by a common factor, for example by their largest value."
+  common_factor <- "Rescale all 'prior_weights' by a common factor that makes their sum representable; the prior odds stay the same."
   overflow <- function(weights_text) paste0("The mixture 'prior_weights' (", weights_text,
     ") cannot be normalized: their sum overflows in double precision. ", common_factor)
-  # equal odds whose sum() is finite in R's extended precision while their
-  # double sum, as sample() and JAGS form it, overflows
+  # equal odds whose double sum, as sample() and JAGS form it, overflows; their
+  # sum() is finite where R accumulates it in extended precision
   reviewers <- c(4.4942328371557938e+307, 4.4942328371557888e+307, 4.4942328371557888e+307, 4.4942328371557858e+307)
-  expect_true(is.finite(sum(reviewers)))
+  expect_identical(Reduce(`+`, reviewers), Inf)
+  if(capabilities("long.double")){
+    expect_true(is.finite(sum(reviewers)))
+  }
   cases <- list(
     list(weights = c(1e308, 1e308), total = Inf, message = overflow("1e+308, 1e+308")),
     list(weights = rep(1e308, 3),   total = Inf, message = overflow("1e+308, 1e+308, 1e+308")),
@@ -1000,7 +1003,7 @@ test_that("mixture prior weights that cannot be normalized are refused where a c
     # a subnormal sum, which JAGS draws with the wrong proportions
     list(weights = rep(5e-324, 3), total = 3 * 5e-324, message = paste(
       "The mixture 'prior_weights' (4.94e-324, 4.94e-324, 4.94e-324) cannot be normalized:",
-      "their sum (1.48e-323) is too small to be represented at full double precision.", common_factor))
+      "their sum (1.4821969375237396e-323) is too small to be represented at full double precision.", common_factor))
   )
 
   for(case in cases){
@@ -1020,6 +1023,7 @@ test_that("mixture prior weights that cannot be normalized are refused where a c
     expect_error(JAGS_get_inits(list(mu = mixture), chains = 2, seed = 1), class = unnormalizable)
     expect_error(JAGS_add_priors("model{}", list(mu = mixture)), class = unnormalizable)
     expect_error(.JAGS_add_priors.fun(list(mu = mixture), numeric_literals = TRUE), class = unnormalizable)
+    expect_error(.generate_prior_sample_matrix(list(mu = mixture), 10L, seed = 1), class = unnormalizable)
 
     factor_mixture <- factor_weights_mixture(weights)
     expect_identical(attr(factor_mixture, "prior_weights"), weights)
@@ -1038,7 +1042,28 @@ test_that("mixture prior weights that cannot be normalized are refused where a c
       expect_identical(attr(bias, "prior_weights"), weights)
       expect_error(JAGS_add_priors("model{}", list(bias = bias)), class = unnormalizable)
       expect_error(JAGS_get_inits(list(bias = bias), chains = 2, seed = 1), class = unnormalizable)
+      expect_error(.generate_prior_sample_matrix(list(bias = bias), 10L, seed = 1), class = unnormalizable)
     }
+  }
+
+  # a single component is always drawn, whatever its weight
+  for(weight in c(5e-324, .Machine$double.xmax)){
+    single <- normal_weights_mixture(weight)
+    expect_identical(as.integer(rng(single, 5, sample_components = TRUE)), rep(1L, 5))
+    expect_identical(JAGS_get_inits(list(mu = single), chains = 1, seed = 1)[[1L]]$mu_indicator, 1L)
+    expect_true(grepl("dcat(", JAGS_add_priors("model{}", list(mu = single)), fixed = TRUE))
+  }
+
+  # the literal emission of an ordered total checks the weights JAGS reads back
+  # from the literals, which can differ from the stored weights in the last
+  # digits (by platform): a stored sum at the largest double then overflows
+  first <- 0x1.89ae002fp+1023
+  at_limit <- normal_weights_mixture(c(first, .Machine$double.xmax - first))
+  read_back <- .JAGS_read_number(vapply(attr(at_limit, "prior_weights"), .prior_ordered_format_number, character(1)))
+  if(is.finite(Reduce(`+`, read_back)) && is.finite(sum(read_back))){
+    expect_true(grepl("dcat(", .JAGS_add_priors.fun(list(mu = at_limit), numeric_literals = TRUE), fixed = TRUE))
+  }else{
+    expect_error(.JAGS_add_priors.fun(list(mu = at_limit), numeric_literals = TRUE), class = unnormalizable)
   }
 
   # the total of an ordered prior is refused where its dcat() prior is written
@@ -1081,11 +1106,21 @@ test_that("mixture prior weights at the normalization limits are used as they ar
                    "mu_indicator ~ dcat(c(8.988465674311579e+307, 8.988465674311579e+307))")
   expect_identical(dcat_line(normal_weights_mixture(c(xmin / 2, xmin / 2))),
                    "mu_indicator ~ dcat(c(1.1125369292536007e-308, 1.1125369292536007e-308))")
-  # the overflow edge of the double sum
-  set.seed(1)
-  expect_identical(as.integer(rng(normal_weights_mixture(c(M, 2^969)), 300, sample_components = TRUE)), rep(1L, 300))
-  expect_true(all(.generate_prior_sample_matrix(
-    list(f = factor_weights_mixture(c(M, 2^969))), 300L, seed = 1)[, "f_indicator"] == 1))
+  # the overflow edge of the double sum; just below it, sum() (which the
+  # factor-mixture prior draws normalize by) already overflows where R
+  # accumulates it in extended precision
+  edge <- c(M, 2^969)
+  if(is.finite(sum(edge))){
+    set.seed(1)
+    expect_identical(as.integer(rng(normal_weights_mixture(edge), 300, sample_components = TRUE)), rep(1L, 300))
+    expect_true(all(.generate_prior_sample_matrix(
+      list(f = factor_weights_mixture(edge)), 300L, seed = 1)[, "f_indicator"] == 1))
+  }else{
+    expect_error(rng(normal_weights_mixture(edge), 1, sample_components = TRUE),
+                 class = "BayesTools_mixture_weights_unnormalizable")
+    expect_error(.generate_prior_sample_matrix(list(f = factor_weights_mixture(edge)), 10L, seed = 1),
+                 class = "BayesTools_mixture_weights_unnormalizable")
+  }
   expect_identical(attr(normal_weights_mixture(c(M, 2^970)), "prior_weights"), c(M, 2^970))
   expect_error(rng(normal_weights_mixture(c(M, 2^970)), 1, sample_components = TRUE),
                class = "BayesTools_mixture_weights_unnormalizable")

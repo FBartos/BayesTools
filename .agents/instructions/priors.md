@@ -56,10 +56,13 @@ initial values through `.rng_mixture_components()`, the `dcat()` emissions of
 `JAGS_add_priors()` and `selection_backend_spec()`, the factor-mixture and
 regularized prior replays) first calls `.check_mixture_prior_weights()`, which
 refuses weights whose sum in sequential double addition (as `dcat()` and
-`sample()` form it) overflows or is subnormal (class
-`BayesTools_mixture_weights_unnormalizable`). A component whose share of an
-admitted sum underflows is not refused; it is never drawn. Consumers use the
-stored weights as they are and never rescale them.
+`sample()` form it) overflows or is subnormal, or whose `sum()` (which the
+factor-mixture replay normalizes by) overflows (class
+`BayesTools_mixture_weights_unnormalizable`). The literal emission also checks
+the weights JAGS reads back from the literals. A component whose share of an
+admitted sum underflows is not refused; it is never drawn. A single component
+is never refused. Consumers use the stored weights as they are and never
+rescale them.
 
 `prior()` creates the core `prior` S3 family. Distribution aliases and routing
 live in `R/priors.R`; constructors and parameter normalization live in

@@ -577,7 +577,11 @@ JAGS_add_priors           <- function(syntax, prior_list){
     prior_weights    <- attr(prior_list, "prior_weights")
     .check_mixture_prior_weights(prior_weights)
     prior_weights <- if(numeric_literals){
-      vapply(prior_weights,.prior_ordered_format_number,character(1))
+      # JAGS draws from the weights it reads from these literals, which can
+      # differ from the stored weights in the last digits
+      literals <- vapply(prior_weights,.prior_ordered_format_number,character(1))
+      .check_mixture_prior_weights(.JAGS_read_number(literals))
+      literals
     }else{
       .JAGS_prior_number(prior_weights)
     }

@@ -14,8 +14,8 @@
 #' @param prior_weights prior odds associated with a given distribution. A
 #' \code{prior_mixture()} whose weights cannot be normalized in double
 #' precision (their sum overflows or is below \code{.Machine$double.xmin}) is
-#' refused when it is sampled or fitted; dividing all of its weights by a
-#' common factor, such as their largest value, keeps the odds and avoids this.
+#' refused when it is sampled or fitted; rescaling all of its weights by a
+#' common factor that makes their sum representable keeps the odds.
 #' @param model a fixed selection-model specification from
 #' \code{selection_model()}. Its choices do not add weight-prior parameters or
 #' change \code{prior_weights}.

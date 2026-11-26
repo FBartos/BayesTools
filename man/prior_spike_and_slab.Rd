@@ -26,8 +26,8 @@ the model parameters and sets the model priors odds to the product
 of its prior distributions. A \code{prior_mixture()} whose weights
 cannot be normalized in double precision (their sum overflows or is below
 \code{.Machine$double.xmin}) is refused when it is sampled or fitted;
-dividing all of its weights by a common factor, such as their largest value,
-keeps the odds and avoids this.}
+rescaling all of its weights by a common factor that makes their sum
+representable keeps the odds.}
 }
 \value{
 return an object of class 'prior'.

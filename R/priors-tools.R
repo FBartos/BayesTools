@@ -730,17 +730,19 @@ is.prior.regularized_term <- function(x){
 # weights. Where a component is drawn from the weights (R's sample() and
 # sample.int() in rng(), the initial values and the prior replays) or the
 # weights are emitted for JAGS's dcat() to draw from, they are normalized by
-# their sum, accumulated in double precision in component order (not in the
-# extended precision of R's sum()). A sum that overflows turns every
+# their sum: accumulated in double precision in component order by sample()
+# and JAGS, and by R's sum() (in extended precision where the platform has it)
+# in the factor-mixture prior draws. A sum that overflows turns every
 # probability into zero, and one component is always drawn; JAGS draws from a
 # subnormal sum with the wrong proportions (it scales the sum by a uniform
-# draw). Such weights are refused there rather than rescaled: dividing all
-# weights by a common factor keeps the odds, and rescaling would set small
-# positive weights to zero. A component whose share of a normal sum underflows
-# to zero is admitted; it is simply never drawn from the prior.
+# draw). Such weights are refused there rather than rescaled: a common factor
+# keeps the odds, and rescaling here would set small positive weights to zero.
+# A component whose share of a normal sum underflows to zero is admitted; it is
+# simply never drawn from the prior. A single component is always drawn,
+# whatever its weight.
 .check_mixture_prior_weights <- function(prior_weights){
 
-  if(!is.numeric(prior_weights)){
+  if(!is.numeric(prior_weights) || length(prior_weights) < 2L){
     return(invisible(TRUE))
   }
   prior_weights <- as.double(prior_weights)
@@ -752,15 +754,16 @@ is.prior.regularized_term <- function(x){
   weights_text <- paste0("The mixture 'prior_weights' (",
                          paste(vapply(prior_weights, format, character(1), digits = 3), collapse = ", "),
                          ") cannot be normalized: ")
-  common_factor <- "Divide all 'prior_weights' by a common factor, for example by their largest value."
-  if(!is.finite(total)){
+  common_factor <- paste("Rescale all 'prior_weights' by a common factor that makes their sum",
+                         "representable; the prior odds stay the same.")
+  if(!is.finite(total) || !is.finite(sum(prior_weights))){
     .mixture_prior_weights_stop(
       paste0(weights_text, "their sum overflows in double precision. ", common_factor),
-      prior_weights, total)
+      prior_weights, Inf)
   }
   if(total < .Machine$double.xmin){
     .mixture_prior_weights_stop(
-      paste0(weights_text, "their sum (", format(total, digits = 3),
+      paste0(weights_text, "their sum (", format(total, digits = 17),
              ") is too small to be represented at full double precision. ", common_factor),
       prior_weights, total)
   }

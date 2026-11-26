@@ -70,8 +70,8 @@
 #' of its prior distributions. A \code{prior_mixture()} whose weights
 #' cannot be normalized in double precision (their sum overflows or is below
 #' \code{.Machine$double.xmin}) is refused when it is sampled or fitted;
-#' dividing all of its weights by a common factor, such as their largest value,
-#' keeps the odds and avoids this.
+#' rescaling all of its weights by a common factor that makes their sum
+#' representable keeps the odds.
 #'
 #' @details Moment and inverse-moment priors are symmetric nonlocal priors
 #' with zero density at \code{location}. The \code{mode} parameter is the
@@ -648,10 +648,10 @@ prior_spike_and_slab <- function(prior_parameter,
 #' initial values, prior draws) or fitted (its JAGS prior). The error has class
 #' \code{BayesTools_mixture_weights_unnormalizable}, which inherits
 #' \code{BayesTools_prior_input}, and the fields \code{prior_weights} and
-#' \code{total} (their sum in double precision). Dividing all weights by a
-#' common factor, for example by their largest value, keeps the odds and
-#' avoids the error. A component whose prior probability underflows to zero is
-#' never drawn from the prior.
+#' \code{total} (their sum in double precision). Rescaling all weights by a
+#' common factor that makes their sum representable keeps the odds. A
+#' component whose prior probability underflows to zero is never drawn from
+#' the prior, and a mixture with a single component is never refused.
 #'
 #' @return A prior object of class \code{prior.mixture} (with the classes of a
 #' factor, ordered or simple mixture where the components have them) that

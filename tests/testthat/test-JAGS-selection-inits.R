@@ -375,6 +375,10 @@ test_that("selection mixtures refuse prior weights that cannot be normalized whe
   }
   # a single branch has no mixture weights to normalize
   expect_identical(selection_backend_spec(prior_none(prior_weights = 5e-324), include_init = FALSE)$prior_weights, 5e-324)
+  # also as a mixture of one selection branch, which writes no dcat() prior
+  single <- prior_mixture(list(prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)), prior_weights = 5e-324)))
+  expect_false(grepl("dcat(", JAGS_add_priors("model{}", list(bias = single)), fixed = TRUE))
+  expect_false("bias_indicator" %in% names(JAGS_get_inits(list(bias = single), chains = 1, seed = 1)[[1L]]))
 })
 
 test_that("selection mixture weights at the normalization limits are used as they are", {
