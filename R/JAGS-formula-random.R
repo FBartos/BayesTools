@@ -1053,7 +1053,7 @@ random_group_component_names <- function(term){
       numeric_keys <- key[startsWith(key, "n:")]
       # the keys hold 17 significant digits: as.numeric() reads some of them
       # as a neighbouring double where long double is double (Apple silicon)
-      numeric_values <- .JAGS_read_number(substring(numeric_keys, 3L), fallback = TRUE)
+      numeric_values <- .JAGS_read_number(substring(numeric_keys, 3L))
       all(startsWith(key, "n:") | startsWith(key, "c:")) &&
         (all(startsWith(key, "n:")) || all(startsWith(key, "c:"))) &&
         !anyNA(numeric_values) &&

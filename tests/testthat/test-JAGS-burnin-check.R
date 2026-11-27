@@ -69,7 +69,13 @@ test_that("degenerate blocks are decided before coda", {
   # as equal means (two chains that clearly disagree); equal means stay equal
   disagreeing <- list(seq(1, 2, length.out = 100), seq(3, 4, length.out = 100))
   expect_gt(.burnin_rhat(disagreeing), 2)
-  expect_false(identical(.burnin_rhat(lapply(disagreeing, function(chain) chain * 1e307)), 1))
+  # (their variances overflow, so coda cannot assess them: NA, not agreement)
+  expect_identical(.burnin_rhat(lapply(disagreeing, function(chain) chain * 1e307)), NA_real_)
+  # the scale is a power of two, so sums that are exact stay exact: counts
+  # whose largest value is not a power of two, in half-chains that are
+  # permutations of each other, have equal means on every platform
+  counts <- c(rep(0, 13), rep(1, 9), rep(2, 11), rep(3, 7))
+  expect_identical(.burnin_rhat(list(c(counts, rev(counts)), c(rev(counts), counts))), 1)
   expect_identical(.burnin_rhat(lapply(equal, function(chain) chain * 1e307)), 1)
 
   # nothing to assess: constant everywhere
@@ -1374,17 +1380,17 @@ test_that("the JASP warm-up bar ticks after the check and its extensions", {
   expect_identical(out$burnin_check$extension, 300)
 })
 
-test_that("printed numbers are read back under a decimal-comma LC_NUMERIC", {
+test_that("numbers are read and models are compiled under a decimal-comma LC_NUMERIC", {
 
-  # R keeps LC_NUMERIC at "C", but a session can change it; the C library's
-  # reader then expects a comma, and the text of the warning (and of JAGS
-  # constants) still has a point
+  # R keeps LC_NUMERIC at "C", but a session or an embedding application can
+  # change it; the C library's reader then expects a comma, and the text of
+  # the warning and of a model's constants still has a point
   texts <- c("1.88", "1.8800000000000001", "1e-200", "2")
   reference <- BayesTools:::.JAGS_read_number(texts)
   expect_false(anyNA(reference))
 
   old <- Sys.getlocale("LC_NUMERIC")
-  on.exit(suppressWarnings(Sys.setlocale("LC_NUMERIC", old)), add = TRUE)
+  withr::defer(suppressWarnings(Sys.setlocale("LC_NUMERIC", old)))
   comma <- FALSE
   for(candidate in c("German_Germany.1252", "German", "de_DE.UTF-8", "de_DE", "nl_NL.UTF-8", "fr_FR.UTF-8")){
     set <- suppressWarnings(Sys.setlocale("LC_NUMERIC", candidate))
@@ -1402,4 +1408,17 @@ test_that("printed numbers are read back under a decimal-comma LC_NUMERIC", {
   message <- BayesTools:::.bt_burnin_warning(
     .burnin_loop(list(c(mu = 2.5)), autofit = FALSE, burnin_max_Rhat = 1.88)$record)
   expect_match(message, "R-hat 2.50 for 'mu' (limit 1.88)", fixed = TRUE)
+
+  # JAGS reads the constants of the model text with the C library too: under
+  # a decimal comma it stops at the point and reads the prior mean 0.5 as 0.
+  # The model is compiled under the "C" numeric locale, and the session's
+  # locale is restored
+  fit <- JAGS_fit(model_syntax = "model{}", data = list(),
+    prior_list = list(mu = prior("normal", list(0.5, 0.25))),
+    chains = 2, adapt = 100, burnin = 100, sample = 1000, seed = 1, silent = TRUE)
+  draws <- unlist(lapply(fit$mcmc, function(chain) as.numeric(chain[, "mu"])))
+  # Monte Carlo standard error 0.25 / sqrt(2000) = 0.0056
+  expect_lt(abs(mean(draws) - 0.5), 0.05)
+  expect_lt(abs(stats::sd(draws) - 0.25), 0.05)
+  expect_identical(unname(Sys.localeconv()[["decimal_point"]]), ",")
 })

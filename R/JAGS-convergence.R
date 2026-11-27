@@ -63,8 +63,8 @@
 #' \code{max_Rhat} and \code{min_ESS} whatever this argument is. Their MCMC
 #' error (the standard error SD / sqrt(ESS) of an ESS of 0) is \code{Inf}, so
 #' \code{max_error} and \code{max_SD_error} fail as well. Chains that visit
-#' two values equally often (equal occupancies of an indicator state) agree
-#' and give an R-hat of 1. Automatic fitting in
+#' the same values equally often (such as equal occupancies of an indicator
+#' state) agree and give an R-hat of 1. Automatic fitting in
 #' [JAGS_fit()] and [JAGS_extend()] judges assessability from the draws at
 #' each check and does not extend a fit for diagnostics that are not
 #' assessable then: it stops once every diagnostic that can be assessed
@@ -574,20 +574,25 @@ JAGS_check_convergence <- function(
   converged
 }
 
-# Whether the chains hold two values and visit them equally often, as the
-# occupancies of an indicator state can: such chains have equal means and equal
-# variances, for which coda::gelman.diag() divides zero by zero, and they
-# agree (R-hat 1). The visits are counted, because the means of such chains
-# differ in the last bit where mean() depends on the order of the values
-# (Apple silicon), and coda then returns a number below 1.
+# Whether the chains visit the same values equally often, as the occupancies
+# of an indicator state can: such chains have equal means and equal variances,
+# for which coda::gelman.diag() divides zero by zero, and they agree (R-hat
+# 1). The visits are counted, because the means of such chains differ in the
+# last bit where mean() depends on the order of the values (Apple silicon),
+# and coda then returns a number below 1. Draws that never repeat a value
+# (continuous parameters) are not such chains.
 .bt_equal_state_occupancy <- function(chains){
 
-  values <- unique(unlist(lapply(chains, as.numeric), use.names = FALSE))
-  if(length(values) != 2L || anyNA(values)){
+  chains <- lapply(chains, as.numeric)
+  draws  <- unlist(chains, use.names = FALSE)
+  values <- unique(draws)
+  if(length(values) < 2L || length(values) == length(draws) || !all(is.finite(values))){
     return(FALSE)
   }
-  shares <- vapply(chains, function(chain) sum(chain == values[[1L]]) / length(chain), numeric(1))
-  length(unique(shares)) == 1L
+  shares <- lapply(chains, function(chain){
+    tabulate(match(chain, values), length(values)) / length(chain)
+  })
+  all(vapply(shares[-1L], identical, logical(1), shares[[1L]]))
 }
 
 .bt_convergence_parameter_diagnostics <- function(

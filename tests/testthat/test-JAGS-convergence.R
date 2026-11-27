@@ -1846,11 +1846,19 @@ test_that("chains with equal state occupancies agree", {
   expect_true(diagnostics$assessable)
   expect_true(is.finite(diagnostics$ESS))
 
-  # only two values that every chain visits equally often
+  # only repeated finite values that every chain visits equally often
   expect_false(BayesTools:::.bt_equal_state_occupancy(list(rare(10), rare(c(5, 500)), rare(900))))
   expect_false(BayesTools:::.bt_equal_state_occupancy(list(rep(1, 10), rep(1, 10))))
-  expect_false(BayesTools:::.bt_equal_state_occupancy(list(c(0, 1, 2), c(2, 1, 0))))
+  expect_false(BayesTools:::.bt_equal_state_occupancy(list(c(0.1, 0.2, 0.3), c(0.4, 0.5, 0.6))))
+  expect_false(BayesTools:::.bt_equal_state_occupancy(list(c(0, Inf, 0, Inf), c(Inf, 0, Inf, 0))))
+  expect_false(BayesTools:::.bt_equal_state_occupancy(list(c(0, 1, 2, 2), c(2, 1, 0, 0))))
   expect_true(BayesTools:::.bt_equal_state_occupancy(list(rare(1, 10), rare(c(3, 7), 20))))
+  # more than two values: three states visited equally often in every chain
+  states <- list(rep(c(0, 1, 2), c(5, 3, 2)), rep(c(2, 0, 1), c(2, 5, 3)), rep(c(1, 2, 0), c(3, 2, 5)))
+  expect_true(BayesTools:::.bt_equal_state_occupancy(states))
+  three <- BayesTools:::.bt_convergence_parameter_diagnostics(
+    unlist(states), rep(1:3, each = 10), 3L, TRUE, FALSE, FALSE, FALSE)
+  expect_identical(three$Rhat, 1)
   # unequal occupancies, and equal means with unequal variances, stay with coda
   unequal <- BayesTools:::.bt_convergence_parameter_diagnostics(
     c(rare(10), rare(c(5, 500)), rare(900)), chain_id, 3L, TRUE, FALSE, FALSE, FALSE)

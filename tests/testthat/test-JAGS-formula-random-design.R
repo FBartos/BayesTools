@@ -110,8 +110,8 @@ test_that("group ownership retains exact numeric identity and safe display repla
   awkward_keys <- BayesTools:::.bt_random_effect_numeric_identity(awkward)
   expect_identical(awkward_keys[1:2], c("0.089999999999999997", "0.77285443804925302"))
   expect_identical(BayesTools:::.JAGS_read_number(awkward_keys), awkward)
-  expect_identical(BayesTools:::.JAGS_read_number(c(awkward_keys[1L], "level"), fallback = TRUE),
-    c(awkward[1L], NA_real_))
+  expect_identical(BayesTools:::.JAGS_read_number(c(awkward_keys[1L], "level", "Inf", "-Inf")),
+    c(awkward[1L], NA_real_, Inf, -Inf))
   awkward_term <- compile(data.frame(g = awkward))$formula_design$random_effects[[1L]]
   expect_identical(awkward_term$n_groups, length(awkward))
   expect_identical(replay(awkward_term, data.frame(g = rev(awkward)))$group_map,

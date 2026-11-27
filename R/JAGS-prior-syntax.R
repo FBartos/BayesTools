@@ -698,19 +698,12 @@ JAGS_add_priors           <- function(syntax, prior_list){
 # The doubles JAGS reads from the text of numeric constants: the C library's
 # strtod(), which rounds correctly. as.numeric() can differ in the last digit
 # where R's long double is double (Apple silicon); see src/r-decimal-read.c.
-# The reader takes the decimal point under any LC_NUMERIC with a one-byte
-# decimal mark. With 'fallback', text it does not take (a number under a
-# multi-byte mark; text that is no number stays NA) is read by as.numeric().
-.JAGS_read_number <- function(text, fallback = FALSE){
+# The text is read under the "C" numeric locale, as JAGS is given the model
+# (.bt_with_c_numeric_locale()), whatever the session's LC_NUMERIC.
+.JAGS_read_number <- function(text){
 
   .BayesTools_require_native("decimal-reading")
-  text  <- as.character(text)
-  value <- .Call("BayesTools_decimal_read", text, PACKAGE = "BayesTools")
-  if(fallback && anyNA(value)){
-    unread <- is.na(value)
-    value[unread] <- suppressWarnings(as.numeric(text[unread]))
-  }
-  value
+  .Call("BayesTools_decimal_read", as.character(text), PACKAGE = "BayesTools")
 }
 # The publication-bias role of every component of a bias mixture, shared by the
 # syntax, initial-value, and monitor emitters.

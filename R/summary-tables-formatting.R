@@ -298,7 +298,7 @@
       }
     )
     if(n_chains > 1){
-      # chains that visit two values equally often agree: coda returns NaN
+      # chains that visit the same values equally often agree: coda returns NaN
       # for them, or a number below 1 where the means differ in the last bit
       equal_occupancy <- vapply(seq_len(ncol(diagnostic_samples)), function(column){
         .bt_equal_state_occupancy(lapply(model_samples_list, function(chain) chain[, column]))

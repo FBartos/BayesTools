@@ -34,10 +34,11 @@
   # equal means as sums over lengths: state occupancies sum exactly in any
   # order, while mean() refines its result in extended precision where the
   # platform has it and otherwise (Apple silicon) depends on the order. The
-  # values are divided by their largest magnitude first (1 for occupancies),
-  # so that the sums of huge values stay finite and do not compare equal as
-  # infinities.
-  scale <- max(abs(unlist(halves, use.names = FALSE)))
+  # values are divided first by the power of two at or below their largest
+  # magnitude (1 for occupancies), so that the sums of huge values stay
+  # finite and do not compare equal as infinities; dividing by a power of
+  # two does not round, so sums that were exact stay exact.
+  scale <- 2^floor(log2(max(abs(unlist(halves, use.names = FALSE)))))
   means <- vapply(halves, function(half) sum(half / scale) / length(half), numeric(1))
   if(length(unique(means)) == 1L){
     return(1)
@@ -221,7 +222,7 @@
   # .JAGS_read_number(), which rounds correctly on every platform
   # (as.numeric() can be off in the last digit where long double is double).
   limit   <- .bt_burnin_format_limit(record$burnin_max_Rhat)
-  bound   <- max(record$burnin_max_Rhat, .JAGS_read_number(limit, fallback = TRUE))
+  bound   <- max(record$burnin_max_Rhat, .JAGS_read_number(limit))
   shown   <- .bt_burnin_decimal_mark(.bt_burnin_format_Rhat(listed$Rhat, bound))
   limit   <- .bt_burnin_decimal_mark(limit)
   values  <- paste0(shown, " for '", listed$parameter, "'", collapse = ", ")
@@ -251,12 +252,12 @@
 .bt_burnin_format_limit <- function(threshold){
 
   printed <- formatC(threshold, format = "f", digits = 2, decimal.mark = ".")
-  if(.JAGS_read_number(printed, fallback = TRUE) == threshold){
+  if(.JAGS_read_number(printed) == threshold){
     return(printed)
   }
   thousandths <- round(threshold * 1000)
   printed <- formatC(thousandths / 1000, format = "f", digits = 3, decimal.mark = ".")
-  if(.JAGS_read_number(printed, fallback = TRUE) > threshold){
+  if(.JAGS_read_number(printed) > threshold){
     printed <- formatC((thousandths - 1) / 1000, format = "f", digits = 3, decimal.mark = ".")
   }
   printed
@@ -274,13 +275,13 @@
     }
     for(digits in 2:15){
       printed <- formatC(value, format = "f", digits = digits, decimal.mark = ".")
-      if(.JAGS_read_number(printed, fallback = TRUE) > bound){
+      if(.JAGS_read_number(printed) > bound){
         return(printed)
       }
     }
     for(digits in 15:17){
       printed <- formatC(value, format = "g", digits = digits, decimal.mark = ".")
-      if(.JAGS_read_number(printed, fallback = TRUE) == value){
+      if(.JAGS_read_number(printed) == value){
         break
       }
     }

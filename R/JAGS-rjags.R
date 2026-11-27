@@ -30,6 +30,23 @@
   expr
 }
 
+# Evaluates 'expr' under the "C" numeric locale and restores the session's
+# LC_NUMERIC on exit. JAGS reads the numeric constants of the model text with
+# the C library, which follows LC_NUMERIC: under a decimal comma it stops at
+# the decimal point and reads 1.5 as 1. R keeps LC_NUMERIC at "C" unless the
+# session or an embedding application changes it.
+# Used where JAGS compiles a model.
+.bt_with_c_numeric_locale <- function(expr){
+
+  previous <- Sys.getlocale("LC_NUMERIC")
+  if(!identical(previous, "C")){
+    # restoring a locale other than "C" warns that R may function strangely
+    on.exit(suppressWarnings(Sys.setlocale("LC_NUMERIC", previous)), add = TRUE)
+    Sys.setlocale("LC_NUMERIC", "C")
+  }
+  expr
+}
+
 # Run the chains assigned to one R process. The caller owns process-level
 # setup and reporting. Keep JAGS to one thread per process for both serial
 # fits and PSOCK workers, including workers that own multiple chains.
@@ -60,8 +77,8 @@
     if(!is.null(probability_plan)) .bt_rjags_prepare_finite_readout()
     connection <- textConnection(model)
     on.exit(close(connection))
-    live_model <- rjags::jags.model(connection, data = data, inits = inits,
-      n.chains = length(inits), n.threads = 1L, n.adapt = 0L, quiet = silent)
+    live_model <- .bt_with_c_numeric_locale(rjags::jags.model(connection, data = data, inits = inits,
+      n.chains = length(inits), n.threads = 1L, n.adapt = 0L, quiet = silent))
     # in the type of 'adapt' (the range checks of the callers keep an integer
     # product within the integer range)
     adapt_iterations <- adapt * if(is.integer(adapt)) as.integer(thin) else thin
@@ -529,8 +546,8 @@
   if(grepl("~", substr(masked, data_at, model_at - 1L), fixed = TRUE)){
     rjags::jags.seed(seed)
   }
-  generator <- .bt_with_single_threaded_jags(rjags::jags.model(connection,
-    data = data[names(data) %in% inputs], n.chains = 1L, n.threads = 1L, n.adapt = 0L, quiet = TRUE))
+  generator <- .bt_with_single_threaded_jags(.bt_with_c_numeric_locale(rjags::jags.model(connection,
+    data = data[names(data) %in% inputs], n.chains = 1L, n.threads = 1L, n.adapt = 0L, quiet = TRUE)))
   generated <- generator$data()
   data[names(generated)] <- generated
   declarations <- substr(model, 1L, data_at - 1L)
