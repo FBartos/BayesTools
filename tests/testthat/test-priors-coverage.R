@@ -1148,7 +1148,10 @@ test_that("mixture prior weights at the normalization limits are used as they ar
     expect_false(any(regularized_draws[, "mu_x_indicator"] == never))
     expect_setequal(unique(regularized_draws[, "mu_x_indicator"]), seq_len(never - 1L))
   }
-  expect_identical(dcat_line(normal_weights_mixture(c(1e200, 1e-200))), "mu_indicator ~ dcat(c(1e+200, 1e-200))")
+  # (the doubles of these decimals as the C library reads them: R's parser can
+  # be off in the last digit where long double is double, on Apple silicon)
+  expect_identical(dcat_line(normal_weights_mixture(BayesTools:::.JAGS_read_number(c("1e+200", "1e-200")))),
+                   "mu_indicator ~ dcat(c(1e+200, 1e-200))")
   expect_identical(dcat_line(normal_weights_mixture(c(1, 1, 5e-324))), "mu_indicator ~ dcat(c(1, 1, 4.94065645841247e-324))")
 
   # a factor mixture's prior draws at the largest double sum are those of its odds

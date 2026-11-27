@@ -31,7 +31,10 @@
   if(all(vapply(halves, function(half) all(half == half[[1L]]), logical(1)))){
     return(Inf)
   }
-  if(length(unique(vapply(halves, mean, numeric(1)))) == 1L){
+  # equal means as sums over lengths: state occupancies sum exactly in any
+  # order, while mean() refines its result in extended precision where the
+  # platform has it and otherwise (Apple silicon) depends on the order
+  if(length(unique(vapply(halves, function(half) sum(half) / length(half), numeric(1)))) == 1L){
     return(1)
   }
   estimate <- tryCatch(
@@ -209,9 +212,11 @@
   failing <- record$failing
   listed  <- utils::head(failing, 5L)
   # formatted and compared with a decimal point; the session's decimal mark
-  # applies to the displayed text only
+  # applies to the displayed text only. Printed numbers are read back with
+  # .JAGS_read_number(), which rounds correctly on every platform
+  # (as.numeric() can be off in the last digit where long double is double).
   limit   <- .bt_burnin_format_limit(record$burnin_max_Rhat)
-  bound   <- max(record$burnin_max_Rhat, as.numeric(limit))
+  bound   <- max(record$burnin_max_Rhat, .JAGS_read_number(limit))
   shown   <- .bt_burnin_decimal_mark(.bt_burnin_format_Rhat(listed$Rhat, bound))
   limit   <- .bt_burnin_decimal_mark(limit)
   values  <- paste0(shown, " for '", listed$parameter, "'", collapse = ", ")
@@ -241,12 +246,12 @@
 .bt_burnin_format_limit <- function(threshold){
 
   printed <- formatC(threshold, format = "f", digits = 2, decimal.mark = ".")
-  if(as.numeric(printed) == threshold){
+  if(.JAGS_read_number(printed) == threshold){
     return(printed)
   }
   thousandths <- round(threshold * 1000)
   printed <- formatC(thousandths / 1000, format = "f", digits = 3, decimal.mark = ".")
-  if(as.numeric(printed) > threshold){
+  if(.JAGS_read_number(printed) > threshold){
     printed <- formatC((thousandths - 1) / 1000, format = "f", digits = 3, decimal.mark = ".")
   }
   printed
@@ -264,13 +269,13 @@
     }
     for(digits in 2:15){
       printed <- formatC(value, format = "f", digits = digits, decimal.mark = ".")
-      if(as.numeric(printed) > bound){
+      if(.JAGS_read_number(printed) > bound){
         return(printed)
       }
     }
     for(digits in 15:17){
       printed <- formatC(value, format = "g", digits = digits, decimal.mark = ".")
-      if(as.numeric(printed) == value){
+      if(.JAGS_read_number(printed) == value){
         break
       }
     }
