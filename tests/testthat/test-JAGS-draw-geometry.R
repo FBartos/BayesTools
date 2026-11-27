@@ -219,6 +219,8 @@ test_that("the coda methods of a fit select variables with 'vars'", {
     expect_identical(selected(vars = c(NA, columns[-1L] == "sigma")), "sigma"),
     "Missing values in a logical 'vars' are taken as FALSE.", fixed = TRUE
   )
+  # a blank name selects nothing
+  expect_identical(selected(vars = c("", "sigma")), "sigma")
 
   # the chains keep their timing and values
   chains <- coda::as.mcmc.list(fit, vars = "mu_x$")
@@ -236,6 +238,8 @@ test_that("the coda methods of a fit select variables with 'vars'", {
     expect_error(coerce(fit, vars = TRUE),
       "A logical 'vars' must have one element per monitored variable (7).", fixed = TRUE)
     expect_error(coerce(fit, vars = rep(FALSE, length(columns))),
+      "'vars' selects no monitored variable.", fixed = TRUE)
+    expect_error(suppressWarnings(coerce(fit, vars = rep(NA, length(columns)))),
       "'vars' selects no monitored variable.", fixed = TRUE)
     expect_error(coerce(fit, vars = 1),
       "'vars' must be NA, NULL, a logical vector, or a character vector of variable names.", fixed = TRUE)

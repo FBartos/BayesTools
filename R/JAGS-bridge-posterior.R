@@ -90,7 +90,8 @@
   if(!is.null(fit[["summary.pars"]][["mutate"]])){
     stop(
       "The 'runjags' fit stores a 'mutate' function, whose variables only runjags can add. ",
-      "Pass its draws, 'coda::as.mcmc.list(fit)' with runjags loaded, instead of the fit.",
+      "Pass its draws, 'coda::as.mcmc.list(fit)' with runjags loaded, instead of the fit, ",
+      "and priors declared on the fit as 'prior_list'.",
       call. = FALSE
     )
   }

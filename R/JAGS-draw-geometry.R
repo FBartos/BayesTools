@@ -265,7 +265,9 @@ JAGS_with_draws <- function(fit, draws){
 as.mcmc.list.BayesTools_fit <- function(x, vars = NA, ...){
 
   chains <- coda::as.mcmc.list(x[["mcmc"]])
-  if(length(vars) == 0L || all(is.na(vars))){
+  # every variable: no selection, the default NA, or only missing or blank names
+  if(length(vars) == 0L || identical(vars, NA) ||
+     (is.character(vars) && all(is.na(vars) | !nzchar(vars)))){
     return(chains)
   }
   selected <- .bt_coda_select_vars(coda::varnames(chains), vars)
@@ -309,6 +311,7 @@ as.mcmc.BayesTools_fit <- function(x, vars = NA, ...){
   }
 
   selectors <- gsub("[[:space:]]", "", vars)
+  selectors <- selectors[nzchar(selectors)]  # a blank entry selects nothing
   unbalanced <- grepl("[", selectors, fixed = TRUE) != grepl("]", selectors, fixed = TRUE)
   if(any(unbalanced)){
     stop("The 'vars' element(s) '", paste0(selectors[unbalanced], collapse = "', '"),

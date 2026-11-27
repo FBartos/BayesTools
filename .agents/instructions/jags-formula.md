@@ -509,8 +509,9 @@ with moments within Monte Carlo error, at 1e15 34 and an SD 15% too small, at
 1e16 3 to 5 and an SD up to 60% too large (some chains freeze), at 1e17 a
 frozen chain; one bound at a distance of 1e12 gives 1,416 distinct values, 1e13
 188, 1e14 11, and 1e15 a frozen chain. The ratio of the distance to the
-posterior scale decides (the kernel header lists further measurements), and the
-convergence diagnostics pass in these cases. There is no check of the bounds or
+posterior scale decides (the kernel header lists further measurements).
+Convergence diagnostics can pass on such coarse grids; frozen chains are not
+assessable or fail R-hat. There is no check of the bounds or
 of the starting values: starting values are prior draws, which lie far from a
 bound for vague priors whose posterior does not, and a member far from its bound
 in large units samples correctly; a refusal at a starting distance above 1e10

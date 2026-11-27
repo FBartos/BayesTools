@@ -308,7 +308,8 @@ test_that("JAGS_bridgesampling drives the real upstream sampler on multiple chai
   expect_error(
     do.call(JAGS_bridgesampling, runjags_arguments),
     paste0("The 'runjags' fit stores a 'mutate' function, whose variables only runjags can add. ",
-           "Pass its draws, 'coda::as.mcmc.list(fit)' with runjags loaded, instead of the fit."),
+           "Pass its draws, 'coda::as.mcmc.list(fit)' with runjags loaded, instead of the fit, ",
+           "and priors declared on the fit as 'prior_list'."),
     fixed = TRUE
   )
   runjags_arguments[["fit"]] <- structure(list(), class = "runjags")
