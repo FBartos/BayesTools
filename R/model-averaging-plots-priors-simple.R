@@ -290,11 +290,14 @@
     prior_list <- list(prior_list)
   }
 
-  # spike-and-slab entries enter as their inclusion-weighted components
-  if(any(vapply(prior_list, is.prior.spike_and_slab, logical(1)))){
+  # spike-and-slab entries and terms of gated R-squared budgets enter as their
+  # inclusion-weighted components
+  if(any(vapply(prior_list, function(prior) is.prior.spike_and_slab(prior) || .plot_prior_is_R2_gated_term(prior), logical(1)))){
     prior_list <- do.call(c, lapply(prior_list, function(prior){
       if(is.prior.spike_and_slab(prior)){
         .plot_prior_spike_and_slab_components(prior)
+      }else if(.plot_prior_is_R2_gated_term(prior)){
+        .plot_prior_R2_gated_components(prior)
       }else{
         list(prior)
       }
@@ -377,6 +380,32 @@
   }
   if(inclusion < 1){
     out[[length(out) + 1L]] <- .model_probability_split_prior(prior, null, 1 - inclusion)
+  }
+
+  out
+}
+# A term of a gated R-squared budget (not yet its continuous part)
+.plot_prior_is_R2_gated_term <- function(prior){
+
+  is.prior.R2(prior) && .bt_R2_term_is_gated(prior) && !isTRUE(prior$gated_slab)
+}
+# The continuous part of a gated R-squared term and the atom at zero of the
+# closed term, as plot() of the term draws them, weighted by the term's model
+# weight.
+.plot_prior_R2_gated_components <- function(prior){
+
+  components <- .bt_R2_gated_plot_components(prior)
+  # the components' prior weights are the probabilities of the open and the
+  # closed term
+  fractions  <- vapply(components, `[[`, numeric(1), "prior_weights")
+
+  out <- list()
+  for(k in seq_along(components)[fractions > 0]){
+    component <- components[[k]]
+    attr(component, "model_prior_weights")           <- NULL
+    attr(component, "model_log_prior_weights")       <- NULL
+    attr(component, "model_probability_declaration") <- NULL
+    out[[length(out) + 1L]] <- .model_probability_split_prior(prior, component, fractions[k])
   }
 
   out

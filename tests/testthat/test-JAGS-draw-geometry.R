@@ -185,3 +185,65 @@ test_that("private backend anchor is inserted only for an empty monitor set", {
     "reserved BayesTools backend node"
   )
 })
+
+test_that("the coda methods of a fit select variables with 'vars'", {
+
+  columns <- c("mu_intercept", "mu_x", "mu_x__xXx__z", "beta[1]", "beta[2]", "beta[3]", "sigma")
+  chain <- function(offset) coda::mcmc(matrix(seq_len(3L * length(columns)) + offset, nrow = 3L,
+    dimnames = list(NULL, columns)), start = 11, thin = 2)
+  fit <- test_fit_from_chains(coda::mcmc.list(chain(0), chain(100)))
+  selected <- function(...) coda::varnames(coda::as.mcmc.list(fit, ...))
+
+  # all variables by default, NA, NULL or an empty selection, as for the
+  # runjags fits of 0.4.0; other arguments of those methods are ignored
+  expect_identical(selected(), columns)
+  expect_identical(selected(vars = NA), columns)
+  expect_identical(selected(vars = NULL), columns)
+  expect_identical(selected(vars = character()), columns)
+  expect_identical(selected(vars = NA_character_), columns)
+  expect_identical(selected("sigma", add.mutate = FALSE), "sigma")
+  expect_identical(colnames(coda::as.mcmc(fit, "sigma", add.mutate = FALSE)), "sigma")
+  # a name selects every name that contains it; '^' and '$' anchor it
+  expect_identical(selected(vars = "mu_x"), c("mu_x", "mu_x__xXx__z"))
+  expect_identical(selected(vars = "mu_x$"), "mu_x")
+  expect_identical(selected(vars = "^mu"), c("mu_intercept", "mu_x", "mu_x__xXx__z"))
+  expect_identical(selected("sigma"), "sigma")
+  # a quoted name selects exactly, a vector name all its elements
+  expect_identical(selected(vars = "'mu_x'"), "mu_x")
+  expect_identical(selected(vars = "\"beta\""), c("beta[1]", "beta[2]", "beta[3]"))
+  # index ranges expand, and the order follows the selectors
+  expect_identical(selected(vars = c("sigma", "beta[2:3]")), c("sigma", "beta[2]", "beta[3]"))
+  # a logical vector selects by position; a missing value counts as FALSE
+  expect_identical(selected(vars = columns == "sigma"), "sigma")
+  expect_warning(
+    expect_identical(selected(vars = c(NA, columns[-1L] == "sigma")), "sigma"),
+    "Missing values in a logical 'vars' are taken as FALSE.", fixed = TRUE
+  )
+  # a blank name selects nothing
+  expect_identical(selected(vars = c("", "sigma")), "sigma")
+
+  # the chains keep their timing and values
+  chains <- coda::as.mcmc.list(fit, vars = "mu_x$")
+  expect_identical(lapply(chains, attr, "mcpar"), lapply(fit$mcmc, attr, "mcpar"))
+  expect_identical(lapply(chains, as.vector), lapply(fit$mcmc, function(chain) as.vector(chain[, "mu_x"])))
+  # the pooled draws select the same variables
+  pooled <- coda::as.mcmc(fit, vars = c("sigma", "'mu_x'"))
+  expect_identical(colnames(pooled), c("sigma", "mu_x"))
+  expect_identical(as.vector(pooled[, "mu_x"]), c(as.vector(fit$mcmc[[1L]][, "mu_x"]), as.vector(fit$mcmc[[2L]][, "mu_x"])))
+
+  # unmatched and malformed selectors are refused
+  for(coerce in list(coda::as.mcmc.list, coda::as.mcmc)){
+    expect_error(coerce(fit, vars = c("mu_x", "absent_variable", "'mu'")),
+      "No monitored variable matches the 'vars' element(s): 'absent_variable', ''mu''.", fixed = TRUE)
+    expect_error(coerce(fit, vars = TRUE),
+      "A logical 'vars' must have one element per monitored variable (7).", fixed = TRUE)
+    expect_error(coerce(fit, vars = rep(FALSE, length(columns))),
+      "'vars' selects no monitored variable.", fixed = TRUE)
+    expect_error(suppressWarnings(coerce(fit, vars = rep(NA, length(columns)))),
+      "'vars' selects no monitored variable.", fixed = TRUE)
+    expect_error(coerce(fit, vars = 1),
+      "'vars' must be NA, NULL, a logical vector, or a character vector of variable names.", fixed = TRUE)
+    expect_error(coerce(fit, vars = "beta[1"),
+      "The 'vars' element(s) 'beta[1' have an unmatched bracket.", fixed = TRUE)
+  }
+})

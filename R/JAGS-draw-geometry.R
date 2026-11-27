@@ -7,8 +7,14 @@
 #'
 #' @description
 #' `JAGS_draw_geometry()` returns the retained iteration and chain geometry
-#' stored from the actual chains returned by JAGS. Geometry is independent of
-#' which coordinates are public.
+#' of the fitted chains. Its iterations are BayesTools iteration indices: the
+#' first retained draw of [JAGS_fit()] is iteration
+#' `(adapt + burnin) * thin + 1`, where `burnin` is the burn-in that ran
+#' (the requested burn-in and any that the readiness check added) and the
+#' requested adaptation counts also when JAGS runs no adaptation iterations
+#' (a model without an adaptive sampler), so the indices can differ from the
+#' iteration counter of JAGS; extensions continue them. Geometry is
+#' independent of which coordinates are public.
 #'
 #' `JAGS_materialize_draws()` reconstructs requested coordinates from the
 #' fitted parameter map. Sampled coordinates are selected from the fitted
@@ -241,19 +247,38 @@ JAGS_with_draws <- function(fit, draws){
 
 #' @rdname JAGS_draw_geometry
 #' @param x a fitted model or a derived-draw view.
+#' @param vars optional selection of the monitored variables returned by
+#'   `coda::as.mcmc.list()` and `coda::as.mcmc()`: `NA` (default), `NULL` or
+#'   an empty vector for all of them, a logical vector with one element per
+#'   variable (missing values count as `FALSE`, with a warning), or a
+#'   character vector. A character element selects every variable name that
+#'   contains it, where a leading `^` anchors it at the start and a trailing
+#'   `$` at the end of the name, and index ranges such as `"beta[1:3]"`
+#'   expand to their indices; a quoted element (`"'beta'"`) selects only the
+#'   variable of that exact name or the elements of that vector. An element
+#'   that matches no variable and a selection without any variable are errors.
 #' @param object a fitted model or a derived-draw view to summarize.
-#' @param ... arguments passed to [JAGS_estimates_table()] by `summary()`.
+#' @param ... arguments passed to [JAGS_estimates_table()] by `summary()`;
+#'   the coda methods ignore them (such as `add.mutate` of fits made with
+#'   runjags).
 #' @exportS3Method coda::as.mcmc.list
-as.mcmc.list.BayesTools_fit <- function(x, ...){
+as.mcmc.list.BayesTools_fit <- function(x, vars = NA, ...){
 
-  coda::as.mcmc.list(x[["mcmc"]])
+  chains <- coda::as.mcmc.list(x[["mcmc"]])
+  # every variable: no selection, the default NA, or only missing or blank names
+  if(length(vars) == 0L || identical(vars, NA) ||
+     (is.character(vars) && all(is.na(vars) | !nzchar(vars)))){
+    return(chains)
+  }
+  selected <- .bt_coda_select_vars(coda::varnames(chains), vars)
+  coda::as.mcmc.list(lapply(chains, function(chain) chain[, selected, drop = FALSE]))
 }
 
 #' @rdname JAGS_draw_geometry
 #' @exportS3Method coda::as.mcmc
-as.mcmc.BayesTools_fit <- function(x, ...){
+as.mcmc.BayesTools_fit <- function(x, vars = NA, ...){
 
-  chains <- as.mcmc.list.BayesTools_fit(x)
+  chains <- as.mcmc.list.BayesTools_fit(x, vars = vars)
   matrices <- lapply(chains, function(chain){
     if(identical(ncol(chain), 0L)){
       return(unclass(chain))
@@ -261,6 +286,72 @@ as.mcmc.BayesTools_fit <- function(x, ...){
     as.matrix(chain)
   })
   coda::mcmc(do.call(rbind, matrices), start = 1, thin = 1)
+}
+
+# The column indices of 'names' selected by 'vars' (see as.mcmc.list.BayesTools_fit()).
+# Empty and all-missing selections (every variable) are handled by the caller.
+.bt_coda_select_vars <- function(names, vars){
+
+  if(is.logical(vars)){
+    if(length(vars) != length(names)){
+      stop("A logical 'vars' must have one element per monitored variable (", length(names), ").", call. = FALSE)
+    }
+    if(anyNA(vars)){
+      # as the coda methods of runjags fits did
+      warning("Missing values in a logical 'vars' are taken as FALSE.", call. = FALSE)
+      vars[is.na(vars)] <- FALSE
+    }
+    if(!any(vars)){
+      stop("'vars' selects no monitored variable.", call. = FALSE)
+    }
+    return(which(vars))
+  }
+  if(!is.character(vars) || anyNA(vars)){
+    stop("'vars' must be NA, NULL, a logical vector, or a character vector of variable names.", call. = FALSE)
+  }
+
+  selectors <- gsub("[[:space:]]", "", vars)
+  selectors <- selectors[nzchar(selectors)]  # a blank entry selects nothing
+  unbalanced <- grepl("[", selectors, fixed = TRUE) != grepl("]", selectors, fixed = TRUE)
+  if(any(unbalanced)){
+    stop("The 'vars' element(s) '", paste0(selectors[unbalanced], collapse = "', '"),
+         "' have an unmatched bracket.", call. = FALSE)
+  }
+  selectors <- unlist(lapply(selectors, .bt_coda_expand_index_ranges), use.names = FALSE)
+  base_names <- sub("\\[.*$", "", names)
+  anchored   <- paste0("^", names, "$")
+  selected   <- lapply(selectors, function(selector){
+    if(grepl("[\"']", selector)){
+      # a quoted name selects the variable of that name or the elements of that vector
+      exact <- gsub("[\"']", "", selector)
+      which(names == exact | base_names == exact)
+    }else{
+      which(grepl(selector, anchored, fixed = TRUE))
+    }
+  })
+  unmatched <- lengths(selected) == 0L
+  if(any(unmatched)){
+    stop("No monitored variable matches the 'vars' element(s): '",
+         paste0(selectors[unmatched], collapse = "', '"), "'.", call. = FALSE)
+  }
+
+  unique(unlist(selected, use.names = FALSE))
+}
+
+# "beta[1:2,3]" -> c("beta[1,3]", "beta[2,3]")
+.bt_coda_expand_index_ranges <- function(selector){
+
+  ranges <- regmatches(selector, gregexpr("[0-9]+:[0-9]+", selector))[[1L]]
+  if(length(ranges) == 0L){
+    return(selector)
+  }
+  pieces   <- regmatches(selector, gregexpr("[0-9]+:[0-9]+", selector), invert = TRUE)[[1L]]
+  indices  <- expand.grid(lapply(strsplit(ranges, ":", fixed = TRUE), function(range){
+    seq.int(as.integer(range[1L]), as.integer(range[2L]))
+  }), KEEP.OUT.ATTRS = FALSE)
+  apply(indices, 1L, function(index){
+    paste0(c(rbind(pieces[seq_along(index)], index), pieces[length(pieces)]), collapse = "")
+  })
 }
 
 #' @rdname JAGS_draw_geometry

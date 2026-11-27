@@ -761,3 +761,84 @@ test_that("JASP progress preserves one runtime report per fit or autofit extensi
   expect_null(attr(failed, "runtime_report_values", exact = TRUE))
   expect_identical(attr(failed, "runtime_report"), report)
 })
+
+test_that("a probability-trace error is not restarted", {
+
+  state <- .report_test_backend(.report_test_state())
+  # the backend condition of an incompatible or incomplete probability trace
+  # (.bt_rjags_probability_error()) is not cured by new initial values
+  traces <- errorCondition("incompatible probability traces for 'b'.",
+    class = "BayesTools_sampler_probabilities_error")
+  .report_test_script(state, fail_runs = 1L, run_error = traces)
+  failed <- .report_test_fit(autofit_control = .report_test_control(restarts = 3))
+  expect_s3_class(failed, "BayesTools_sampler_probabilities_error")
+  expect_identical(state$runs, 1L)
+  expect_false(any(grepl("restarted", attr(failed, "warnings"), fixed = TRUE)))
+
+  # an ordinary backend failure is retried
+  .report_test_script(state, fail_runs = 1L)
+  fit <- .report_test_fit(autofit_control = .report_test_control(restarts = 3))
+  expect_false(inherits(fit, "error"))
+  expect_identical(state$runs, 2L)
+})
+
+test_that("fit settings: the burn-in opt-out needs no 'sample_extend' and near-whole chains run whole", {
+
+  state <- .report_test_backend(.report_test_state())
+  calls <- list()
+  basic_fit <- contract_test_backend_fit(2L)
+  testthat::local_mocked_bindings(
+    .bt_rjags_fit = function(model, data, inits, ...){
+      calls[[length(calls) + 1L]] <<- list(inits = inits, readiness = list(...)[["readiness"]])
+      basic_fit
+    },
+    .package = "BayesTools"
+  )
+
+  # a burn-in long enough for the readiness check (a block of at least 100 draws)
+  fit_checked <- function(...){
+    JAGS_fit("model{ x ~ dnorm(mu, 1) }", data = list(x = 0),
+      prior_list = list(mu = prior("normal", list(0, 1))), chains = 2,
+      adapt = 50, burnin = 200, sample = 100, seed = 1, silent = TRUE, ...)
+  }
+  # the documented opt-out of the readiness check without automatic fitting
+  fit <- fit_checked(autofit_control = list(burnin_max_Rhat = NULL))
+  expect_false(inherits(fit, "error"))
+  expect_length(calls, 1L)
+  expect_null(calls[[1L]]$readiness)
+  # the check runs by default with that burn-in
+  fit_checked()
+  expect_false(is.null(calls[[2L]]$readiness))
+  # automatic fitting extends by 'sample_extend', which it still requires
+  expect_error(fit_checked(autofit = TRUE, autofit_control = list(burnin_max_Rhat = NULL)),
+    "The 'sample_extend' argument cannot be NULL.", fixed = TRUE)
+
+  # a count within rounding of a whole number runs as that number
+  for(chains in c(2 - 1e-9, 2 + 1e-9)){
+    fit <- .report_test_fit(chains = chains)
+    expect_false(inherits(fit, "error"))
+    expect_length(calls[[length(calls)]]$inits, 2L)
+  }
+})
+
+test_that("fit settings: near-whole 'cores' starts whole workers in fits and extensions", {
+
+  state <- .report_test_backend(.report_test_state())
+  started <- numeric()
+  testthat::local_mocked_bindings(
+    .JAGS_runtime_cluster_start = function(cores, ...){
+      started <<- c(started, cores)
+      as.list(seq_len(2L))
+    },
+    .JAGS_runtime_cluster_stop = function(...) invisible(NULL),
+    .package = "BayesTools"
+  )
+
+  # 'cores' within rounding of a whole number runs as that number
+  fit <- .report_test_fit(parallel = TRUE, cores = 2 - 1e-9)
+  expect_false(inherits(fit, "error"))
+  extended <- JAGS_extend(fit, autofit_control = .report_test_control(),
+    parallel = TRUE, cores = 2 - 1e-9)
+  expect_false(inherits(extended, "error"))
+  expect_identical(started, c(2, 2))
+})

@@ -1180,18 +1180,18 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
   basis <- list()
   separable <- list()
   for(k in seq_along(columns)){
-    F <- functions[[k]]
-    invariant <- all(vapply(seq_len(no), function(o) identical(F[, o], F[, 1L]), logical(1)))
+    function_values <- functions[[k]]
+    invariant <- all(vapply(seq_len(no), function(o) identical(function_values[, o], function_values[, 1L]), logical(1)))
     if(invariant){
       lift <- numeric(length(columns))
       lift[k] <- 1
       lifts[[length(lifts) + 1L]] <- lift
-      basis[[length(basis) + 1L]] <- F[, 1L]
+      basis[[length(basis) + 1L]] <- function_values[, 1L]
     }else{
-      first_nonzero <- which(colSums(F != 0) > 0L)[1L]
-      pattern <- F[, first_nonzero]
-      mask <- vapply(seq_len(no), function(o) identical(F[, o], pattern), logical(1))
-      zeros <- vapply(seq_len(no), function(o) all(F[, o] == 0), logical(1))
+      first_nonzero <- which(colSums(function_values != 0) > 0L)[1L]
+      pattern <- function_values[, first_nonzero]
+      mask <- vapply(seq_len(no), function(o) identical(function_values[, o], pattern), logical(1))
+      zeros <- vapply(seq_len(no), function(o) all(function_values[, o] == 0), logical(1))
       if(all(mask | zeros)){
         separable[[length(separable) + 1L]] <- list(
           column = k, pattern = pattern, mask = mask, term = assign[columns[k]]

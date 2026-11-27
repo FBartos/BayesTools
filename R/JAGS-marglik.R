@@ -7,8 +7,11 @@
 #' specify a function that takes a named parameter list, the data, and any
 #' additional arguments, and returns the log likelihood of the model part.
 #'
-#' @param fit model fitted with [JAGS_fit()], or posterior
-#' samples obtained with \link[rjags]{rjags-package}.
+#' @param fit model fitted with [JAGS_fit()], posterior
+#' samples obtained with \link[rjags]{rjags-package}, or a fit of the
+#' \pkg{runjags} package (its stored chains are read as they are, without
+#' \pkg{runjags}; a fit with a \code{mutate} function is refused, pass
+#' \code{coda::as.mcmc.list(fit)} and its priors as \code{prior_list} instead).
 #' Derived-draw views are refused with
 #' \code{BayesTools_draws_view_inference_unavailable} (also
 #' \code{BayesTools_draws_view_unavailable}); use \code{fit$original_fit}.

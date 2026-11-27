@@ -21,15 +21,15 @@
     u <- z[inside]
     order <- df / 2
     # In this far tail the first omitted relative correction to the
-    # scaled Bessel kernel is O((order²/u)^2), below double precision.
+    # scaled Bessel kernel is O((order^2/u)^2), below double precision.
     far <- u > 1e9 * max(1, order^2)
     log_k <- numeric(length(u))
     log_k[far] <- (log(pi / 2) - log(u[far])) / 2 + log1p((order^2 - .25) / (2 * u[far]))
     if(any(!far)) log_k[!far] <- log(besselK(u[!far], order, expon.scaled = TRUE))
     log_value <- log(2) + order * (log(u) - log(2)) + log_k - lgamma(order)
     # For high orders K_nu(u) can overflow even with exponential scaling.
-    # Normalize the order recurrence itself. With F_nu = E exp(-z²/(2W))
-    # for W~chi-square(2nu), F_(nu+1)=F_nu+z² F_(nu-1)/[4nu(nu-1)].
+    # Normalize the order recurrence itself. With F_nu = E exp(-z^2/(2W))
+    # for W~chi-square(2nu), F_(nu+1)=F_nu+z^2 F_(nu-1)/[4nu(nu-1)].
     missing <- !is.finite(log_value)
     if(any(missing) && order > 2){
       start <- if(df %% 2 == 0) 1 else .5

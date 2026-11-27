@@ -229,6 +229,10 @@ prior_none <- function(prior_weights = 1){
 #'
 #' @return \code{prior_PET} and \code{prior_PEESE} return an object of class 'prior'.
 #'
+#' @param truncation list with two elements, \code{lower} and
+#' \code{upper}, that define the lower and upper truncation of the
+#' distribution. Defaults to \code{list(lower = 0, upper = Inf)}.
+#' The truncation is automatically set to the bounds of the support.
 #' @inheritParams prior
 #' @export prior_PET
 #' @export prior_PEESE
@@ -638,9 +642,13 @@ prior_spike_and_slab <- function(prior_parameter,
 #' should be considered as a null distribution. Defaults to \code{rep(FALSE, length(prior_list))}.
 #' @param components a character vector indicating which of the prior distributions
 #' belong to the same mixture component (this is an alternative specification to the \code{is_null} argument).
-#' Defaults to \code{NULL} (i.e., \code{is_null} is used.
+#' Defaults to \code{NULL} (i.e., \code{is_null} is used).
 #'
-#' @details The \code{prior_weights} of the components are their prior odds,
+#' @details A mixture of publication-bias priors (PET, PEESE, weight function,
+#' p-hacking, composed bias, or none priors) must be named \code{bias} in the
+#' prior list of [JAGS_fit()] and [JAGS_add_priors()].
+#'
+#' The \code{prior_weights} of the components are their prior odds,
 #' and any positive finite weights construct a mixture. Weights that cannot be
 #' normalized in double precision (their sum, accumulated in double precision,
 #' overflows or is below \code{.Machine$double.xmin}) are refused when a

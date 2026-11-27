@@ -30,7 +30,28 @@
 //   and an SD 15% too small, at 1e16 3 to 5 and an SD up to 60% too large
 //   (some chains freeze), at 1e17 a frozen chain; one bound at a distance of
 //   1e12 gives 1,416 distinct values, 1e13 188, 1e14 11, and 1e15 a frozen
-//   chain. For such a member, declare the block without the node; removing
+//   chain. In a block of two normal coefficients with unit posterior scale
+//   (4 x 5,000 draws, 3 seeds) mean and SD are unchanged up to a distance of
+//   1e14, where about 220 (two bounds) or 9 (one bound) distinct values
+//   remain and the effective sample size is up to 8% lower; symmetric bounds
+//   at 1e15 give an SD
+//   13% too large and at 1e16 frozen chains; one bound freezes the chains at
+//   1e15. The ratio of the distance to the posterior scale decides: at a
+//   distance of 1e10 a posterior SD of 1e-4 leaves 20 distinct values in
+//   6,000 draws, and one of 1e-5 an SD a quarter of the target with R-hat
+//   near 1.01. Convergence diagnostics can pass on such coarse grids; frozen
+//   chains are not assessable or fail R-hat.
+//   A check of the bounds or of the starting values cannot stand in for that
+//   ratio, so there is none: the posterior scale is unknown at the start,
+//   starting values are prior draws (an inverse-gamma(0.01, 0.01) value lies
+//   beyond 1e10 with probability 0.76 while the posterior sits near the
+//   data), an interval such as (0, 1e308) holds a member near 0 exactly, and
+//   a member far from its bound in large units (5e10 with an SD of 1e9)
+//   samples correctly. A refusal at a starting distance above 1e10 was tried
+//   and withdrawn for these reasons (release audit, November 2026). A
+//   scale-free check would have to compare the spread of the member on the
+//   sampler's scale, known after adaptation, with about 1e-13.
+//   For such a member, declare the block without the node; removing
 //   the bound instead is valid only when it excludes no posterior mass. An
 //   additive constant so large that the log densities lose their differences
 //   breaks the slice arithmetic itself.

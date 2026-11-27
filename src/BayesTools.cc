@@ -13,6 +13,9 @@ static_assert(JAGS_MAJOR >= 5, "BayesTools requires JAGS 5.0.0 or later");
 #include "samplers/BTFactorSlice.h"
 #include "samplers/BTFiniteReadout.h"
 
+#include <cstdio>
+#include <exception>
+
 #include <Rinternals.h>
 
 namespace jags {
@@ -67,10 +70,21 @@ jags::BayesTools::BayesToolsModule _BayesTools_module;
 
 extern "C" SEXP BayesTools_prepare_finite_readout()
 {
+  // Rf_error() jumps out of the function, so it is called only after the
+  // handler has finished and the exception is destroyed.
+  bool failed = false;
+  char message[512] = "";
   try {
     _BayesTools_module.prepare_finite_readout();
   } catch (std::exception const &error) {
-    Rf_error("Could not prepare the BayesTools finite readout: %s", error.what());
+    failed = true;
+    std::snprintf(message, sizeof message, "%s", error.what());
+  } catch (...) {
+    failed = true;
+    std::snprintf(message, sizeof message, "%s", "unknown exception");
+  }
+  if (failed) {
+    Rf_error("Could not prepare the BayesTools finite readout: %s", message);
   }
   return R_NilValue;
 }

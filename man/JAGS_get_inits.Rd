@@ -8,7 +8,8 @@ JAGS_get_inits(prior_list, chains, seed)
 }
 \arguments{
 \item{prior_list}{named list of prior distribution
-(names correspond to the parameter names)}
+(names correspond to the parameter names); a mixture of publication-bias
+priors (\code{\link[=prior_mixture]{prior_mixture()}}) must be named \code{bias}}
 
 \item{chains}{number of chains}
 

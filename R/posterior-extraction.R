@@ -16,10 +16,14 @@ NULL
 #' @return matrix or mcmc.list of posterior samples
 .extract_posterior_samples <- function(fit, as_list = FALSE) {
 
+  # A fit of BayesTools 0.4.0 also carries the class 'runjags'; with runjags
+  # attached the coda generics would dispatch to its methods (and warn about
+  # combining chains), so the BayesTools methods are called directly.
+  own_methods <- inherits(fit, "BayesTools_fit")
   if (as_list) {
-    model_samples <- coda::as.mcmc.list(fit)
+    model_samples <- if (own_methods) as.mcmc.list.BayesTools_fit(fit) else coda::as.mcmc.list(fit)
   } else {
-    model_samples <- coda::as.mcmc(fit)
+    model_samples <- if (own_methods) as.mcmc.BayesTools_fit(fit) else coda::as.mcmc(fit)
     if(inherits(fit, "BayesTools_draws_view")){
       # Internal matrix readers must not redispatch coda's zero-column
       # as.matrix method; timing remains on the public coda coercions.

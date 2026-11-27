@@ -52,9 +52,12 @@ iterations. Defaults to \code{1}. \code{adapt}, \code{burnin} and
 adaptation iterations when no sampler adapts) and its first retained draw
 is iteration \code{(adapt + burnin) * thin + 1}. The last
 retained draw, iteration \code{(adapt + burnin + sample - 1) * thin + 1},
-must not be numbered beyond \code{.Machine$integer.max}. \code{adapt},
-\code{burnin}, \code{sample} and \code{thin}, and \code{burnin_extend} and
-\code{sample_extend} of \code{autofit_control}, are whole numbers:
+must not be numbered beyond \code{.Machine$integer.max}. Burn-in that the
+readiness check of automatic fitting adds counts towards \code{burnin}
+in these positions. \code{chains},
+\code{adapt}, \code{burnin}, \code{sample}, \code{thin} and \code{cores},
+and \code{burnin_extend} and \code{sample_extend} of
+\code{autofit_control}, are whole numbers:
 \code{JAGS_fit()} and \code{JAGS_extend()} run a value accepted within a
 small tolerance of a whole number as the nearest whole number, and refuse
 a value below the minimum of its setting, also within that tolerance.}
@@ -275,5 +278,8 @@ Checks and lists settings for the
 \link{JAGS_fit} function. \code{adapt}, \code{burnin} and \code{sample} count
 draws at the thinning \code{thin}; settings whose last retained draw,
 iteration \code{(adapt + burnin + sample - 1) * thin + 1}, would be
-numbered beyond \code{.Machine$integer.max} are refused.
+numbered beyond \code{.Machine$integer.max} are refused. The settings are
+described as the arguments of \code{\link[=JAGS_fit]{JAGS_fit()}}; the defaults named there are
+those of \code{\link[=JAGS_fit]{JAGS_fit()}}, as these functions require every setting except
+\code{check_mins}, \code{skip_sample_extend} and \code{call}.
 }

@@ -4,7 +4,8 @@
 #'
 #' @param syntax JAGS model syntax
 #' @param prior_list named list of prior distribution
-#' (names correspond to the parameter names)
+#' (names correspond to the parameter names); a mixture of publication-bias
+#' priors ([prior_mixture()]) must be named \code{bias}
 #'
 #' @details Syntax containing moment, inverse-moment, or inverse-gamma priors
 #' (\code{dbt_invgamma}) uses the BayesTools JAGS module. \code{JAGS_fit()}

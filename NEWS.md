@@ -3,24 +3,24 @@
 - The fitted parameter map uses schema 23 and can read complete pre-R2 schema 22 fits
 - BayesTools requires JAGS 5.0.0 or later and rjags 5-5 or later. Thanks to [Matt Denwood](https://github.com/FBartos/BayesTools/pull/87) for the patch to obtain JAGS compiler flags directly from rjags, and to [Martyn Plummer](https://github.com/FBartos/RoBMA/pull/80) for the JAGS 5 C++ API guidance applied to the native module.
 - `JAGS_fit()` returns a `BayesTools_fit` with coda methods on success and the error condition if initial fitting fails. Use `JAGS_extend()` to continue a fit
-- `hypothesis_BF()` and `hypothesis_BF_model()` replace `columns` with `include_densities`, `include_probabilities`, and `include_method`; the `prior` and `posterior` columns are replaced by point densities and region probabilities, and table labels keep the notation of the hypothesis, with a constant on the right of a single relation
+- fits created with BayesTools 0.4.0 can be summarized but must be refitted to be continued with `JAGS_extend()`
+- `hypothesis_BF()` and `hypothesis_BF_model()` replace `columns` with `include_densities`, `include_probabilities`, and `include_method`; the `prior` and `posterior` columns are replaced by point densities and region probabilities, the kernel-density method is reported as `"Savage-Dickey (KDE)"`, and table labels keep the notation of the hypothesis, with a constant on the right of a single relation
 - hypothesis statements cannot contain `#` comments
 - a mixture of publication-bias priors must be named `bias` in the prior list
 - removes `allow_not_assessable` from `autofit_control` of `JAGS_fit()` and `JAGS_extend()`; `JAGS_check_convergence()` keeps the argument
-- automatic fitting stops once every diagnostic that can be assessed meets its criterion and warns about the diagnostics that cannot be assessed, instead of extending until `max_time` or `max_extend`
+- automatic fitting stops once every diagnostic that can be assessed meets its criterion and, with `silent = FALSE`, warns about the diagnostics that cannot be assessed, instead of extending until `max_time` or `max_extend`
 - `JAGS_fit()` counts `adapt` and `burnin` at the fit's thinning like `sample` (as does `JAGS_extend()` for `adapt`), so fits with `thin` above 1 run `thin` times as many burn-in iterations and, where a sampler adapts, adaptation iterations, and their draws can differ from earlier versions
 
 ### Features
 - JASP progress updates retain the requested draw count and reuse adapted samplers throughout a fit
 - `plot_model_probabilities()` displays posterior model probabilities and model states in a matrix
-- `plot_posterior()` and `plot_marginal()` can select factor levels by name and draw a separate plot for each selected level
+- `plot_posterior()` and `plot_marginal()` can select factor levels by name and draw a separate plot for each selected level; `posterior_factor_columns()` lists the plotted columns of a factor
 - `hypothesis_BF()` accepts interval hypotheses such as `"-0.1 <= mu <= 0.1"` and explicit comparisons with `unconstrained`
-- `hypothesis_BF()` can display the method, prior and posterior point densities, and region probabilities with separate switches
 - Selection contexts support observation-level publication-bias exemptions
 - `prior_regularized()` adds ridge, lasso and horseshoe priors with joint shrinkage for centered factors
 - `prior()` gains the Laplace distribution
 - `JAGS_diagnostics_trace()` gains `statistic` and `batch_size` to trace batched inclusion probabilities, mixture-component probabilities, and switching rates
-- `JAGS_extend()` gains `adapt` to set the adaptation of one extension; fits record their adaptation settings in the `adaptation` attribute
+- `JAGS_extend()` gains `adapt` to set the adaptation of one extension, which by default is the fit's `adapt` instead of runjags' 1000 iterations; fits record their adaptation settings in the `adaptation` attribute
 - `JAGS_fit()` can declare publication-bias mixture branches to a gated sampler (`sampler_gates`) and blocks of priors to a factor slice sampler (`sampler_blocks`) of the BayesTools JAGS module
 - `JAGS_fit()` and `JAGS_extend()` gain `runtime_report`, a callback that collects small values from every process that ran chains, parallel workers included, into the `runtime_report_values` attribute
 - `prior_R2()` adds R-squared variance-budget priors for BayesTools formula terms as a beta feature
@@ -37,7 +37,7 @@
 - the starting value of the publication-bias indicator of mixtures with selection or p-hacking components is drawn from its prior probabilities; draws differ from earlier versions
 - sampling or fitting a mixture prior whose prior weights cannot be normalized (their sum overflows or underflows) stops with an explanation
 - on Windows, fits run JAGS's linear algebra on one thread, which avoids a large slowdown of models with multivariate nodes
-- `adapt`, `burnin`, `sample`, `thin`, `burnin_extend` and `sample_extend` given within rounding of a whole number run as that number
+- `chains`, `adapt`, `burnin`, `sample`, `thin`, `cores`, `burnin_extend` and `sample_extend` given within rounding of a whole number run as that number
 
 # version 0.4.0
 ### Breaking changes

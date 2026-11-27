@@ -976,6 +976,13 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
   .plot_scale_y2_remember(if(type == "point") 1, if(type == "point") ylim)
   return(invisible())
 }
+# Out-of-bounds handling of the axis scales that keeps the values outside the
+# limits (as scales::oob_keep()), so that lines leaving the plotted range are
+# clipped by the panel rather than removed.
+.bt_oob_keep <- function(x, range = c(0, 1)){
+
+  x
+}
 .ggplot.prior_empty  <- function(type, dots = list(), ...){
 
   dots      <- c(dots, list(...))
@@ -998,8 +1005,8 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
 
     plot <- ggplot2::ggplot()
     plot <- plot + ggplot2::ggtitle(main)
-    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = range(pretty(xlim)), oob = scales::oob_keep)
-    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = range(pretty(ylim)), oob = scales::oob_keep)
+    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = range(pretty(xlim)), oob = .bt_oob_keep)
+    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = range(pretty(ylim)), oob = .bt_oob_keep)
 
     attr(plot, "sec_axis") <- FALSE
     plot$bt_scale_y2_state <- list(scale_y2 = 1, ylim2 = ylim,
@@ -1009,8 +1016,8 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
 
     plot <- ggplot2::ggplot()
     plot <- plot + ggplot2::ggtitle(main)
-    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = range(pretty(xlim)), oob = scales::oob_keep)
-    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = range(pretty(ylim)), oob = scales::oob_keep)
+    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = range(pretty(xlim)), oob = .bt_oob_keep)
+    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = range(pretty(ylim)), oob = .bt_oob_keep)
 
     attr(plot, "sec_axis") <- FALSE
 
@@ -1018,8 +1025,8 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
 
     plot <- ggplot2::ggplot()
     plot <- plot + ggplot2::ggtitle(main)
-    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = x_at, labels = x_labels, limits = xlim, oob = scales::oob_keep)
-    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = ylim,            oob = scales::oob_keep)
+    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = x_at, labels = x_labels, limits = xlim, oob = .bt_oob_keep)
+    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = ylim,            oob = .bt_oob_keep)
 
     attr(plot, "sec_axis") <- FALSE
 
@@ -1027,8 +1034,8 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
 
     plot <- ggplot2::ggplot()
     plot <- plot + ggplot2::ggtitle(main)
-    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = range(pretty(xlim)), oob = scales::oob_keep)
-    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = range(pretty(ylim)), oob = scales::oob_keep)
+    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = range(pretty(xlim)), oob = .bt_oob_keep)
+    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = range(pretty(ylim)), oob = .bt_oob_keep)
 
     attr(plot, "sec_axis") <- FALSE
 
@@ -1044,8 +1051,8 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
 
     plot <- ggplot2::ggplot()
     plot <- plot + ggplot2::ggtitle(main)
-    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = range(pretty(xlim)), oob = scales::oob_keep)
-    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = range(c(pretty(ylim), pretty(ylim2) * scale_y2)), oob = scales::oob_keep, sec.axis = ggplot2::sec_axis(~ ., name = ylab2, breaks = pretty(ylim2) * scale_y2, labels = pretty(ylim2)))
+    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = range(pretty(xlim)), oob = .bt_oob_keep)
+    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = range(c(pretty(ylim), pretty(ylim2) * scale_y2)), oob = .bt_oob_keep, sec.axis = ggplot2::sec_axis(~ ., name = ylab2, breaks = pretty(ylim2) * scale_y2, labels = pretty(ylim2)))
 
     attr(plot, "scale_y2") <- scale_y2
     attr(plot, "sec_axis") <- TRUE

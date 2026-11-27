@@ -4,7 +4,10 @@
 #' [JAGS_fit] function. \code{adapt}, \code{burnin} and \code{sample} count
 #' draws at the thinning \code{thin}; settings whose last retained draw,
 #' iteration \code{(adapt + burnin + sample - 1) * thin + 1}, would be
-#' numbered beyond \code{.Machine$integer.max} are refused.
+#' numbered beyond \code{.Machine$integer.max} are refused. The settings are
+#' described as the arguments of [JAGS_fit()]; the defaults named there are
+#' those of [JAGS_fit()], as these functions require every setting except
+#' \code{check_mins}, \code{skip_sample_extend} and \code{call}.
 #'
 #' @param check_mins named list of minimal values for which
 #' should some input be checked. Defaults to:

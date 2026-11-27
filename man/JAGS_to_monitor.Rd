@@ -8,7 +8,8 @@ JAGS_to_monitor(prior_list)
 }
 \arguments{
 \item{prior_list}{named list of prior distribution
-(names correspond to the parameter names)}
+(names correspond to the parameter names); a mixture of publication-bias
+priors (\code{\link[=prior_mixture]{prior_mixture()}}) must be named \code{bias}}
 }
 \value{
 \code{JAGS_to_monitor} returns a character vector of
