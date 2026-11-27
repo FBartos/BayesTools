@@ -1094,6 +1094,17 @@ JAGS_formula_coefficient_route <- function(fit, parameter, target,
 #' @param refit_class condition classes that precede
 #'   \code{BayesTools_refit_required} in that request, or \code{NULL}.
 #'
+#' @return \code{posterior_formula_measure_check()} returns
+#' \code{invisible(TRUE)} when the draws do not declare \code{measure}
+#' unavailable. \code{posterior_linear_weight_space()} returns
+#' \code{"coefficient"}, \code{"formula_contribution"}, or \code{NULL} for
+#' draws without linear weights. \code{posterior_fitted_linear_weights()}
+#' returns a named numeric vector of weights on the fitted coordinates:
+#' \code{weights} unchanged unless they are formula-contribution weights,
+#' which are returned multiplied by their constant multipliers and without
+#' their zero elements. Each function otherwise stops with the conditions
+#' described above.
+#'
 #' @seealso [posterior_measure_check()], [hypothesis_BF()]
 #' @rdname posterior_linear_target_checks
 #' @export

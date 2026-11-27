@@ -352,7 +352,7 @@ parameter_map_schema <- function(){
 #'
 #' The cache is keyed by the map \emph{and} by `key`, a value naming everything
 #' else the cached result was derived from. Whenever `key` stops being
-#' [identical()] to the stored one the value is recomputed, so a result that
+#' [base::identical()] to the stored one the value is recomputed, so a result that
 #' also depends on data or priors stays correct when those change. Passing a
 #' `key` that does not cover every input is the one way to use this
 #' incorrectly.
@@ -363,7 +363,7 @@ parameter_map_schema <- function(){
 #' @param map a parameter map, as returned by [parameter_map()].
 #' @param provider name of the calling package.
 #' @param key a value identifying every input other than `map` that `compute`
-#'   depends on. Compared with [identical()].
+#'   depends on. Compared with [base::identical()].
 #' @param compute a function of no arguments returning the value to cache.
 #'
 #' @return The cached or freshly computed value of `compute()`.

@@ -152,15 +152,18 @@ Creates density plots, trace plots, and autocorrelation plots
 for a given parameter of a JAGS model.
 }
 \details{
-Indicator traces place each batch at its mean original iteration
+Indicator traces place each batch at its mean iteration index
 and keep chains separate. A final switching batch with one draw has no rate
 and is not drawn. The components of a publication-bias mixture are traced
 with \code{parameter = "bias"}. An unavailable indicator diagnostic raises a
 \code{BayesTools_plot_condition}.
 
-The trace shows the retained MCMC iteration of every draw on its
-x axis (thinned chains keep their original positions).
-Autocorrelation uses the retained original iteration positions.
+The trace shows the iteration index of every retained draw on its
+x axis (thinned chains keep their positions), as \code{\link[=JAGS_draw_geometry]{JAGS_draw_geometry()}}
+numbers them: BayesTools iteration indices, which count the requested
+adaptation also when JAGS runs no adaptation iterations and therefore can
+differ from the iteration counter of JAGS.
+Autocorrelation uses the retained iteration positions.
 Requested lags without finite observation pairs, beyond the retained chain,
 or with nonfinite autocorrelation are retained as \code{NA}. One warning per
 parameter and chain has classes \code{BayesTools_autocorrelation_unavailable}

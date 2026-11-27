@@ -10,7 +10,8 @@ JAGS_add_priors(syntax, prior_list)
 \item{syntax}{JAGS model syntax}
 
 \item{prior_list}{named list of prior distribution
-(names correspond to the parameter names)}
+(names correspond to the parameter names); a mixture of publication-bias
+priors (\code{\link[=prior_mixture]{prior_mixture()}}) must be named \code{bias}}
 }
 \value{
 \code{JAGS_add_priors} returns a JAGS syntax.

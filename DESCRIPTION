@@ -34,9 +34,9 @@ Imports:
     rjags (>= 5-5),
     bridgesampling,
     parallel,
-    ggplot2,
+    ggplot2 (>= 3.4.0),
     Rdpack,
-    rlang (>= 0.4.10),
+    rlang (>= 1.0.0),
     reformulas (>= 0.2.0)
 Suggests: 
     R6,

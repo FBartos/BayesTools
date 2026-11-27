@@ -18,7 +18,7 @@ should be considered as a null distribution. Defaults to \code{rep(FALSE, length
 
 \item{components}{a character vector indicating which of the prior distributions
 belong to the same mixture component (this is an alternative specification to the \code{is_null} argument).
-Defaults to \code{NULL} (i.e., \code{is_null} is used.}
+Defaults to \code{NULL} (i.e., \code{is_null} is used).}
 }
 \value{
 A prior object of class \code{prior.mixture} (with the classes of a
@@ -30,6 +30,10 @@ holds the component priors with their \code{prior_weights} and \code{components}
 This is a more generic version of the \code{prior_spike_and_slab} function.
 }
 \details{
+A mixture of publication-bias priors (PET, PEESE, weight function,
+p-hacking, composed bias, or none priors) must be named \code{bias} in the
+prior list of \code{\link[=JAGS_fit]{JAGS_fit()}} and \code{\link[=JAGS_add_priors]{JAGS_add_priors()}}.
+
 The \code{prior_weights} of the components are their prior odds,
 and any positive finite weights construct a mixture. Weights that cannot be
 normalized in double precision (their sum, accumulated in double precision,

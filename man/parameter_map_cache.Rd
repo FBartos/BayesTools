@@ -12,7 +12,7 @@ parameter_map_cache(map, provider, key, compute)
 \item{provider}{name of the calling package.}
 
 \item{key}{a value identifying every input other than \code{map} that \code{compute}
-depends on. Compared with \code{\link[=identical]{identical()}}.}
+depends on. Compared with \code{\link[base:identical]{base::identical()}}.}
 
 \item{compute}{a function of no arguments returning the value to cache.}
 }
@@ -27,7 +27,7 @@ their own storage inside fitted objects.
 
 The cache is keyed by the map \emph{and} by \code{key}, a value naming everything
 else the cached result was derived from. Whenever \code{key} stops being
-\code{\link[=identical]{identical()}} to the stored one the value is recomputed, so a result that
+\code{\link[base:identical]{base::identical()}} to the stored one the value is recomputed, so a result that
 also depends on data or priors stays correct when those change. Passing a
 \code{key} that does not cover every input is the one way to use this
 incorrectly.

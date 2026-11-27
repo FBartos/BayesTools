@@ -65,10 +65,12 @@ and a \code{"multiply_by"} attribute on it is an error. For a mixture or
 spike-and-slab prior, set the attribute on that prior itself; a component
 carrying one is an error.}
 
-\item{formula_scale}{named list specifying whether to standardize continuous predictors.
-If \code{NULL} (default), no standardization is applied. If a named list is provided,
-continuous predictors with \code{TRUE} values will be standardized (mean-centered and
-scaled by standard deviation). The intercept is never standardized. Scaled
+\item{formula_scale}{\code{TRUE}, \code{FALSE}, or a named list specifying whether to
+standardize continuous predictors. If \code{NULL} (default) or \code{FALSE}, no
+standardization is applied; \code{TRUE} standardizes every continuous predictor. If a
+named list is provided, continuous predictors with \code{TRUE} values will be
+standardized (mean-centered and scaled by standard deviation). The intercept is never
+standardized. Scaled
 predictors are centered in every fixed and random term, including terms
 without a free intercept, so the model is specified on the standardized
 scale; see Details.}

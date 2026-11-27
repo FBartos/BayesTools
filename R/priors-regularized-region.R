@@ -14,7 +14,7 @@
     log_r <- log(b) + rule$log_r
     log_complement <- numeric(length(log_r))
     small <- log_r < log(1e-5)
-    # 1-F(r) = 2r/sqrt(pi) - r² + 4r³/(3sqrt(pi)) + O(r^4).
+    # 1-F(r) = 2r/sqrt(pi) - r^2 + 4r^3/(3sqrt(pi)) + O(r^4).
     r <- exp(log_r[small])
     log_complement[small] <- log(2 / sqrt(pi)) + log_r[small] +
       log1p(r * (-sqrt(pi) / 2 + 2 * r / 3))
@@ -23,7 +23,7 @@
     log_f <- numeric(length(r))
     z <- r[!large]
     log_f[!large] <- log(2) + z^2 + stats::pnorm(-sqrt(2) * z, log.p = TRUE)
-    # F(r) = (1 - 1/(2r²) + 3/(4r^4) + O(r^-6))/(sqrt(pi)*r).
+    # F(r) = (1 - 1/(2r^2) + 3/(4r^4) + O(r^-6))/(sqrt(pi)*r).
     inv2 <- 0.5 / r[large]^2
     log_f[large] <- -log_r[!small][large] - log(pi) / 2 + log1p(inv2 * (3 * inv2 - 1))
     log_complement[!small] <- .prior_log1mexp(log_f)

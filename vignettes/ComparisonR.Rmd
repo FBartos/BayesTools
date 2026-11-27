@@ -78,7 +78,7 @@ legend("topright", legend = c("Counter", "Clock"), fill = c(rgb(0,0,1,1/4), rgb(
 
 ### Implementation with BayesTools
 
-I first specify the model likelihood using the JAGS modeling syntax. Note that JAGS uses mean and precision to define a normal distribution, therefore, I need to specify $\sigma^-2$ as the second parameter. Otherwise, the syntax closely resembles the mathematical notation used to outline the two-sample t-test (notice the substitution of $\delta$ in the place of $\alpha$). See [JAGS user manual](https://people.stat.sc.edu/hansont/stat740/jags_user_manual.pdf) for more details about the syntax and supported distributions.
+I first specify the model likelihood using the JAGS modeling syntax. Note that JAGS uses mean and precision to define a normal distribution, therefore, I need to specify $\sigma^-2$ as the second parameter. Otherwise, the syntax closely resembles the mathematical notation used to outline the two-sample t-test (notice the substitution of $\delta$ in the place of $\alpha$). See [JAGS user manual](https://sourceforge.net/projects/mcmc-jags/files/Manuals/) for more details about the syntax and supported distributions.
 
 ```{r}
 ttest_model <- 

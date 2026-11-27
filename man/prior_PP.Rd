@@ -81,7 +81,7 @@ and plot methods show one beta marginal per simplex coordinate.}
 
 \item{truncation}{list with two elements, \code{lower} and
 \code{upper}, that define the lower and upper truncation of the
-distribution. Defaults to \code{list(lower = -Inf, upper = Inf)}.
+distribution. Defaults to \code{list(lower = 0, upper = Inf)}.
 The truncation is automatically set to the bounds of the support.}
 
 \item{prior_weights}{prior odds associated with a given distribution.

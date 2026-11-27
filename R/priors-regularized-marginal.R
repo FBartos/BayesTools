@@ -26,7 +26,7 @@
 }
 
 # Composite 21-point Gauss-Kronrod rule on prior probability coordinates.
-# sin² maps the open nodes towards both tails and the Jacobian accounts for
+# sin^2 maps the open nodes towards both tails and the Jacobian accounts for
 # the change of variables. The same scale nodes serve a whole plot or table.
 .regularized_probability_rule <- function(panels){
   rule <- .prior_density_quadrature_rules()$finite
@@ -44,8 +44,8 @@
   log_scale <- log(global$tau)
   log_weight <- global$log_weight
   if(variance){
-    # c² = nu * slab_scale² / chi-square(nu). Under the half-Cauchy(1) local
-    # scale, E_lambda[sd² | tau,c] = c * (c * tau/(tau+c)). Size-bias the
+    # c^2 = nu * slab_scale^2 / chi-square(nu). Under the half-Cauchy(1) local
+    # scale, E_lambda[sd^2 | tau,c] = c * (c * tau/(tau+c)). Size-bias the
     # slab by c: its mean E(c), finite for nu > 1, is the normalizer, and
     # its chi-square degrees of freedom decrease by one.
     # Just above nu = 1 the lowest quantiles underflow to zero; the variance
@@ -414,7 +414,7 @@
     # A finite slab caps the conditional SD at c. With slab_df > 1, E(c) bounds
     # E|beta|; otherwise E|beta| grows only logarithmically in c for a fixed
     # global scale or one with a finite mean. The mean is zero by symmetry.
-    # E(beta²) = E(c² tau/(tau+c)) is infinite for slab_df <= 1.
+    # E(beta^2) = E(c^2 tau/(tau+c)) is infinite for slab_df <= 1.
     if(!variance){
       if(spec$slab_df > 1 || is.numeric(spec$scale)) return(0)
       scale_mean <- tryCatch(mean(spec$scale), BayesTools_numerical_unavailable = function(e) NaN)

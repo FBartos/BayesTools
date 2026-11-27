@@ -24,7 +24,7 @@ join a block. In those two cases \code{node} is missing and \code{reason} explai
 the status.
 }
 \description{
-Resolve prior sources for JAGS sampler declarations.
+Resolve prior sources for JAGS sampler declarations
 }
 \details{
 Sources are resolved before model compilation using the same

@@ -35,6 +35,18 @@ build.").}
 \item{ordinate_label}{how the message names the density methods that
 compute posterior ordinates.}
 }
+\value{
+\code{posterior_formula_measure_check()} returns
+\code{invisible(TRUE)} when the draws do not declare \code{measure}
+unavailable. \code{posterior_linear_weight_space()} returns
+\code{"coefficient"}, \code{"formula_contribution"}, or \code{NULL} for
+draws without linear weights. \code{posterior_fitted_linear_weights()}
+returns a named numeric vector of weights on the fitted coordinates:
+\code{weights} unchanged unless they are formula-contribution weights,
+which are returned multiplied by their constant multipliers and without
+their zero elements. Each function otherwise stops with the conditions
+described above.
+}
 \description{
 Checks of the metadata that the draws of a formula coefficient
 or a factor level carry about the linear map of the fitted coordinates they

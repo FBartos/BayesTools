@@ -271,22 +271,22 @@ is.prior.R2_budget <- function(x){
 # Node names of a core.
 .bt_R2_core_nodes <- function(core){
 
-  T <- core$total_name
+  total_name <- core$total_name
   list(
-    total      = T,
-    variable   = paste0(T, "_variable"),
-    indicator  = if(!is.null(core$gates$spike) || (core$gates$K > 0L && core$gates$all_gated)) paste0(T, "_indicator"),
-    inclusion  = if(identical(core$gates$spike$type, "beta")) paste0(T, "_inclusion"),
+    total      = total_name,
+    variable   = paste0(total_name, "_variable"),
+    indicator  = if(!is.null(core$gates$spike) || (core$gates$K > 0L && core$gates$all_gated)) paste0(total_name, "_indicator"),
+    inclusion  = if(identical(core$gates$spike$type, "beta")) paste0(total_name, "_inclusion"),
     # (JAGS names a vector of length one by its scalar name: one gate or one
     # unit is a scalar node)
-    gates      = if(core$gates$K > 0L) .bt_dnode_prior_vector_names(paste0(T, "_gate"), core$gates$K),
-    open       = if(core$gates$K > 0L) .bt_dnode_prior_vector_names(paste0(T, "_open"), core$gates$K),
+    gates      = if(core$gates$K > 0L) .bt_dnode_prior_vector_names(paste0(total_name, "_gate"), core$gates$K),
+    open       = if(core$gates$K > 0L) .bt_dnode_prior_vector_names(paste0(total_name, "_open"), core$gates$K),
     allocation = if(core$n_units > 1L) paste0(core$allocation_name, "[", seq_len(core$n_units), "]"),
     eta        = .bt_dnode_prior_vector_names(.JAGS_prior_dirichlet_eta_name(
-      if(core$n_units > 1L) core$allocation_name else paste0(T, "_allocation")), core$n_units),
-    H          = if(identical(core$convention, "linked")) paste0("prior_par_H_", T),
-    rate       = if(.bt_R2_core_has_rate(core)) paste0(T, "_rate"),
-    rate_u     = if(.bt_R2_core_has_rate(core)) paste0(T, "_rate_u")
+      if(core$n_units > 1L) core$allocation_name else paste0(total_name, "_allocation")), core$n_units),
+    H          = if(identical(core$convention, "linked")) paste0("prior_par_H_", total_name),
+    rate       = if(.bt_R2_core_has_rate(core)) paste0(total_name, "_rate"),
+    rate_u     = if(.bt_R2_core_has_rate(core)) paste0(total_name, "_rate_u")
   )
 }
 

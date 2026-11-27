@@ -16,7 +16,7 @@
 #'     and k = n if \code{contrasts = FALSE}.}
 #'   \item{\code{contr.meandif}}{Return a matrix of mean difference contrasts.
 #'     This is an adjustment to the \code{contr.orthonormal} that ascertains that the prior
-#'     distributions on difference between the gran mean and factor level are identical independent
+#'     distributions on difference between the grand mean and factor level are identical independent
 #'     of the number of factor levels (which does not hold for the orthonormal contrast). Furthermore,
 #'     the contrast is re-scaled so the specified prior distribution exactly corresponds to the prior
 #'     distribution on difference between each factor level and the grand mean -- this is approximately
@@ -35,6 +35,13 @@
 #'
 #' @param n a vector of levels for a factor, or the number of levels
 #' @param contrasts logical indicating whether contrasts should be computed
+#'
+#' @return A numeric contrast matrix with one row per factor level, without
+#' dimnames. With \code{contrasts = TRUE}, \code{contr.orthonormal},
+#' \code{contr.meandif} and \code{contr.ordered_cumulative} return n - 1
+#' columns and \code{contr.independent} and
+#' \code{contr.ordered_cumulative_levels} return n columns; with
+#' \code{contrasts = FALSE}, every function returns the n by n identity matrix.
 #'
 #' @examples
 #' # Orthonormal contrasts

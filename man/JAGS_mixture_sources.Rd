@@ -21,7 +21,7 @@ Each branch contains its \code{prior}, \code{family}, \code{source}, \code{coord
 \code{stochastic}, \code{location}, and \code{omega}.
 }
 \description{
-Resolve the emitted sources of a JAGS mixture.
+Resolve the emitted sources of a JAGS mixture
 }
 \details{
 For ordinary mixtures the family identifies a \code{"point"},
