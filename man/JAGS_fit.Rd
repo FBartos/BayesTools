@@ -67,7 +67,8 @@ JAGS_extend(
 \item{prior_list}{named list of prior distribution
 (names correspond to the parameter names) of parameters not specified within the
 \code{formula_list}. Factor priors must carry their levels, set with
-\code{\link[=prior_factor_levels]{prior_factor_levels()}}.}
+\code{\link[=prior_factor_levels]{prior_factor_levels()}}, and a mixture of publication-bias priors
+(\code{\link[=prior_mixture]{prior_mixture()}}) must be named \code{bias}.}
 
 \item{formula_list}{named list of formulas to be added to the model
 (names correspond to the parameter name created by each of the formula)}
@@ -116,9 +117,10 @@ iterations. Defaults to \code{1}. \code{adapt}, \code{burnin} and
 adaptation iterations when no sampler adapts) and its first retained draw
 is iteration \code{(adapt + burnin) * thin + 1}. The last
 retained draw, iteration \code{(adapt + burnin + sample - 1) * thin + 1},
-must not be numbered beyond \code{.Machine$integer.max}. \code{adapt},
-\code{burnin}, \code{sample} and \code{thin}, and \code{burnin_extend} and
-\code{sample_extend} of \code{autofit_control}, are whole numbers:
+must not be numbered beyond \code{.Machine$integer.max}. \code{chains},
+\code{adapt}, \code{burnin}, \code{sample}, \code{thin} and \code{cores},
+and \code{burnin_extend} and \code{sample_extend} of
+\code{autofit_control}, are whole numbers:
 \code{JAGS_fit()} and \code{JAGS_extend()} run a value accepted within a
 small tolerance of a whole number as the nearest whole number, and refuse
 a value below the minimum of its setting, also within that tolerance.}
@@ -535,10 +537,10 @@ extended. A derived-draw view signals
 \code{BayesTools_sampling_unavailable} and
 \code{BayesTools_draws_view_unavailable}, before runtime arguments are forced;
 extend its \code{original_fit} and regenerate it with \code{\link[=JAGS_with_draws]{JAGS_with_draws()}}.
-Fits without the parameter map and fit contract of this version
-of BayesTools (such as fits created by BayesTools 0.3.0) must be refitted:
-they stop with an error of class \code{BayesTools_refit_required} (see
-\code{\link[=JAGS_validate_fit_contract]{JAGS_validate_fit_contract()}}).}
+Fits created by BayesTools 0.4.0 or earlier (runjags fits) and fits
+without the parameter map and fit contract of this version of BayesTools
+must be refitted: they stop with an error of class
+\code{BayesTools_refit_required} (see \code{\link[=JAGS_validate_fit_contract]{JAGS_validate_fit_contract()}}).}
 }
 \value{
 A successful fit is a \code{BayesTools_fit}. It contains the sampled

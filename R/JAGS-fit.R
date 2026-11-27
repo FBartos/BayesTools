@@ -7,7 +7,8 @@
 #' @param prior_list named list of prior distribution
 #' (names correspond to the parameter names) of parameters not specified within the
 #' \code{formula_list}. Factor priors must carry their levels, set with
-#' [prior_factor_levels()].
+#' [prior_factor_levels()], and a mixture of publication-bias priors
+#' ([prior_mixture()]) must be named \code{bias}.
 #' @param formula_list named list of formulas to be added to the model
 #' (names correspond to the parameter name created by each of the formula)
 #' @param formula_data_list named list of data frames containing data for each formula
@@ -54,9 +55,10 @@
 #' adaptation iterations when no sampler adapts) and its first retained draw
 #' is iteration \code{(adapt + burnin) * thin + 1}. The last
 #' retained draw, iteration \code{(adapt + burnin + sample - 1) * thin + 1},
-#' must not be numbered beyond \code{.Machine$integer.max}. \code{adapt},
-#' \code{burnin}, \code{sample} and \code{thin}, and \code{burnin_extend} and
-#' \code{sample_extend} of \code{autofit_control}, are whole numbers:
+#' must not be numbered beyond \code{.Machine$integer.max}. \code{chains},
+#' \code{adapt}, \code{burnin}, \code{sample}, \code{thin} and \code{cores},
+#' and \code{burnin_extend} and \code{sample_extend} of
+#' \code{autofit_control}, are whole numbers:
 #' \code{JAGS_fit()} and \code{JAGS_extend()} run a value accepted within a
 #' small tolerance of a whole number as the nearest whole number, and refuse
 #' a value below the minimum of its setting, also within that tolerance.
@@ -443,10 +445,10 @@
 #' \code{BayesTools_sampling_unavailable} and
 #' \code{BayesTools_draws_view_unavailable}, before runtime arguments are forced;
 #' extend its \code{original_fit} and regenerate it with [JAGS_with_draws()].
-#' Fits without the parameter map and fit contract of this version
-#' of BayesTools (such as fits created by BayesTools 0.3.0) must be refitted:
-#' they stop with an error of class \code{BayesTools_refit_required} (see
-#' [JAGS_validate_fit_contract()]).
+#' Fits created by BayesTools 0.4.0 or earlier (runjags fits) and fits
+#' without the parameter map and fit contract of this version of BayesTools
+#' must be refitted: they stop with an error of class
+#' \code{BayesTools_refit_required} (see [JAGS_validate_fit_contract()]).
 #' @param ... additional hidden arguments
 #'
 #' @examples \dontrun{
@@ -698,11 +700,14 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   # rjags would truncate (a 'thin' of 2 - 1e-9 thins by 1): run the whole
   # numbers it accepted. 'adapt', 'burnin' and 'sample' count draws at the
   # fit's thinning; the backend runs each times 'thin' iterations.
+  chains <- .JAGS_whole_count(chains)
+  cores  <- .JAGS_whole_count(cores)
   adapt  <- .JAGS_whole_count(adapt)
   burnin <- .JAGS_whole_count(burnin)
   sample <- .JAGS_whole_count(sample)
   thin   <- .JAGS_whole_count(thin)
-  autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
+  # only automatic fitting extends the fit by 'sample_extend'
+  autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control, skip_sample_extend = !autofit)
   # The readiness check between burn-in and sampling looks at a block of the
   # last 'burnin_extend' draws of burn-in (all of burn-in when shorter), if
   # they are at least 100 and there are at least two chains.
@@ -1505,6 +1510,9 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 
   check_bool(parallel, "parallel", allow_NA = FALSE)
   check_int(cores, "cores", lower = 1, allow_NULL = TRUE, allow_NA = FALSE)
+  if(!is.null(cores)){
+    cores <- .JAGS_whole_count(cores)
+  }
   check_bool(silent, "silent", allow_NA = FALSE)
   # Only NULL inherits; any other value is validated as for JAGS_fit() and,
   # as there, run as the whole number the validator accepted.

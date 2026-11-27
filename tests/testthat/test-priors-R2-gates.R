@@ -954,3 +954,39 @@ test_that("formula atoms of R2 coefficients combined with expression priors are 
     prior_samples = TRUE)$intercept
   expect_true("atoms" %in% .bt_meta_get(row, "measure_unavailable")$measure)
 })
+
+test_that("prior overlays and prior-list plots keep the atom of a gated factor term", {
+
+  data <- .R2_gate_data()
+  info <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)),
+    Signal = prior_R2(inclusion = prior("point", list(0.6)),
+      model = R2_model(law = "exact", sigma = 1, contrast = "orthonormal"))))
+  priors <- info$prior_list
+  prior <- priors$mu_f
+  # the term is closed with the probability of its closed gate
+  expect_equal(.bt_R2_marginal_spec(prior)$atom, 0.4, tolerance = 1e-12)
+  spikes <- function(plot){
+    layers <- ggplot2::ggplot_build(plot)$data
+    masses <- lapply(layers, function(layer) if("yend" %in% names(layer)) unique(layer$yend) / plot$bt_scale_y2_state$scale_y2)
+    list(n = length(layers), masses = unlist(masses), at = unlist(lapply(layers, function(layer) if("yend" %in% names(layer)) unique(layer$x))))
+  }
+
+  # a list of the term plots as the term itself: its continuous part and the atom
+  standalone <- plot(prior, plot_type = "ggplot", n_points = 40L)
+  listed <- plot_prior_list(list(prior), plot_type = "ggplot", n_points = 40L)
+  expect_equal(ggplot2::ggplot_build(listed)$data, ggplot2::ggplot_build(standalone)$data)
+  expect_identical(spikes(listed)$at, 0)
+  expect_equal(spikes(listed)$masses, 0.4, tolerance = 1e-12)
+
+  # the posterior overlay of a level draws the prior atom and the posterior atom
+  samples <- .generate_prior_sample_matrix(priors, 300L, seed = 3)
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(samples)), priors,
+                                     formula_design = list(mu = info$formula_design))
+  mixed <- as_mixed_posteriors(fit, "mu_f")
+  closed <- posterior_metadata(mixed$mu_f, "atoms")$mass
+  expect_true(closed > 0 && closed < 1)
+  overlay <- spikes(plot_posterior(mixed, "mu_f", level = "b", prior = TRUE, plot_type = "ggplot", n_points = 40L))
+  expect_identical(overlay$n, 4L)
+  expect_identical(overlay$at, c(0, 0))
+  expect_equal(overlay$masses, c(0.4, closed), tolerance = 1e-12)
+})

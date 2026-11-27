@@ -20,9 +20,9 @@ JAGS_materialize_draws(fit, parameters = NULL, include_internal = FALSE)
 
 JAGS_with_draws(fit, draws)
 
-\method{as.mcmc.list}{BayesTools_fit}(x, ...)
+\method{as.mcmc.list}{BayesTools_fit}(x, vars = NA, ...)
 
-\method{as.mcmc}{BayesTools_fit}(x, ...)
+\method{as.mcmc}{BayesTools_fit}(x, vars = NA, ...)
 
 \method{print}{BayesTools_fit}(x, ...)
 
@@ -42,7 +42,18 @@ JAGS_with_draws(fit, draws)
 
 \item{x}{a fitted model or a derived-draw view.}
 
-\item{...}{arguments passed to \code{\link[=JAGS_estimates_table]{JAGS_estimates_table()}} by \code{summary()}.}
+\item{vars}{optional selection of the monitored variables returned by
+\code{coda::as.mcmc.list()} and \code{coda::as.mcmc()}: \code{NA} (default) or \code{NULL}
+for all of them, a logical vector with one element per variable, or a
+character vector. A character element selects every variable name that
+contains it, where a leading \code{^} anchors it at the start and a trailing
+\code{$} at the end of the name, and index ranges such as \code{"beta[1:3]"}
+expand to their indices; a quoted element (\code{"'beta'"}) selects only the
+variable of that exact name or the elements of that vector. An element
+that matches no variable is an error.}
+
+\item{...}{arguments passed to \code{\link[=JAGS_estimates_table]{JAGS_estimates_table()}} by \code{summary()};
+not used by the coda methods, which reject them.}
 
 \item{object}{a fitted model or a derived-draw view to summarize.}
 }
@@ -55,8 +66,12 @@ zero-column list when the fit has no public coordinate.
 }
 \description{
 \code{JAGS_draw_geometry()} returns the retained iteration and chain geometry
-stored from the actual chains returned by JAGS. Geometry is independent of
-which coordinates are public.
+of the fitted chains. Its iterations are BayesTools iteration indices: the
+first retained draw of \code{\link[=JAGS_fit]{JAGS_fit()}} is iteration
+\code{(adapt + burnin) * thin + 1}, counting the requested adaptation also when
+JAGS runs no adaptation iterations (a model without an adaptive sampler),
+so the indices can differ from the iteration counter of JAGS; extensions
+continue them. Geometry is independent of which coordinates are public.
 
 \code{JAGS_materialize_draws()} reconstructs requested coordinates from the
 fitted parameter map. Sampled coordinates are selected from the fitted
