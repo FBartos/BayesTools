@@ -698,8 +698,9 @@ JAGS_add_priors           <- function(syntax, prior_list){
 # The doubles JAGS reads from the text of numeric constants: the C library's
 # strtod(), which rounds correctly. as.numeric() can differ in the last digit
 # where R's long double is double (Apple silicon); see src/r-decimal-read.c.
-# The text is read under the "C" numeric locale, as JAGS is given the model
-# (.bt_with_c_numeric_locale()), whatever the session's LC_NUMERIC.
+# The text is read under the "C" numeric locale, whatever the session's
+# LC_NUMERIC (under which JAGS itself cannot be given a model, see
+# .bt_check_numeric_locale()).
 .JAGS_read_number <- function(text){
 
   .BayesTools_require_native("decimal-reading")

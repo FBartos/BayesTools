@@ -106,9 +106,12 @@ test_that("group ownership retains exact numeric identity and safe display repla
   # 17-digit keys read back as the same doubles on every platform: R's own
   # decimal reader returns a neighbouring double for some of them where long
   # double is double (Apple silicon), which made ordinary levels fail replay
-  awkward <- c(0.09, 0.77285443804925302, 1.1, 2.675, 1e-200, 1e200)
+  # (the two awkward doubles come from their text through the exact reader:
+  # R's parser reads such a literal in this file as a neighbouring double there)
+  awkward_text <- c("0.089999999999999997", "0.77285443804925302")
+  awkward <- c(BayesTools:::.JAGS_read_number(awkward_text), 1.1, 2.675, 1e-200, 1e200)
   awkward_keys <- BayesTools:::.bt_random_effect_numeric_identity(awkward)
-  expect_identical(awkward_keys[1:2], c("0.089999999999999997", "0.77285443804925302"))
+  expect_identical(awkward_keys[1:2], awkward_text)
   expect_identical(BayesTools:::.JAGS_read_number(awkward_keys), awkward)
   expect_identical(BayesTools:::.JAGS_read_number(c(awkward_keys[1L], "level", "Inf", "-Inf")),
     c(awkward[1L], NA_real_, Inf, -Inf))

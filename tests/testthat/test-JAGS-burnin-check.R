@@ -1380,11 +1380,11 @@ test_that("the JASP warm-up bar ticks after the check and its extensions", {
   expect_identical(out$burnin_check$extension, 300)
 })
 
-test_that("numbers are read and models are compiled under a decimal-comma LC_NUMERIC", {
+test_that("numbers are read and fits are refused under a decimal-comma LC_NUMERIC", {
 
   # R keeps LC_NUMERIC at "C", but a session or an embedding application can
-  # change it; the C library's reader then expects a comma, and the text of
-  # the warning and of a model's constants still has a point
+  # change it; the C library's reader then expects a comma, and printed
+  # numbers and stored keys still have a point
   texts <- c("1.88", "1.8800000000000001", "1e-200", "2")
   reference <- BayesTools:::.JAGS_read_number(texts)
   expect_false(anyNA(reference))
@@ -1404,21 +1404,31 @@ test_that("numbers are read and models are compiled under a decimal-comma LC_NUM
   expect_identical(BayesTools:::.JAGS_read_number(texts), reference)
   # text with the locale's own mark is not a number of a model or a warning
   expect_identical(BayesTools:::.JAGS_read_number(c("1,88", "x")), c(NA_real_, NA_real_))
-  expect_identical(BayesTools:::.bt_burnin_format_limit(1.5009999999999999), "1.501")
-  message <- BayesTools:::.bt_burnin_warning(
-    .burnin_loop(list(c(mu = 2.5)), autofit = FALSE, burnin_max_Rhat = 1.88)$record)
-  expect_match(message, "R-hat 2.50 for 'mu' (limit 1.88)", fixed = TRUE)
+  expect_identical(unname(Sys.localeconv()[["decimal_point"]]), ",")
 
   # JAGS reads the constants of the model text with the C library too: under
-  # a decimal comma it stops at the point and reads the prior mean 0.5 as 0.
-  # The model is compiled under the "C" numeric locale, and the session's
-  # locale is restored
-  fit <- JAGS_fit(model_syntax = "model{}", data = list(),
-    prior_list = list(mu = prior("normal", list(0.5, 0.25))),
-    chains = 2, adapt = 100, burnin = 100, sample = 1000, seed = 1, silent = TRUE)
-  draws <- unlist(lapply(fit$mcmc, function(chain) as.numeric(chain[, "mu"])))
-  # Monte Carlo standard error 0.25 / sqrt(2000) = 0.0056
-  expect_lt(abs(mean(draws) - 0.5), 0.05)
-  expect_lt(abs(stats::sd(draws) - 0.25), 0.05)
+  # a decimal comma it stops at the point and reads the prior mean 0.5 as 0,
+  # silently (and on Unix R writes the model text with commas). Fits and
+  # extensions are refused, and the session's locale is left as it is
+  fit_here <- function(){
+    JAGS_fit(model_syntax = "model{}", data = list(),
+      prior_list = list(mu = prior("normal", list(0.5, 0.25))),
+      chains = 2, adapt = 100, burnin = 100, sample = 500, seed = 1, silent = TRUE)
+  }
+  refused <- tryCatch(fit_here(), error = identity)
+  expect_s3_class(refused, "BayesTools_numeric_locale")
+  expect_identical(conditionMessage(refused), paste0(
+    "JAGS models cannot be fitted while the numeric locale of the session uses ',' as the decimal mark: ",
+    "JAGS would misread the numeric constants of the model. ",
+    "Run 'Sys.setlocale(", dQuote("LC_NUMERIC", FALSE), ", ", dQuote("C", FALSE), ")' before fitting."
+  ))
   expect_identical(unname(Sys.localeconv()[["decimal_point"]]), ",")
+
+  suppressWarnings(Sys.setlocale("LC_NUMERIC", old))
+  fit <- fit_here()
+  draws <- unlist(lapply(fit$mcmc, function(chain) as.numeric(chain[, "mu"])))
+  # Monte Carlo standard error 0.25 / sqrt(1000) = 0.008
+  expect_lt(abs(mean(draws) - 0.5), 0.05)
+  suppressWarnings(Sys.setlocale("LC_NUMERIC", set))
+  expect_error(JAGS_extend(fit), class = "BayesTools_numeric_locale")
 })

@@ -15,10 +15,11 @@
  *
  * strtod() expects the decimal mark of the session's LC_NUMERIC, which R keeps
  * at "C" but a session or an embedding application can change; under a
- * decimal comma it stops at the point. The text always has a decimal point,
- * and JAGS compiles the model under the "C" numeric locale
- * (.bt_with_c_numeric_locale()), so the text is read under that locale here
- * as well: LC_NUMERIC is set to "C" for the reading and restored.
+ * decimal comma it stops at the point. The text always has a decimal point
+ * (fits are refused under another mark, .bt_check_numeric_locale(), but
+ * printed numbers and stored keys are read outside fits too), so it is read
+ * under the "C" numeric locale: LC_NUMERIC is set to "C" for the reading and
+ * restored.
  */
 SEXP BayesTools_decimal_read(SEXP text)
 {
