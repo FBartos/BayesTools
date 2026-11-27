@@ -1,7 +1,7 @@
 ---
 title: "Bayesian t-Test Compared with BayesFactor"
 author: "František Bartoš"
-date: "2nd of April 2022"
+date: "2nd of April 2022 (updated: 27th of November 2026)"
 output:
   rmarkdown::html_vignette:
     self_contained: yes
@@ -132,7 +132,7 @@ ttest_data <- list(
 )
 ```
 
-Then, I pass the model and priors to `JAGS_fit()`, which prepares the starting values and samples the model using rjags.
+Then, I pass the arguments into the `JAGS_fit()` function that wraps around the rjags R package, specifying the prior distributions, preparing the starting values, etc...
 
 ```{r fit-comparison-models, cache_fits = c("ttest_model_H0", "ttest_model_Hp")}
 ttest_model_H0 <- JAGS_fit(
@@ -150,7 +150,7 @@ ttest_model_Hp <- JAGS_fit(
 ) 
 ```
 
-I can print the estimated model summary with `JAGS_estimates_table()`.
+I can print the estimated model summary with `JAGS_estimates_table()` function.
 
 ```{r}
 JAGS_estimates_table(ttest_model_Hp)
