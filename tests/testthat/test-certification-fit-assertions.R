@@ -631,7 +631,7 @@ test_that("emitted marginal random-effect covariance JAGS syntax reproduces rand
         formula_random_prior_list = list(mu = case$prior_random),
         formula_random_effects_compile_list = list(mu = compile),
         add_parameters = c(monitors, case$monitor),
-        chains = 1, adapt = 100, burnin = 50, sample = 100, thin = 5,
+        chains = 1, adapt = 50, burnin = 50, sample = 100, thin = 5,
         silent = TRUE, seed = 1
       ))
       expect_s3_class(fit, "BayesTools_fit")
@@ -1261,7 +1261,7 @@ test_that("JASP progress preserves adaptive chains and finite readouts", {
       data = list(y = 1.3), prior_list = list(mu = prior("normal", list(0, 1)),
         sigma = prior("normal", list(0, 1), list(0, Inf))),
       add_parameters = "gate", sampler_probabilities = c("gate", "mu"),
-      chains = 3L, cores = 2L, parallel = parallel, adapt = 1000L, burnin = 50L,
+      chains = 3L, cores = 2L, parallel = parallel, adapt = 334L, burnin = 50L,
       sample = sample, thin = 3L, seed = 14567L, ...)
   }
   for(parallel in c(FALSE, TRUE)){
@@ -1289,7 +1289,7 @@ test_that("JASP progress preserves adaptive chains and finite readouts", {
   expect_identical(fit$mcmc, reference$mcmc)
   expect_identical(fit$sampler_probabilities, reference$sampler_probabilities)
   expect_identical(fit$end_state, reference$end_state)
-  expect_identical(attr(fit, "adaptation")$extensions, data.frame(adapt = 1000L, rebuilt = FALSE))
+  expect_identical(attr(fit, "adaptation")$extensions, data.frame(adapt = 334L, rebuilt = FALSE))
   expect_null(fit[["live_model"]])
 })
 
@@ -6804,26 +6804,26 @@ test_that("a passing readiness check leaves the draws as they are with the check
   # block of burn-in changes no sampler and no random number; the burn-in is
   # either the block itself or longer than it, so that its first part runs
   # unmonitored (the default path); the block holds draws at the fit's 'thin'
-  # (with thin = 3, 700 %/% 3 = 233 draws over 699 iterations, after one
-  # unmonitored iteration)
-  fit_with <- function(check, burnin, burnin_extend, thin, ...){
+  # ('adapt' and 'burnin' count draws at it: 200 and 400 or 700 iterations
+  # at thin = 2, 201 and 702 at thin = 3)
+  fit_with <- function(check, adapt, burnin, burnin_extend, thin, ...){
     JAGS_fit("model{ gate ~ dbern(0.4); y ~ dnorm(mu + gate, pow(sigma, -2)) }",
       data = list(y = 1.3), prior_list = list(mu = prior("normal", list(0, 1)),
         sigma = prior("normal", list(0, 1), list(0, Inf))),
-      add_parameters = "gate", chains = 3L, cores = 2L, adapt = 200L, burnin = burnin, sample = 150L,
+      add_parameters = "gate", chains = 3L, cores = 2L, adapt = adapt, burnin = burnin, sample = 150L,
       thin = thin, seed = 2024L,
       autofit_control = if(check) .readiness_control(burnin_extend = burnin_extend) else
         .readiness_control(burnin_max_Rhat = NULL), ...)
   }
-  for(setting in list(list(burnin = 400L, burnin_extend = 500, thin = 2L, block = 400L),
-                     list(burnin = 700L, burnin_extend = 200, thin = 2L, block = 400L),
-                     list(burnin = 700L, burnin_extend = 500, thin = 3L, block = 699L)))
+  for(setting in list(list(adapt = 100L, burnin = 200L, burnin_extend = 500, thin = 2L, block = 200L),
+                     list(adapt = 100L, burnin = 350L, burnin_extend = 200, thin = 2L, block = 200L),
+                     list(adapt = 67L, burnin = 234L, burnin_extend = 500, thin = 3L, block = 234L)))
   for(parallel in c(FALSE, TRUE)) for(probabilities in list(NULL, c("gate", "mu"))) for(jasp in c(FALSE, TRUE)){
     info <- paste("burnin", setting$burnin, "thin", setting$thin, "parallel", parallel, "probabilities",
       !is.null(probabilities), "JASP", jasp)
-    on  <- fit_with(TRUE, setting$burnin, setting$burnin_extend, setting$thin, parallel = parallel,
+    on  <- fit_with(TRUE, setting$adapt, setting$burnin, setting$burnin_extend, setting$thin, parallel = parallel,
       sampler_probabilities = probabilities, is_JASP = jasp)
-    off <- fit_with(FALSE, setting$burnin, setting$burnin_extend, setting$thin, parallel = parallel,
+    off <- fit_with(FALSE, setting$adapt, setting$burnin, setting$burnin_extend, setting$thin, parallel = parallel,
       sampler_probabilities = probabilities, is_JASP = jasp)
     expect_identical(attr(on, "burnin_check")$status, "ready", info = info)
     expect_identical(attr(on, "burnin_check")$block, setting$block, info = info)
@@ -6837,11 +6837,11 @@ test_that("a passing readiness check leaves the draws as they are with the check
     expect_identical(attr(on, "warnings"), attr(off, "warnings"), info = info)
     expect_identical(on$burnin, setting$burnin, info = info)
     expect_identical(on$burnin, off$burnin, info = info)
-    expect_identical(stats::start(on$mcmc[[1L]]), 200 + setting$burnin + 1, info = info)
+    start <- (as.double(setting$adapt) + setting$burnin) * setting$thin + 1
+    expect_identical(stats::start(on$mcmc[[1L]]), start, info = info)
     for(node in names(on$sampler_probabilities)){
       if(!is.null(on$sampler_probabilities[[node]])){
-        expect_identical(stats::start(on$sampler_probabilities[[node]][[1L]]), 200 + setting$burnin + 1,
-          info = info)
+        expect_identical(stats::start(on$sampler_probabilities[[node]][[1L]]), start, info = info)
       }
     }
   }
@@ -6949,13 +6949,14 @@ test_that("chains in separated modes warn without autofit and extend burn-in up 
   fit_with <- function(autofit, ...){
     JAGS_fit("model{ y ~ dnorm(pow(m, 2), 100)\n gate ~ dbern(0.4)\n z ~ dnorm(gate, 1) }",
       data = list(y = 16, z = 0.3), prior_list = list(m = prior("normal", list(0, 5))),
-      add_parameters = "gate", sampler_probabilities = "gate", chains = 3L, adapt = 100L,
-      burnin = 300L, sample = 100L, thin = 2L, seed = 1L, autofit = autofit, silent = TRUE,
+      add_parameters = "gate", sampler_probabilities = "gate", chains = 3L, adapt = 50L,
+      burnin = 150L, sample = 100L, thin = 2L, seed = 1L, autofit = autofit, silent = TRUE,
       autofit_control = .readiness_control(max_Rhat = NULL, min_ESS = NULL, max_error = NULL,
         max_SD_error = NULL, ...))
   }
-  # thin = 2: the check reads 150 draws over the last 300 iterations of
-  # burn-in, and an extension of 200 draws runs 400 iterations
+  # thin = 2: adaptation runs 100 iterations, the check reads all 150 draws
+  # of burn-in (300 iterations), and an extension of 200 draws runs 400
+  # iterations
   expect_warning(
     fit <- fit_with(FALSE),
     paste0("^Chains did not agree at the end of burn-in: R-hat [0-9.]+ for 'm' [(]limit 2[.]00[)][.] ",
@@ -6968,9 +6969,9 @@ test_that("chains in separated modes warn without autofit and extend burn-in up 
   record <- attr(fit, "burnin_check")
   expect_identical(record[c("status", "stop_reason", "extension")],
     list(status = "not_ready", stop_reason = "no_autofit", extension = 0))
-  expect_identical(record[c("burnin_max_Rhat", "block", "thin")], list(burnin_max_Rhat = 2, block = 300L, thin = 2L))
+  expect_identical(record[c("burnin_max_Rhat", "block", "thin")], list(burnin_max_Rhat = 2, block = 150L, thin = 2L))
   expect_gt(record$blocks$Rhat, 100)
-  expect_identical(fit$burnin, 300L)
+  expect_identical(fit$burnin, 150L)
   expect_identical(attr(fit, "warnings"), BayesTools:::.bt_burnin_warning(record))
 
   expect_warning(
@@ -6980,9 +6981,11 @@ test_that("chains in separated modes warn without autofit and extend burn-in up 
   )
   record <- attr(fit, "burnin_check")
   expect_identical(record$stop_reason, "max_extend")
-  expect_identical(record$blocks$sweeps, c(300L, 400L, 400L))
-  expect_identical(record$extension, 800)
-  expect_identical(fit$burnin, 1100L)
+  expect_identical(record$blocks$draws, c(150L, 200L, 200L))
+  expect_identical(record$extension, 400)
+  expect_identical(fit$burnin, 550L)
+  # (50 + 550) * 2 + 1: the iterations of earlier versions' adapt = 100,
+  # burnin = 300 and two extensions of 400
   expect_identical(JAGS_draw_geometry(fit)$chains$start, rep(1201L, 3L))
   expect_identical(JAGS_draw_geometry(fit)$chains$end, rep(1201L + 99L * 2L, 3L))
   for(chain in seq_len(3L)){
@@ -7027,4 +7030,165 @@ test_that("no compiled model is left on a worker after a failure in a burn-in bl
   fit <- fit_with("mu", function(draws) c(mu = 1))
   expect_identical(attr(fit, "burnin_check")$status, "ready")
   expect_identical(worker_models(), c(FALSE, FALSE))
+})
+
+# ============================================================================ #
+# 'adapt', 'burnin' and 'sample' count draws at the fit's thinning
+# ============================================================================ #
+.thinned_data <- list(y = c(-0.23, 0.58, -0.44, 2, 0.73, -0.42, 0.89, 1.14, 0.98, 0.09), N = 10L)
+
+# 'sigma' has a slice sampler, which adapts
+.thinned_fit <- function(adapt, burnin, sample, thin, ...){
+  JAGS_fit("model{ for(i in 1:N){ y[i] ~ dnorm(mu, pow(sigma, -2)) } }", data = .thinned_data,
+    prior_list = list(mu = prior("normal", list(0, 1)), sigma = prior("normal", list(0, 1), list(0, Inf))),
+    chains = 2, adapt = adapt, burnin = burnin, sample = sample, thin = thin, seed = 1, ...)
+}
+
+test_that("a fit adapts, burns in and samples 'thin' iterations per draw and numbers its draws by iteration", {
+
+  skip_if_not_installed("rjags")
+  adapt <- rjags::adapt
+  batch <- BayesTools:::.bt_rjags_batch
+  adapted <- before_sampling <- numeric()
+  testthat::local_mocked_bindings(
+    adapt = function(object, n.iter, ...){
+      adapted <<- c(adapted, n.iter)
+      adapt(object, n.iter, ...)
+    },
+    .package = "rjags"
+  )
+  testthat::local_mocked_bindings(
+    .bt_rjags_batch = function(sample, monitor, thin, progress, keep_live, probability_plan, last = TRUE,
+                               session = BayesTools:::.bt_rjags_worker_session, live_model = session$model,
+                               release_model = FALSE){
+      before_sampling <<- c(before_sampling, live_model$iter())
+      batch(sample, monitor, thin, progress, keep_live, probability_plan, last = last, session = session,
+        live_model = live_model, release_model = release_model)
+    },
+    .package = "BayesTools"
+  )
+  for(thin in c(1L, 2L, 3L)){
+    info <- paste("thin", thin)
+    adapted <- before_sampling <- numeric()
+    fit <- .thinned_fit(adapt = 100L, burnin = 200L, sample = 100L, thin = thin)
+    # 100 * thin adaptation and 200 * thin burn-in iterations, which JAGS
+    # counts before sampling: the readiness block holds all 200 draws of
+    # burn-in, its last 200 * thin iterations
+    expect_equal(adapted, 100 * thin, info = info)
+    expect_equal(before_sampling, (100 + 200) * thin, info = info)
+    expect_identical(attr(fit, "adaptation")$initial, 100L, info = info)
+    expect_identical(fit$burnin, 200L, info = info)
+    expect_identical(fit$sample, 100L, info = info)
+    expect_identical(fit$thin, thin, info = info)
+    record <- attr(fit, "burnin_check")
+    expect_identical(record[c("block", "thin", "extension", "status")],
+      list(block = 200L, thin = thin, extension = 0, status = "ready"), info = info)
+    expect_identical(record$blocks$draws, 200L, info = info)
+    # the first retained draw is iteration (100 + 200) * thin + 1, the last
+    # (100 + 200 + 100 - 1) * thin + 1
+    for(chain in fit$mcmc){
+      expect_identical(attr(chain, "mcpar"), c((100 + 200) * thin + 1, (100 + 200 + 99) * thin + 1, thin),
+        info = info)
+      expect_identical(nrow(chain), 100L, info = info)
+    }
+    geometry <- JAGS_draw_geometry(fit)$chains
+    expect_identical(geometry$start, rep(as.integer(300L * thin + 1L), 2L), info = info)
+    expect_identical(geometry$end, rep(as.integer(399L * thin + 1L), 2L), info = info)
+    if(thin == 1L){
+      next
+    }
+
+    # JAGS_extend() rebuilds the sampler from the stored states and adapts it
+    # for 'adapt * thin' iterations, with the initial adapt = 100 or an
+    # explicit one, which the record keeps in draws; a near-whole 'adapt' runs
+    # as the whole number
+    control <- list(max_Rhat = NULL, min_ESS = NULL, max_error = NULL, max_SD_error = NULL, max_time = NULL,
+      sample_extend = 100, max_extend = 1)
+    adapted <- before_sampling <- numeric()
+    inherited <- JAGS_extend(fit, autofit_control = control)
+    explicit <- JAGS_extend(fit, autofit_control = control, adapt = 60)
+    near <- JAGS_extend(fit, autofit_control = control, adapt = 60 - 1e-9)
+    expect_equal(adapted, c(100, 60, 60) * thin, info = info)
+    expect_equal(before_sampling, c(100, 60, 60) * thin, info = info)
+    expect_identical(attr(inherited, "adaptation")$initial, 100L, info = info)
+    expect_identical(attr(inherited, "adaptation")$extensions$adapt, 100L, info = info)
+    expect_identical(attr(inherited, "adaptation")$extensions$rebuilt, TRUE, info = info)
+    expect_identical(attr(explicit, "adaptation")$initial, 100L, info = info)
+    expect_identical(attr(explicit, "adaptation")$extensions$adapt, 60L, info = info)
+    expect_identical(attr(near, "adaptation"), attr(explicit, "adaptation"), info = info)
+    expect_identical(near$mcmc, explicit$mcmc, info = info)
+    expect_identical(near$end_state, explicit$end_state, info = info)
+    # the slice sampler adapts, so the adaptation changes the appended draws
+    expect_false(identical(explicit$mcmc, inherited$mcmc), info = info)
+    for(chain in explicit$mcmc){
+      expect_identical(attr(chain, "mcpar"), c(300 * thin + 1, (300 + 199) * thin + 1, thin), info = info)
+    }
+  }
+})
+
+test_that("adapt = 250 and burnin = 500 at thin = 2 run the iterations of the earlier adapt = 500 and burnin = 1000", {
+
+  skip_if_not_installed("rjags")
+  fit <- .thinned_fit(adapt = 250, burnin = 500, sample = 100, thin = 2)
+
+  # the same iterations run directly in rjags: 500 adaptation and 1000
+  # burn-in iterations, then 200 sampling iterations thinned by 2 (monitoring
+  # the readiness block changes no sampler)
+  inits <- JAGS_get_inits(attr(fit, "prior_list"), chains = 2, seed = 1)
+  model <- rjags::jags.model(textConnection(fit$model), data = fit$data, inits = inits, n.chains = 2,
+    n.adapt = 0, quiet = TRUE)
+  rjags::adapt(model, n.iter = 500, end.adaptation = TRUE, progress.bar = "none")
+  stats::update(model, n.iter = 1000, progress.bar = "none")
+  reference <- rjags::coda.samples(model, c("mu", "sigma"), n.iter = 200, thin = 2, progress.bar = "none")
+  for(chain in 1:2){
+    expect_identical(unname(as.matrix(fit$mcmc[[chain]])[, c("mu", "sigma")]),
+      unname(as.matrix(reference[[chain]])[, c("mu", "sigma")]))
+  }
+  expect_identical(fit$end_state, model$state(internal = TRUE))
+  expect_identical(attr(fit$mcmc[[1L]], "mcpar"), c(1501, 1699, 2))
+  expect_identical(fit$burnin, 500)
+  expect_identical(attr(fit, "burnin_check")[c("block", "thin", "status")],
+    list(block = 500L, thin = 2, status = "ready"))
+
+  # pinned from BayesTools f9f77929, where 'adapt' and 'burnin' counted
+  # iterations, with adapt = 500, burnin = 1000, thin = 2 (the same fit
+  # otherwise): the chains end in the same random-number states, and the
+  # draws are the same. Pinned on Windows, where they were printed: elsewhere
+  # the R-generated initial values can differ in the last bit where the
+  # compiler fuses multiply-adds (Apple silicon), which can change how many
+  # random numbers the slice sampler draws. The rjags reference above shows
+  # the identity on every platform.
+  skip_if(.Platform$OS.type != "windows", "values pinned on Windows")
+  expect_identical(lapply(fit$end_state, `[[`, ".RNG.name"), rep(list("base::Super-Duper"), 2L))
+  expect_identical(lapply(fit$end_state, `[[`, ".RNG.state"),
+    list(c(993861771, 1093724209), c(-1621646870, -107494039)))
+  expect_equal(unname(fit$mcmc[[1L]][c(1L, 50L, 100L), "mu"]),
+    c(0.51234744241818353, 0.51506102361899775, 0.17386462115027174), tolerance = 1e-10)
+  expect_equal(unname(fit$mcmc[[1L]][c(1L, 50L, 100L), "sigma"]),
+    c(0.44650524093002697, 0.67136730635643005, 1.0033387888462699), tolerance = 1e-10)
+  expect_equal(unname(fit$mcmc[[2L]][c(1L, 50L, 100L), "mu"]),
+    c(0.54590634906879953, 0.30750871440048355, 0.39223734805373445), tolerance = 1e-10)
+  expect_equal(unname(fit$mcmc[[2L]][c(1L, 50L, 100L), "sigma"]),
+    c(0.88513699296000226, 1.0963839598105984, 0.78908217304607797), tolerance = 1e-10)
+})
+
+test_that("settings that are whole within the validator's tolerance run as the whole numbers", {
+
+  skip_if_not_installed("rjags")
+  # rjags would thin by the integer part of 2 - 1e-9 and keep about twice the
+  # draws
+  whole <- .thinned_fit(adapt = 250, burnin = 500, sample = 100, thin = 2)
+  for(near in list(list(thin = 2 - 1e-9), list(thin = 2 + 1e-9),
+                   list(adapt = 250 - 1e-9, burnin = 500 + 1e-9, sample = 100 + 1e-9))){
+    settings <- utils::modifyList(list(adapt = 250, burnin = 500, sample = 100, thin = 2), near)
+    info <- paste(names(near), format(unlist(near), digits = 17), collapse = ", ")
+    fit <- do.call(.thinned_fit, settings)
+    expect_identical(fit$mcmc, whole$mcmc, info = info)
+    expect_identical(fit$end_state, whole$end_state, info = info)
+    expect_identical(list(burnin = fit$burnin, sample = fit$sample, thin = fit$thin),
+      list(burnin = 500, sample = 100, thin = 2), info = info)
+    expect_identical(attr(fit, "burnin_check"), attr(whole, "burnin_check"), info = info)
+    expect_identical(attr(fit, "adaptation"), attr(whole, "adaptation"), info = info)
+  }
+  expect_identical(nrow(whole$mcmc[[1L]]), 100L)
 })

@@ -1,7 +1,10 @@
 #' @title Check and list 'JAGS' fitting settings
 #'
 #' @description Checks and lists settings for the
-#' [JAGS_fit] function.
+#' [JAGS_fit] function. \code{adapt}, \code{burnin} and \code{sample} count
+#' draws at the thinning \code{thin}; settings whose last retained draw,
+#' iteration \code{(adapt + burnin + sample - 1) * thin + 1}, would be
+#' numbered beyond \code{.Machine$integer.max} are refused.
 #'
 #' @param check_mins named list of minimal values for which
 #' should some input be checked. Defaults to:
@@ -12,7 +15,9 @@
 #'   \item{sample}{\code{100}}
 #'   \item{thin}{\code{1}}
 #' }
-#' @param adapt number of samples used for adapting the MCMC chains, defaults to \code{500}
+#' @param adapt length of the adaptation phase in draws per chain at the
+#' thinning \code{thin} (\code{adapt * thin} iterations where a sampler
+#' adapts), defaults to \code{500}
 #' @param skip_sample_extend whether \code{sample_extend}
 #' is allowed to be NULL and skipped in the check
 #'
@@ -21,7 +26,9 @@
 #'
 #' @return \code{JAGS_check_and_list_fit_settings} invisibly returns a
 #' list of checked fit settings. \code{JAGS_check_and_list_autofit_settings}
-#' invisibly returns a list of checked autofit settings.
+#' invisibly returns a list of checked autofit settings, with numeric
+#' \code{burnin_extend} and \code{sample_extend} as the whole numbers that
+#' are run.
 #'
 #' @export JAGS_check_and_list_fit_settings
 #' @export JAGS_check_and_list_autofit_settings
@@ -33,11 +40,18 @@ JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, 
 
   check_int(chains, "chains", lower = check_mins[["chains"]], allow_NA = FALSE, call = call)
   .JAGS_check_adapt(adapt, lower = check_mins[["adapt"]], call = call)
-  # the first retained draw is numbered after the burn-in iterations, and the
-  # iteration numbers are integers
-  check_int(burnin, "burnin", lower = check_mins[["burnin"]], upper = .Machine$integer.max, allow_NA = FALSE, call = call)
+  check_int(burnin, "burnin", lower = check_mins[["burnin"]], allow_NA = FALSE, call = call)
   check_int(sample, "sample", lower = check_mins[["sample"]], allow_NA = FALSE, call = call)
   check_int(thin,   "thin",   lower = check_mins[["thin"]],   allow_NA = FALSE, call = call)
+  # 'adapt', 'burnin' and 'sample' count draws at the fit's thinning; the
+  # iteration numbers of the draws are integers
+  last_iteration <- .JAGS_last_iteration(round(adapt), round(burnin), round(sample), round(thin))
+  if(last_iteration > .Machine$integer.max){
+    stop(paste0(call, "The settings 'adapt', 'burnin', 'sample' and 'thin' would number the last retained draw ",
+      format(last_iteration, scientific = FALSE), ", beyond the largest iteration number (", .Machine$integer.max,
+      "): a fit runs ('adapt' + 'burnin' + 'sample') times 'thin' iterations. Reduce 'adapt', 'burnin', ",
+      "'sample' or 'thin'."), call. = FALSE)
+  }
   check_bool(parallel, "parallel",                allow_NA = FALSE, call = call)
   check_int(cores,     "cores", lower = 1,        allow_NA = FALSE, call = call)
   check_bool(autofit,  "autofit",                 allow_NA = FALSE, call = call)
@@ -58,11 +72,34 @@ JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, 
   )))
 }
 
-# 'adapt' of JAGS_fit() and of an extension. rjags counts the adaptation
-# iterations as an integer, so larger values cannot be run.
+# 'adapt' of JAGS_fit() and of an extension, in draws at the fit's thinning.
+# rjags counts the 'adapt * thin' adaptation iterations as an integer, so
+# larger values of 'adapt' alone cannot be run; the product is checked with
+# the other settings of a fit (.JAGS_last_iteration()) and with the fit's
+# 'thin' in JAGS_extend().
 .JAGS_check_adapt <- function(adapt, lower = 50, call = ""){
 
   check_int(adapt, "adapt", lower = lower, upper = .Machine$integer.max, allow_NA = FALSE, call = call)
+}
+
+# The iteration number of the last retained draw of a fit: 'adapt', 'burnin'
+# and 'sample' count draws at the thinning 'thin', so the fit runs
+# 'adapt * thin' adaptation, 'burnin * thin' burn-in and 'sample * thin'
+# sampling iterations, and its first draw is iteration
+# '(adapt + burnin) * thin + 1'. In double arithmetic, which these whole
+# numbers keep exact far beyond the integer range.
+.JAGS_last_iteration <- function(adapt, burnin, sample, thin){
+
+  (as.double(adapt) + burnin) * thin + 1 + (as.double(sample) - 1) * thin
+}
+
+# The whole number that a count accepted by check_int() stands for. The
+# validator accepts values within a tolerance of a whole number, which rjags
+# would truncate: a 'thin' of 2 - 1e-9 would thin by 1 and keep twice the
+# draws. Integers and whole doubles are returned as given.
+.JAGS_whole_count <- function(x){
+
+  if(is.integer(x)) x else round(x)
 }
 
 #' @rdname JAGS_check_and_list
@@ -137,6 +174,10 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
     autofit_control[["sample_extend"]] <- "auto"
   }else{
     check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, allow_NA = FALSE, call = call)
+    # the whole number of draws that the validator accepted (.JAGS_whole_count())
+    if(!is.null(autofit_control[["sample_extend"]])){
+      autofit_control[["sample_extend"]] <- .JAGS_whole_count(autofit_control[["sample_extend"]])
+    }
   }
   check_int(autofit_control[["restarts"]], "restarts", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
   check_int(autofit_control[["max_extend"]], "max_extend", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
@@ -165,6 +206,9 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
   }
   check_int(autofit_control[["burnin_extend"]], "burnin_extend", lower = 100, upper = .Machine$integer.max,
     allow_NULL = !supplied("burnin_extend"), allow_NA = FALSE, call = call)
+  if(!is.null(autofit_control[["burnin_extend"]])){
+    autofit_control[["burnin_extend"]] <- .JAGS_whole_count(autofit_control[["burnin_extend"]])
+  }
   check_int(autofit_control[["burnin_max_extend"]], "burnin_max_extend", lower = 0,
     allow_NULL = !supplied("burnin_max_extend"), allow_NA = FALSE, call = call)
 

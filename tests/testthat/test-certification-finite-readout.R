@@ -146,7 +146,7 @@ test_that("recording preserves competing stock joint updates and the physical RN
   args <- list(model, data = list(total = 1L, y = 1),
     prior_list = list(offset = prior("normal", list(0, 1))),
     add_parameters = c("x", "w", "recorded", "ordinary"),
-    chains = 2L, adapt = 500L, burnin = 50L, sample = 100L, thin = 3L, seed = 71123L)
+    chains = 2L, adapt = 167L, burnin = 50L, sample = 100L, thin = 3L, seed = 71123L)
   stock <- do.call(JAGS_fit, args)
   fit <- do.call(JAGS_fit, c(args, list(sampler_probabilities = c("x", "recorded", "unused"))))
   expect_s3_class(fit, "BayesTools_fit")

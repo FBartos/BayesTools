@@ -63,7 +63,7 @@ testthat::test_that("Pixel AR(1) and CAR day effects", {
       formula_list = list(mu = ~ day_s + day_s2 + (1 + day_s | Dog) + (1 | Dog:Side)), formula_data_list = list(mu = Pixel),
       formula_prior_list = fixed_priors,
       formula_random_prior_list = list(mu = prior_random(sd = unit_sd_prior, cor = prior_lkj(eta = 1))),
-      chains = 4, adapt = 1000, burnin = 5000, sample = 10000, thin = 10, seed = 1
+      chains = 4, adapt = 100, burnin = 500, sample = 10000, thin = 10, seed = 1
     )
     list(fit = fit, marglik = marglik(fit))
   })
@@ -73,7 +73,7 @@ testthat::test_that("Pixel AR(1) and CAR day effects", {
       formula_list = list(mu = ~ day_s + day_s2 + ar1(day_f | Dog) + (1 | Dog:Side)), formula_data_list = list(mu = Pixel),
       formula_prior_list = fixed_priors,
       formula_random_prior_list = list(mu = prior_random(sd = unit_sd_prior)),
-      chains = 4, adapt = 1000, burnin = 5000, sample = 10000, thin = 10, seed = 1
+      chains = 4, adapt = 100, burnin = 500, sample = 10000, thin = 10, seed = 1
     )
     list(fit = fit, marglik = marglik(fit))
   })
@@ -83,7 +83,7 @@ testthat::test_that("Pixel AR(1) and CAR day effects", {
       formula_list = list(mu = ~ day_s + day_s2 + car(day | Dog) + (1 | Dog:Side)), formula_data_list = list(mu = Pixel),
       formula_prior_list = fixed_priors,
       formula_random_prior_list = list(mu = prior_random(sd = unit_sd_prior)),
-      chains = 4, adapt = 1000, burnin = 5000, sample = 10000, thin = 10, seed = 1
+      chains = 4, adapt = 100, burnin = 500, sample = 10000, thin = 10, seed = 1
     )
     list(fit = fit, marglik = marglik(fit))
   })

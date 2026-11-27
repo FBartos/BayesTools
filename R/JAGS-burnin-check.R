@@ -136,28 +136,29 @@
 
 # The check and its extensions. 'first' holds the last 'block' draws of the
 # requested burn-in, taken every 'thin' iterations; 'run_block(draws)' runs a
-# further block of 'draws * thin' iterations with the monitors on and returns
-# its draws; 'assess(draws)' returns the split-chain R-hat per assessable
-# quantity. Without 'autofit' the chains are not extended. With it, blocks of
-# 'burnin_extend' draws ('burnin_extend * thin' iterations) are added (each
-# checked alone) until the chains are ready, 'max_extensions' blocks were
-# added, a further block would exceed 'extension_room' (the burn-in
-# iterations that keep the iteration number of the last retained draw within
-# the integer range), or 'time_exceeded()' (read before a block is started).
-# Returns the record stored in attr(fit, "burnin_check"), which counts its
-# 'block', the 'sweeps' of its blocks and the 'extension' in iterations.
+# further block of 'draws' draws ('draws * thin' iterations) with the
+# monitors on and returns them; 'assess(draws)' returns the split-chain R-hat
+# per assessable quantity. Without 'autofit' the chains are not extended.
+# With it, blocks of 'burnin_extend' draws are added (each checked alone)
+# until the chains are ready, 'max_extensions' blocks were added, a further
+# block would exceed 'extension_room' (the burn-in iterations that keep the
+# iteration number of the last retained draw within the integer range), or
+# 'time_exceeded()' (read before a block is started). Returns the record
+# stored in attr(fit, "burnin_check"), which counts its 'block', the 'draws'
+# of its blocks and the 'extension' in draws at the fit's thinning, as
+# 'fit$burnin' and 'fit$sample' count them.
 .bt_burnin_readiness <- function(first, run_block, assess, burnin_max_Rhat, block, burnin_extend, thin,
                                  max_extensions, autofit, time_exceeded, extension_room = Inf){
 
-  blocks     <- list()
-  draws      <- first
-  sweeps     <- as.integer(as.double(block) * thin)
-  extensions <- 0L
+  blocks      <- list()
+  draws       <- first
+  block_draws <- as.integer(block)
+  extensions  <- 0L
   repeat{
     values <- sort(assess(draws), decreasing = TRUE)
     blocks[[length(blocks) + 1L]] <- data.frame(
       block     = length(blocks),
-      sweeps    = sweeps,
+      draws     = block_draws,
       Rhat      = if(length(values)) unname(values[[1L]]) else NA_real_,
       parameter = if(length(values)) names(values)[[1L]] else NA_character_,
       stringsAsFactors = FALSE
@@ -178,23 +179,21 @@
     if(!is.null(stop_reason)){
       break
     }
-    draws      <- run_block(burnin_extend)
-    sweeps     <- as.integer(burnin_extend * thin)
-    extensions <- extensions + 1L
+    draws       <- run_block(burnin_extend)
+    block_draws <- as.integer(burnin_extend)
+    extensions  <- extensions + 1L
   }
 
   failing <- values[values > burnin_max_Rhat]
   list(
     burnin_max_Rhat = burnin_max_Rhat,
-    block           = blocks[[1L]]$sweeps,
+    block           = blocks[[1L]]$draws,
     burnin_extend   = burnin_extend,
     thin            = thin,
     blocks          = do.call(rbind, blocks),
-    # the type of 'burnin_extend' when 'thin' is exactly whole (the room
-    # check keeps the product within the integer range); a 'thin' that is
-    # whole only within the validator's tolerance enters as given, as the
-    # extension blocks run it
-    extension       = extensions * burnin_extend * if(thin == round(thin)) as.integer(thin) else thin,
+    # in the type of 'burnin_extend' (the room check keeps the product within
+    # the integer range)
+    extension       = extensions * burnin_extend,
     status          = switch(stop_reason, ready = "ready", not_assessable = "not_assessable", "not_ready"),
     stop_reason     = stop_reason,
     failing         = data.frame(parameter = names(failing), Rhat = unname(failing), stringsAsFactors = FALSE)

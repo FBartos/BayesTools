@@ -33,10 +33,13 @@
 # Run the chains assigned to one R process. The caller owns process-level
 # setup and reporting. Keep JAGS to one thread per process for both serial
 # fits and PSOCK workers, including workers that own multiple chains.
+# 'adapt', 'burnin' and 'sample' count draws at the thinning 'thin': the
+# group runs 'adapt * thin' adaptation, 'burnin * thin' burn-in and
+# 'sample * thin' sampling iterations.
 # With 'prepare', the compiled model stays in 'session' for later calls;
-# a positive 'block' then runs the last 'block * thin' iterations of burn-in
-# with the monitors on and returns their 'block' draws (every 'thin'-th
-# iteration) for the readiness check, or NULL for a model without samplers.
+# a positive 'block' then runs the last 'block' draws of burn-in ('block *
+# thin' iterations) with the monitors on and returns them for the readiness
+# check, or NULL for a model without samplers.
 .bt_rjags_group <- function(inits, model, data, monitor, adapt, burnin, sample,
                             thin, silent, keep_live, live_model = NULL, probability_plan = NULL,
                             prepare = FALSE, block = 0L, session = .bt_rjags_worker_session){
@@ -59,11 +62,15 @@
     on.exit(close(connection))
     live_model <- rjags::jags.model(connection, data = data, inits = inits,
       n.chains = length(inits), n.threads = 1L, n.adapt = 0L, quiet = silent)
-    adapted <- rjags::adapt(live_model, n.iter = adapt, end.adaptation = TRUE,
+    # in the type of 'adapt' (the range checks of the callers keep an integer
+    # product within the integer range)
+    adapt_iterations <- adapt * if(is.integer(adapt)) as.integer(thin) else thin
+    adapted <- rjags::adapt(live_model, n.iter = adapt_iterations, end.adaptation = TRUE,
       progress.bar = progress)
     if(!adapted){
       warning(warningCondition(
-        paste0("The JAGS adaptation phase was incomplete after ", adapt, " iterations."),
+        paste0("The JAGS adaptation phase was incomplete after ", format(adapt_iterations, scientific = FALSE),
+          " iterations."),
         class = c("BayesTools_adaptation_incomplete", "BayesTools_fit_diagnostic")
       ))
     }
@@ -75,9 +82,9 @@
   if(block > 0L && length(rjags::list.samplers(live_model)) == 0L){
     block <- 0L
   }
-  # rjags refuses an update of zero iterations; the iterations of the block
-  # are counted in double arithmetic
-  unmonitored <- burnin - as.double(block) * thin
+  # the burn-in iterations before the block, in double arithmetic; rjags
+  # refuses an update of zero iterations
+  unmonitored <- (as.double(burnin) - block) * thin
   if(unmonitored > 0){
     stats::update(live_model, n.iter = unmonitored, progress.bar = progress)
   }
@@ -466,16 +473,19 @@
     readiness = readiness)
   record <- out$burnin_check
   out$burnin_check <- NULL
-  # The burn-in actually run: the requested one and the extensions of the
-  # readiness check, in the type the burn-in was given (the range check of
-  # the extensions keeps an integer sum within the integer range).
+  # The burn-in actually run, in draws at the fit's thinning: the requested
+  # one and the extensions of the readiness check, in the type the burn-in
+  # was given (the range check of the extensions keeps an integer sum within
+  # the integer range).
   if(!is.null(record) && record$extension > 0){
     burnin <- burnin + if(is.integer(burnin)) as.integer(record$extension) else record$extension
   }
-  # Public chain indices count the requested adaptation and the burn-in run,
-  # even when JAGS selects only samplers that never require adaptation.
+  # Public chain indices count the iterations of the requested adaptation and
+  # of the burn-in run, even when JAGS selects only samplers that never
+  # require adaptation: the first retained draw is iteration
+  # '(adapt + burnin) * thin + 1'.
   public_iteration <- function(draws) coda::mcmc.list(lapply(draws, function(chain){
-    coda::mcmc(as.matrix(chain), start = as.double(adapt) + burnin + 1, thin = thin)
+    coda::mcmc(as.matrix(chain), start = (as.double(adapt) + burnin) * thin + 1, thin = thin)
   }))
   out$mcmc <- public_iteration(out$mcmc)
   if(!is.null(probability_plan)){

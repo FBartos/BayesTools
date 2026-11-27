@@ -1609,6 +1609,15 @@ test_that("the incomplete-adaptation warning belongs to the fit diagnostics", {
   ), warning = identity)
   expect_identical(class(condition)[1:2], c("BayesTools_adaptation_incomplete", "BayesTools_fit_diagnostic"))
   expect_identical(conditionMessage(condition), "The JAGS adaptation phase was incomplete after 10 iterations.")
+
+  # the iterations are written out also where R would print them in
+  # scientific notation: 500 draws at thin = 200 are 1e+05 iterations
+  condition <- tryCatch(.bt_rjags_group(
+    inits = list(list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = 1L)),
+    model = "model{ mu ~ dnorm(0, 1)\n y ~ dnorm(mu, 1) }", data = list(y = 0.5), monitor = "mu",
+    adapt = 500, burnin = 0, sample = 100, thin = 200, silent = TRUE, keep_live = FALSE
+  ), warning = identity)
+  expect_identical(conditionMessage(condition), "The JAGS adaptation phase was incomplete after 100000 iterations.")
 })
 
 test_that("JAGS_fit forwards its adaptation to automatic extensions", {
@@ -1913,12 +1922,14 @@ test_that("JAGS_extend sizes each extension from the last check and stops at max
   expect_identical(backend$samples, c(1000L, 2000L, 6000L, 3900L))
   expect_identical(nrow(named$mcmc[[1L]]), 12902L)
   # at most the draws whose sampling iterations the backend can run, to which
-  # the minimum yields: with thin 2.5e6, 800 (2147483647 / 2.5e6 = 859.0)
+  # the minimum yields: with thin 2.5e6, 800 (2147483647 / 2.5e6 = 859.0);
+  # with an adaptation of 50 draws, whose iterations the rebuilt sampler
+  # counts with those of the extension ((50 + 800) * 2.5e6 is in range)
   backend <- .autofit_size_test_backend()
   thinned <- fit
   thinned$thin <- 2500000L
   suppressWarnings(JAGS_extend(thinned, autofit_control = .autofit_size_test_control(
-    max_extend = 1)))
+    max_extend = 1), adapt = 50))
   expect_identical(backend$samples, 800L)
 
   # an extension is sized only when it runs: max_extend = 2 sizes two
@@ -2526,4 +2537,31 @@ test_that("an automatic fit stops at once when only a component that no chain vi
       }
     }
   }
+})
+
+# ============================================================================ #
+# 'adapt', 'burnin' and 'sample' count draws at the fit's thinning (the live
+# fits are in test-certification-fit-assertions.R)
+# ============================================================================ #
+test_that("the settings are refused when the last draw would be numbered beyond the integer range", {
+
+  settings <- function(adapt, burnin, sample, thin){
+    JAGS_check_and_list_fit_settings(chains = 1, adapt = adapt, burnin = burnin, sample = sample, thin = thin,
+      autofit = FALSE, parallel = FALSE, cores = 1, silent = TRUE, seed = 1)
+  }
+  limit <- .Machine$integer.max
+  message <- function(last){
+    paste0("The settings 'adapt', 'burnin', 'sample' and 'thin' would number the last retained draw ", last,
+      ", beyond the largest iteration number (2147483647): a fit runs ('adapt' + 'burnin' + 'sample') times ",
+      "'thin' iterations. Reduce 'adapt', 'burnin', 'sample' or 'thin'.")
+  }
+  # the last draw is iteration (adapt + burnin + sample - 1) * thin + 1
+  expect_silent(settings(50, 50, limit - 100, 1))
+  expect_error(settings(50, 50, limit - 99, 1), message("2147483648"), fixed = TRUE)
+  expect_silent(settings(100, 100, 1073741624, 2))
+  expect_error(settings(100, 100, 1073741625, 2), message("2147483649"), fixed = TRUE)
+  expect_error(settings(1073741824, 50, 100, 2), message("2147483947"), fixed = TRUE)
+  expect_error(settings(50, 1073741824, 100, 2L), message("2147483947"), fixed = TRUE)
+  # a single setting beyond the integer range is named by its own check
+  expect_error(settings(limit + 1, 50, 100, 1), "The 'adapt' must be equal or lower than 2147483647.", fixed = TRUE)
 })

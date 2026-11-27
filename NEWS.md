@@ -8,6 +8,7 @@
 - a mixture of publication-bias priors must be named `bias` in the prior list
 - removes `allow_not_assessable` from `autofit_control` of `JAGS_fit()` and `JAGS_extend()`; `JAGS_check_convergence()` keeps the argument
 - automatic fitting stops once every diagnostic that can be assessed meets its criterion and warns about the diagnostics that cannot be assessed, instead of extending until `max_time` or `max_extend`
+- `JAGS_fit()` counts `adapt` and `burnin` at the fit's thinning like `sample` (as does `JAGS_extend()` for `adapt`), so fits with `thin` above 1 run `thin` times as many burn-in iterations and, where a sampler adapts, adaptation iterations, and their draws can differ from earlier versions
 
 ### Features
 - JASP progress updates retain the requested draw count and reuse adapted samplers throughout a fit
@@ -36,6 +37,7 @@
 - the starting value of the publication-bias indicator of mixtures with selection or p-hacking components is drawn from its prior probabilities; draws differ from earlier versions
 - sampling or fitting a mixture prior whose prior weights cannot be normalized (their sum overflows or underflows) stops with an explanation
 - on Windows, fits run JAGS's linear algebra on one thread, which avoids a large slowdown of models with multivariate nodes
+- `adapt`, `burnin`, `sample`, `thin`, `burnin_extend` and `sample_extend` given within rounding of a whole number run as that number
 
 # version 0.4.0
 ### Breaking changes

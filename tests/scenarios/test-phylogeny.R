@@ -53,7 +53,7 @@ testthat::test_that("Lim 2014 phylogenetic meta-analysis", {
       formula_data_list = list(mu = dat),
       formula_prior_list = list(mu = list(intercept = unit_prior)),
       formula_random_prior_list = list(mu = prior_random(sd = sd_prior)),
-      chains = 4, adapt = 1000, burnin = 2000, sample = 10000, thin = 5, seed = 1
+      chains = 4, adapt = 200, burnin = 400, sample = 10000, thin = 5, seed = 1
     )
     list(fit = fit, marglik = JAGS_bridgesampling(fit, log_posterior = log_posterior, data = data_list, seed = 1))
   })
@@ -64,7 +64,7 @@ testthat::test_that("Lim 2014 phylogenetic meta-analysis", {
       formula_data_list = list(mu = dat),
       formula_prior_list = list(mu = list(intercept = unit_prior)),
       formula_random_prior_list = list(mu = prior_random(sd = sd_prior)),
-      chains = 4, adapt = 1000, burnin = 2000, sample = 10000, thin = 5, seed = 1
+      chains = 4, adapt = 200, burnin = 400, sample = 10000, thin = 5, seed = 1
     )
     list(fit = fit, marglik = JAGS_bridgesampling(fit, log_posterior = log_posterior, data = data_list, seed = 1))
   })
