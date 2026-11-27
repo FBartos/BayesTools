@@ -64,7 +64,8 @@
 #' error (the standard error SD / sqrt(ESS) of an ESS of 0) is \code{Inf}, so
 #' \code{max_error} and \code{max_SD_error} fail as well. Chains that visit
 #' the same values equally often (such as equal occupancies of an indicator
-#' state) agree and give an R-hat of 1. Automatic fitting in
+#' state) have equal means and variances and give an R-hat of 1. Automatic
+#' fitting in
 #' [JAGS_fit()] and [JAGS_extend()] judges assessability from the draws at
 #' each check and does not extend a fit for diagnostics that are not
 #' assessable then: it stops once every diagnostic that can be assessed
@@ -576,23 +577,36 @@ JAGS_check_convergence <- function(
 
 # Whether the chains visit the same values equally often, as the occupancies
 # of an indicator state can: such chains have equal means and equal variances,
-# for which coda::gelman.diag() divides zero by zero, and they agree (R-hat
+# for which coda::gelman.diag() divides zero by zero; their R-hat is 1 (the
+# value of the statistic without its degrees-of-freedom correction is below
 # 1). The visits are counted, because the means of such chains differ in the
 # last bit where mean() depends on the order of the values (Apple silicon),
-# and coda then returns a number below 1. Draws that never repeat a value
-# (continuous parameters) are not such chains.
+# and coda then returns a number below 1. Like R-hat itself, the rule does
+# not look at the order of the draws. Chains that do not repeat a value
+# (continuous parameters, also copies of one chain) are not such chains and
+# stay with coda.
 .bt_equal_state_occupancy <- function(chains){
 
   chains <- lapply(chains, as.numeric)
-  draws  <- unlist(chains, use.names = FALSE)
-  values <- unique(draws)
-  if(length(values) < 2L || length(values) == length(draws) || !all(is.finite(values))){
+  # the same values in every chain have the same range in every chain: a
+  # cheap test that settles continuous parameters
+  ranges <- vapply(chains, range, numeric(2))
+  if(!all(is.finite(ranges)) || any(ranges[1L, ] != ranges[1L, 1L]) ||
+     any(ranges[2L, ] != ranges[2L, 1L]) || ranges[1L, 1L] == ranges[2L, 1L]){
     return(FALSE)
   }
-  shares <- lapply(chains, function(chain){
-    tabulate(match(chain, values), length(values)) / length(chain)
-  })
-  all(vapply(shares[-1L], identical, logical(1), shares[[1L]]))
+  values <- unique(chains[[1L]])
+  if(length(values) == length(chains[[1L]])){
+    return(FALSE)
+  }
+  shares <- tabulate(match(chains[[1L]], values), length(values)) / length(chains[[1L]])
+  for(chain in chains[-1L]){
+    visited <- match(chain, values)
+    if(anyNA(visited) || !identical(tabulate(visited, length(values)) / length(chain), shares)){
+      return(FALSE)
+    }
+  }
+  TRUE
 }
 
 .bt_convergence_parameter_diagnostics <- function(

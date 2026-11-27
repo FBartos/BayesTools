@@ -30,8 +30,16 @@ SEXP BayesTools_decimal_read(SEXP text)
   SEXP out = PROTECT(Rf_allocVector(REALSXP, n));
   double *value = REAL(out);
 
-  /* the copy is allocated before the locale changes; nothing after the
-     change can raise an R error, so the session's locale is always restored */
+  /* Everything that can allocate or raise an R error happens before the
+     locale changes: the elements are copied into a plain character vector
+     first (a deferred character vector materializes them then), and the
+     copy of the locale's name is allocated. Between the change and the
+     restoration only strtod() runs, so the session's locale is always
+     restored. */
+  SEXP plain = PROTECT(Rf_allocVector(STRSXP, n));
+  for(R_xlen_t i = 0; i < n; ++i){
+    SET_STRING_ELT(plain, i, STRING_ELT(text, i));
+  }
   const char *current = setlocale(LC_NUMERIC, NULL);
   char *session = NULL;
   if(current != NULL && strcmp(current, "C") != 0){
@@ -40,7 +48,7 @@ SEXP BayesTools_decimal_read(SEXP text)
     setlocale(LC_NUMERIC, "C");
   }
   for(R_xlen_t i = 0; i < n; ++i){
-    SEXP element = STRING_ELT(text, i);
+    SEXP element = STRING_ELT(plain, i);
     if(element == NA_STRING){
       value[i] = NA_REAL;
       continue;
@@ -53,6 +61,6 @@ SEXP BayesTools_decimal_read(SEXP text)
   if(session != NULL){
     setlocale(LC_NUMERIC, session);
   }
-  UNPROTECT(1);
+  UNPROTECT(2);
   return out;
 }

@@ -33,13 +33,18 @@
   }
   # equal means as sums over lengths: state occupancies sum exactly in any
   # order, while mean() refines its result in extended precision where the
-  # platform has it and otherwise (Apple silicon) depends on the order. The
-  # values are divided first by the power of two at or below their largest
-  # magnitude (1 for occupancies), so that the sums of huge values stay
-  # finite and do not compare equal as infinities; dividing by a power of
-  # two does not round, so sums that were exact stay exact.
-  scale <- 2^floor(log2(max(abs(unlist(halves, use.names = FALSE)))))
-  means <- vapply(halves, function(half) sum(half / scale) / length(half), numeric(1))
+  # platform has it and otherwise (Apple silicon) depends on the order.
+  sums <- vapply(halves, sum, numeric(1))
+  if(!all(is.finite(sums))){
+    # sums of huge values overflow and would compare equal as infinities:
+    # only then, the values are divided first by a power of two near their
+    # largest magnitude (at most 2^1023; log2() of the largest doubles
+    # rounds to 1024, whose power is not finite)
+    largest <- max(abs(unlist(halves, use.names = FALSE)))
+    scale   <- 2^min(floor(log2(largest)), 1023)
+    sums    <- vapply(halves, function(half) sum(half / scale), numeric(1))
+  }
+  means <- sums / lengths(halves)
   if(length(unique(means)) == 1L){
     return(1)
   }

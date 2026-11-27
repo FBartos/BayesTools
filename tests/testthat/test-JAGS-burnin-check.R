@@ -71,11 +71,20 @@ test_that("degenerate blocks are decided before coda", {
   expect_gt(.burnin_rhat(disagreeing), 2)
   # (their variances overflow, so coda cannot assess them: NA, not agreement)
   expect_identical(.burnin_rhat(lapply(disagreeing, function(chain) chain * 1e307)), NA_real_)
-  # the scale is a power of two, so sums that are exact stay exact: counts
-  # whose largest value is not a power of two, in half-chains that are
-  # permutations of each other, have equal means on every platform
+  # the same at the largest doubles, whose log2() rounds up to 1024: a scale
+  # of 2^1024 is infinite and would turn every value into zero
+  top <- list(rep(c(8.99e307, .Machine$double.xmax), 50), rep(c(-1e300, -5e299), 50))
+  expect_identical(.burnin_rhat(top), NA_real_)
+  # sums that do not overflow are compared as they are: counts in half-chains
+  # that are permutations of each other have equal means on every platform,
   counts <- c(rep(0, 13), rep(1, 9), rep(2, 11), rep(3, 7))
   expect_identical(.burnin_rhat(list(c(counts, rev(counts)), c(rev(counts), counts))), 1)
+  # and half-chains whose tiny sums differ (1 to 4 times 2^-1000, one of
+  # them next to a cancelling pair of 2^100) do not have equal means
+  tiny <- function(times, pair = FALSE){
+    c(if(pair) c(2^100, -2^100), rep(2^-1000, times), rep(0, 32 - times - 2 * pair))
+  }
+  expect_gt(.burnin_rhat(list(c(tiny(1), tiny(2)), c(tiny(3), tiny(4, pair = TRUE)))), 1.05)
   expect_identical(.burnin_rhat(lapply(equal, function(chain) chain * 1e307)), 1)
 
   # nothing to assess: constant everywhere

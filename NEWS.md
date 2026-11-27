@@ -36,7 +36,7 @@
 - on Apple silicon, numeric constants in generated JAGS models and the values of compiled hypotheses are exact
 - on Apple silicon, predictions from random effects with non-integer numeric grouping levels no longer stop with a request to refit
 - chains that visit the same values equally often (such as the states of an indicator) get an R-hat of 1 instead of a missing value
-- `JAGS_fit()` and `JAGS_extend()` stop in a session whose numeric locale does not use a decimal point, where JAGS read the numeric constants of a model only up to the decimal point
+- `JAGS_fit()` and `JAGS_extend()` stop in a session whose numeric locale does not use a decimal point, where JAGS read the numeric constants of a model only up to the decimal point; refit models that were fitted in such a session
 - the starting value of the publication-bias indicator of mixtures with selection or p-hacking components is drawn from its prior probabilities; draws differ from earlier versions
 - sampling or fitting a mixture prior whose prior weights cannot be normalized (their sum overflows or underflows) stops with an explanation
 - on Windows, fits run JAGS's linear algebra on one thread, which avoids a large slowdown of models with multivariate nodes

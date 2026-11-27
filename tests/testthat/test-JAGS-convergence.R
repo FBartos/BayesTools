@@ -1853,6 +1853,9 @@ test_that("chains with equal state occupancies agree", {
   expect_false(BayesTools:::.bt_equal_state_occupancy(list(c(0, Inf, 0, Inf), c(Inf, 0, Inf, 0))))
   expect_false(BayesTools:::.bt_equal_state_occupancy(list(c(0, 1, 2, 2), c(2, 1, 0, 0))))
   expect_true(BayesTools:::.bt_equal_state_occupancy(list(rare(1, 10), rare(c(3, 7), 20))))
+  # chains that do not repeat a value stay with coda, also copies of one chain
+  continuous <- seq(0.05, 0.95, length.out = 19)
+  expect_false(BayesTools:::.bt_equal_state_occupancy(list(continuous, rev(continuous), continuous)))
   # more than two values: three states visited equally often in every chain
   states <- list(rep(c(0, 1, 2), c(5, 3, 2)), rep(c(2, 0, 1), c(2, 5, 3)), rep(c(1, 2, 0), c(3, 2, 5)))
   expect_true(BayesTools:::.bt_equal_state_occupancy(states))

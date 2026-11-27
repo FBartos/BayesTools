@@ -88,7 +88,8 @@ values give an R-hat of \code{Inf} and an ESS of 0, which fail
 error (the standard error SD / sqrt(ESS) of an ESS of 0) is \code{Inf}, so
 \code{max_error} and \code{max_SD_error} fail as well. Chains that visit
 the same values equally often (such as equal occupancies of an indicator
-state) agree and give an R-hat of 1. Automatic fitting in
+state) have equal means and variances and give an R-hat of 1. Automatic
+fitting in
 \code{\link[=JAGS_fit]{JAGS_fit()}} and \code{\link[=JAGS_extend]{JAGS_extend()}} judges assessability from the draws at
 each check and does not extend a fit for diagnostics that are not
 assessable then: it stops once every diagnostic that can be assessed
