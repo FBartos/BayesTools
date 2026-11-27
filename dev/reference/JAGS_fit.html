@@ -18,7 +18,7 @@ a model and samples it using rjags."><meta name="robots" content="noindex"><!-- 
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9019</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9020</span>
       </span>
     </div>
 
@@ -174,20 +174,26 @@ be standardized. Defaults to <code>NULL</code> (no standardization).</p></dd>
 
 
 <dt id="arg-adapt">adapt<a class="anchor" aria-label="anchor" href="#arg-adapt"></a></dt>
-<dd><p>number of samples used for adapting the MCMC chains, defaults to
-<code>500</code>. In <code>JAGS_extend()</code>, the number of adaptation iterations run
-when the backend builds the sampler from the stored chain states; the default
-<code>NULL</code> uses the setting of the initial fit. A value supplied to
-<code>JAGS_extend()</code> applies to that call only: the returned fit keeps the
-initial setting, which later calls without <code>adapt</code> use again.</p></dd>
+<dd><p>length of the adaptation phase in draws per chain at the
+thinning <code>thin</code>, like <code>sample</code>: where a sampler adapts, each
+chain runs <code>adapt * thin</code> adaptation iterations (JAGS runs none for a
+model whose samplers need no adaptation). Defaults to <code>500</code>. In
+<code>JAGS_extend()</code>, the adaptation run when the backend builds the
+sampler from the stored chain states (<code>adapt</code> times the fit's
+<code>thin</code> iterations); the default <code>NULL</code> uses the setting of the
+initial fit. A value supplied to <code>JAGS_extend()</code> applies to that call
+only: the returned fit keeps the initial setting, which later calls without
+<code>adapt</code> use again.</p></dd>
 
 
 <dt id="arg-burnin">burnin<a class="anchor" aria-label="anchor" href="#arg-burnin"></a></dt>
-<dd><p>number of burnin iterations of the MCMC chains, defaults to
-<code>1000</code>. Its last iterations are checked for agreement of the chains
-before sampling starts, and with <code>autofit</code> burn-in can be extended (see
-<code>burnin_max_Rhat</code> in <code>autofit_control</code>); <code>fit$burnin</code> holds
-the burn-in that was run.</p></dd>
+<dd><p>length of burn-in in draws per chain at the thinning
+<code>thin</code>, like <code>sample</code>: each chain runs <code>burnin * thin</code>
+burn-in iterations. Defaults to <code>1000</code>. Its last draws are checked for
+agreement of the chains before sampling starts, and with <code>autofit</code>
+burn-in can be extended (see <code>burnin_max_Rhat</code> in
+<code>autofit_control</code>); <code>fit$burnin</code> holds the burn-in that was run,
+in draws.</p></dd>
 
 
 <dt id="arg-sample">sample<a class="anchor" aria-label="anchor" href="#arg-sample"></a></dt>
@@ -196,7 +202,19 @@ Each chain runs <code>sample * thin</code> sampling iterations.</p></dd>
 
 
 <dt id="arg-thin">thin<a class="anchor" aria-label="anchor" href="#arg-thin"></a></dt>
-<dd><p>thinning interval for the MCMC samples, defaults to <code>1</code></p></dd>
+<dd><p>thinning interval: one draw is retained every <code>thin</code>
+iterations. Defaults to <code>1</code>. <code>adapt</code>, <code>burnin</code> and
+<code>sample</code> count draws at this thinning, so a fit runs
+<code>(adapt + burnin + sample) * thin</code> iterations per chain (without the
+adaptation iterations when no sampler adapts) and its first retained draw
+is iteration <code>(adapt + burnin) * thin + 1</code>. The last
+retained draw, iteration <code>(adapt + burnin + sample - 1) * thin + 1</code>,
+must not be numbered beyond <code>.Machine$integer.max</code>. <code>adapt</code>,
+<code>burnin</code>, <code>sample</code> and <code>thin</code>, and <code>burnin_extend</code> and
+<code>sample_extend</code> of <code>autofit_control</code>, are whole numbers:
+<code>JAGS_fit()</code> and <code>JAGS_extend()</code> run a value accepted within a
+small tolerance of a whole number as the nearest whole number, and refuse
+a value below the minimum of its setting, also within that tolerance.</p></dd>
 
 
 <dt id="arg-autofit">autofit<a class="anchor" aria-label="anchor" href="#arg-autofit"></a></dt>
@@ -273,8 +291,11 @@ that cannot converge multiplies the draws per chain by about 2.1 (a
 failed R-hat) and up to 3 (large ESS or error deficits), up to
 <code>max_extend</code>. An
 extension, of either kind, whose last draw would have an iteration
-number beyond <code>.Machine$integer.max</code> is not started: the fitting
-stops with the last fit and a warning of its own.</p></dd>
+number beyond <code>.Machine$integer.max</code>, or whose
+<code>(adapt + sample_extend) * thin</code> adaptation and sampling iterations
+(which the backend counts for a sampler it rebuilds for the extension)
+would exceed it, is not started: the fitting stops with the last fit and
+a warning of its own.</p></dd>
 
 <dt>restarts</dt>
 <dd><p>maximum number of fitting attempts when the model fails
@@ -318,9 +339,9 @@ check runs, also without <code>autofit</code>, in the initial fit of
 <code>JAGS_fit()</code> (afresh in each restart attempt; not in
 <code>JAGS_extend()</code> or the automatic extensions after sampling) when
 there are at least two chains, the block of the last
-<code>min(burnin_extend, floor(burnin / thin))</code> draws of burn-in, taken
-every <code>thin</code> iterations as in sampling, has at least 100 draws, and
-JAGS assigns the model a sampler. The iterations of the block (its draws
+<code>min(burnin_extend, burnin)</code> draws of burn-in, taken every
+<code>thin</code> iterations as in sampling, has at least 100 draws, and JAGS
+assigns the model a sampler. The iterations of the block (its draws
 times <code>thin</code>) run with the monitors on; their draws are checked and
 then dropped. Each
 chain's block is split into halves, and the chains are ready when the
@@ -361,21 +382,15 @@ exceed the threshold although its chains agree, because the statistic
 grows with the autocorrelation of the block's draws; a larger
 <code>thin</code> then helps when more widely spaced draws are less
 correlated, while more burn-in is the remedy for chains that have not
-yet reached the same region. The check needs 100 draws at the fit's
-thinning: with <code>burnin</code> below <code>100 * thin</code> it does not run,
-and when it runs with <code>burnin</code> at most <code>burnin_extend * thin</code>,
-the block holds every complete window of <code>thin</code> iterations of
-burn-in (the first <code>burnin %% thin</code> iterations run unmonitored),
-so raise <code>burnin</code> together with <code>thin</code>.</p></dd>
+yet reached the same region. With <code>burnin</code> below 100 the check does
+not run, and with <code>burnin</code> at most <code>burnin_extend</code> it checks
+the whole burn-in.</p></dd>
 
 <dt>burnin_extend</dt>
 <dd><p>the number of final burn-in draws, taken every
 <code>thin</code> iterations, that the readiness check assesses, and of each
 extension of burn-in (<code>burnin_extend * thin</code> iterations); at least
-<code>100</code>. Defaults to <code>500</code>. When the check runs with
-<code>burnin</code> at most <code>burnin_extend * thin</code>, its block holds every
-complete window of <code>thin</code> iterations of burn-in, and the first
-<code>burnin %% thin</code> iterations run unmonitored.</p></dd>
+<code>100</code>. Defaults to <code>500</code>.</p></dd>
 
 <dt>burnin_max_extend</dt>
 <dd><p>the largest number of extensions of burn-in, with
@@ -699,8 +714,8 @@ worker's table. If worker assignments differ, <code>fit$samplers_by_worker</code
 gives each worker's <code>chains</code> and <code>samplers</code>. A failed initial fit returns its error
 condition.</p>
 <p><code>JAGS_extend()</code> rebuilds the sampler from the stored states, adapts
-it for <code>adapt</code> iterations when needed, then appends draws without
-further burn-in. A saved and reloaded fit extends from the same state.
+it for <code>adapt * thin</code> iterations when needed, then appends draws
+without further burn-in. A saved and reloaded fit extends from the same state.
 Its extensions continue, as automatic fitting in <code>JAGS_fit()</code>, until
 every diagnostic that can be assessed meets the criteria of
 <code>autofit_control</code> after an extension, or until <code>max_time</code> or
@@ -709,9 +724,10 @@ continue the serial sampler. JASP fits
 also keep parallel worker samplers through progress updates and automatic
 extensions. Other parallel fits rebuild at each extension. The returned fit stores
 ordinary R data and can be serialized with <code><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">saveRDS()</a></code>.</p>
-<p>The <code>adaptation</code> attribute of a fit records the adaptation settings:
-<code>initial</code>, the <code>adapt</code> of <code>JAGS_fit()</code>, and
-<code>extensions</code>, a data frame with one row
+<p>The <code>adaptation</code> attribute of a fit records the adaptation settings
+in draws at the fit's thinning (the backend adapts for <code>adapt * thin</code>
+iterations where a sampler adapts): <code>initial</code>, the <code>adapt</code> of
+<code>JAGS_fit()</code>, and <code>extensions</code>, a data frame with one row
 per backend extension (automatic extensions of <code>JAGS_fit()</code> and the
 extensions of <code>JAGS_extend()</code>) giving the <code>adapt</code> passed to the
 backend and whether the backend <code>rebuilt</code> the sampler, the only case in
@@ -726,20 +742,22 @@ runs in the initial fit of <code>JAGS_fit()</code> only, afresh in each restart
 attempt, and not in <code>JAGS_extend()</code>, the automatic extensions after
 sampling, or a model without samplers. The record holds
 <code>burnin_max_Rhat</code> (the threshold used, a number also when it was
-<code>"auto"</code>), <code>block</code> (the iterations of the checked end of the
-requested burn-in), <code>burnin_extend</code> (in draws), <code>thin</code> (the
-thinning of the checked draws), <code>blocks</code> (one row per checked block,
-with the iterations <code>sweeps</code> it ran and its largest value <code>Rhat</code>
-and <code>parameter</code>), <code>extension</code> (the iterations added to burn-in),
+<code>"auto"</code>), <code>block</code> (the draws of the checked end of the
+requested burn-in), <code>burnin_extend</code>, <code>thin</code> (the thinning of the
+checked draws), <code>blocks</code> (one row per checked block, with its
+<code>draws</code> and its largest value <code>Rhat</code> and <code>parameter</code>),
+<code>extension</code> (the draws added to burn-in),
 <code>status</code> (<code>"ready"</code>, <code>"not_ready"</code>, or
 <code>"not_assessable"</code> when no quantity could be assessed, which makes no
 claim of readiness and extends nothing), <code>stop_reason</code>
 (<code>"ready"</code>, <code>"max_extend"</code>, <code>"max_time"</code>,
 <code>"iteration_limit"</code>, <code>"no_autofit"</code>, or <code>"not_assessable"</code>),
 and <code>failing</code> (the
-quantities of the last block above the threshold, with their values).
-<code>fit$burnin</code> is the burn-in that was run, and the iteration numbers
-of the draws and of <code>sampler_probabilities</code> count it.</p>
+quantities of the last block above the threshold, with their values). Its
+counts are draws at the fit's thinning, as are <code>fit$sample</code> and
+<code>fit$burnin</code>, the burn-in that was run; each draw stands for
+<code>thin</code> iterations, which the iteration numbers of the draws and of
+<code>sampler_probabilities</code> count.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
