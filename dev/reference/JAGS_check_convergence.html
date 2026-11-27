@@ -21,7 +21,7 @@ BayesTools_draws_view_unavailable); assess fit$original_fit."><meta name="robots
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9022</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9023</span>
       </span>
     </div>
 
@@ -184,7 +184,10 @@ when it is infinite or zero: chains that are each constant but at different
 values give an R-hat of <code>Inf</code> and an ESS of 0, which fail
 <code>max_Rhat</code> and <code>min_ESS</code> whatever this argument is. Their MCMC
 error (the standard error SD / sqrt(ESS) of an ESS of 0) is <code>Inf</code>, so
-<code>max_error</code> and <code>max_SD_error</code> fail as well. Automatic fitting in
+<code>max_error</code> and <code>max_SD_error</code> fail as well. Chains that visit
+the same values equally often (such as equal occupancies of an indicator
+state) have equal means and variances and give an R-hat of 1. Automatic
+fitting in
 <code><a href="JAGS_fit.html">JAGS_fit()</a></code> and <code><a href="JAGS_fit.html">JAGS_extend()</a></code> judges assessability from the draws at
 each check and does not extend a fit for diagnostics that are not
 assessable then: it stops once every diagnostic that can be assessed

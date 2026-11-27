@@ -18,7 +18,7 @@ a model and samples it using rjags."><meta name="robots" content="noindex"><!-- 
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9022</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9023</span>
       </span>
     </div>
 
@@ -704,7 +704,12 @@ extend its <code>original_fit</code> and regenerate it with <code><a href="JAGS_
 Fits created by BayesTools 0.4.0 or earlier (runjags fits) and fits
 without the parameter map and fit contract of this version of BayesTools
 must be refitted: they stop with an error of class
-<code>BayesTools_refit_required</code> (see <code><a href="JAGS_fit_contract.html">JAGS_validate_fit_contract()</a></code>).</p></dd>
+<code>BayesTools_refit_required</code> (see <code><a href="JAGS_fit_contract.html">JAGS_validate_fit_contract()</a></code>).
+Fitting and extending stop with an error of class
+<code>BayesTools_numeric_locale</code> in a session whose numeric locale does not
+use a point as the decimal mark (R's default is the <code>"C"</code> locale):
+JAGS would read the numeric constants of the model only up to the decimal
+point.</p></dd>
 
 </dl></div>
     <div id="value">
