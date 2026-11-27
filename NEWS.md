@@ -14,7 +14,7 @@
 ### Features
 - JASP progress updates retain the requested draw count and reuse adapted samplers throughout a fit
 - `plot_model_probabilities()` displays posterior model probabilities and model states in a matrix
-- `plot_posterior()` and `plot_marginal()` can select factor levels by name and draw a separate plot for each selected level
+- `plot_posterior()` and `plot_marginal()` can select factor levels by name and draw a separate plot for each selected level; `posterior_factor_columns()` lists the plotted columns of a factor
 - `hypothesis_BF()` accepts interval hypotheses such as `"-0.1 <= mu <= 0.1"` and explicit comparisons with `unconstrained`
 - Selection contexts support observation-level publication-bias exemptions
 - `prior_regularized()` adds ridge, lasso and horseshoe priors with joint shrinkage for centered factors

@@ -288,6 +288,20 @@ test_that("JAGS_bridgesampling drives the real upstream sampler on multiple chai
   expect_true(is.finite(explicit[["repetitions"]][["mcse"]]))
   expect_lt(abs(explicit[["logml"]]), 4 * explicit[["repetitions"]][["mcse"]])
   expect_identical(explicit[["diagnostics"]][["chains"]][["count"]], 3L)
+
+  # A fit of the runjags package (documented input of 0.4.0) is read through
+  # the chains it stores in 'mcmc', without runjags: the result is that of the
+  # chains themselves.
+  runjags_arguments <- arguments
+  runjags_arguments[["fit"]] <- structure(list(mcmc = posterior, burnin = 1000, sample = 400), class = "runjags")
+  from_runjags <- do.call(JAGS_bridgesampling, runjags_arguments)
+  expect_identical(from_runjags[["logml"]], result[["logml"]])
+  expect_identical(from_runjags[["diagnostics"]][["chains"]], result[["diagnostics"]][["chains"]])
+  runjags_arguments[["fit"]] <- structure(list(), class = "runjags")
+  expect_error(
+    do.call(JAGS_bridgesampling, runjags_arguments),
+    "The 'runjags' fit stores no posterior draws in its 'mcmc' element.", fixed = TRUE
+  )
 })
 
 test_that("JAGS_bridgesampling restores the caller's random-number state on the sampler route", {

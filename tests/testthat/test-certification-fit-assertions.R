@@ -6165,12 +6165,12 @@ test_that("factor slice blocks sample members whose transformed coordinate is be
 test_that("factor slice blocks sample members far from distant bounds", {
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
 
-  # A standard normal truncated to (-1e9, 1e9) or (-1e13, 1e13), or bounded
-  # below by -1e6 or -1e12, in a block with an ordinary normal. The sampler
+  # A standard normal truncated to (-1e9, 1e9) or (-1e10, 1e10), or bounded
+  # below by -1e6 or -1e10, in a block with an ordinary normal. The sampler
   # holds each member through its distance from the anchoring bound, to about
-  # 16 significant digits of that distance (here a grid of up to about 0.02
-  # posterior SDs), so the central mass, the moments and the partner's moments
-  # are those of the target; their draws equal development's.
+  # 16 significant digits of that distance, so the central mass, the moments
+  # and the partner's moments are those of the target. 1e10 is the largest
+  # starting distance the sampler takes (the next test): the chains start at 0.
   # Seed 1: with seed 47 the partner's variance gave z = -4.02 under adaptation
   # 0 with the lower bound -1e6. Those draws are bit-identical on development
   # (90fee58), so the transform is not involved. Independent repetitions (200
@@ -6186,16 +6186,48 @@ test_that("factor slice blocks sample members far from distant bounds", {
     b_var     = list(series = function(x) x[, "b"]^2, target = 1)
   )
   markers <- .sampler_test_block_markers(c("x", "b"))
-  members <- c("x ~ dnorm(0, 1)T(-1e9, 1e9)", "x ~ dnorm(0, 1)T(-1e13, 1e13)",
-               "x ~ dnorm(0, 1)T(-1e6, )", "x ~ dnorm(0, 1)T(-1e12, )")
+  members <- c("x ~ dnorm(0, 1)T(-1e9, 1e9)", "x ~ dnorm(0, 1)T(-1e10, 1e10)",
+               "x ~ dnorm(0, 1)T(-1e6, )", "x ~ dnorm(0, 1)T(-1e10, )")
   for(member in members){
     syntax <- paste0("model{\n  ", member, "\n  b ~ dnorm(0, 1)\n", markers$syntax, "\n}")
     for(n_adapt in c(0L, 500L)){
       samples <- .sampler_test_block_samples(syntax, markers$data, variables = c("x", "b"),
-                                             n_adapt = n_adapt, n_iter = 5000L, seed = 1L)
+                                             n_adapt = n_adapt, n_iter = 5000L, seed = 1L,
+                                             inits = list(x = 0))
       checks <- .sampler_test_mcse_checks(samples, quantities)
       .sampler_test_expect_checks(checks, paste0(member, ", adapt = ", n_adapt))
     }
+  }
+})
+
+test_that("a member that starts farther than 1e10 from its support bound stops the fit at the start", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  # The sampler resolves a bounded member only relative to its distance from
+  # the anchoring bound. With a posterior of unit scale the draws are right up
+  # to a distance of 1e14, have a wrong SD at 1e15 and freeze beyond; the
+  # posterior scale is unknown at the start, so the sampler refuses a starting
+  # distance above 1e10 (see the kernel header). The distance decides, not the
+  # bound: (0, 1e308) with a member near 0 samples (the far-tail test above).
+  markers <- .sampler_test_block_markers(c("x", "b"))
+  refused <- paste0(
+    "Factor slice sampler: this node starts farther than 1e10 from its support bound, beyond the ",
+    "sampler's precision; remove the bound if it excludes no posterior mass, rescale the parameter, ",
+    "or declare the block without this node")
+  cases <- list(
+    list(member = "x ~ dnorm(0, 1)T(-1e13, 1e13)", x = 0),
+    list(member = "x ~ dnorm(0, 1)T(-1e12, )",     x = 0),
+    list(member = "x ~ dnorm(0, 1)T(, 1e12)",      x = 0),
+    # just beyond the limit: the same lower bound starts at 0 in the test above
+    list(member = "x ~ dnorm(0, 1)T(-1e10, )",     x = 1),
+    list(member = "x ~ dnorm(0, 1)T(-1e10 - 4, 1e10 + 4)", x = 0)
+  )
+  for(case in cases){
+    syntax <- paste0("model{\n  ", case$member, "\n  b ~ dnorm(0, 1)\n", markers$syntax, "\n}")
+    expect_error(
+      .sampler_test_compile(syntax, markers$data, chains = 2L, seed = 1L, inits = list(x = case$x)),
+      refused, fixed = TRUE, info = case$member
+    )
   }
 })
 
