@@ -1,22 +1,22 @@
            source               parameter estimate median    lCI    uCI
 1            lme4               intercept    0.235     NA     NA     NA
-2      BayesTools               intercept    0.211  0.216 -0.337  0.734
-3  BayesTools CAR               intercept    0.281  0.283 -0.238  0.788
+2      BayesTools               intercept    0.216  0.216 -0.326  0.755
+3  BayesTools CAR               intercept    0.281  0.277 -0.236  0.804
 4            lme4                   day_s    0.159     NA     NA     NA
-5      BayesTools                   day_s    0.163  0.163 -0.011  0.340
-6  BayesTools CAR                   day_s    0.201  0.202  0.024  0.379
+5      BayesTools                   day_s    0.162  0.162 -0.013  0.336
+6  BayesTools CAR                   day_s    0.198  0.198  0.025  0.374
 7            lme4                  day_s2   -0.198     NA     NA     NA
-8      BayesTools                  day_s2   -0.197 -0.197 -0.280 -0.115
-9  BayesTools CAR                  day_s2   -0.237 -0.236 -0.339 -0.138
+8      BayesTools                  day_s2   -0.196 -0.196 -0.279 -0.113
+9  BayesTools CAR                  day_s2   -0.234 -0.235 -0.335 -0.135
 10           lme4                   sigma    0.213     NA     NA     NA
-11     BayesTools                   sigma    0.219  0.217  0.180  0.268
+11     BayesTools                   sigma    0.219  0.217  0.179  0.268
 12 BayesTools CAR                   sigma    0.220  0.218  0.180  0.270
 13           lme4 Dog_Side: sd(intercept)    0.522     NA     NA     NA
-14     BayesTools Dog_Side: sd(intercept)    0.600  0.577  0.373  0.955
-15 BayesTools CAR Dog_Side: sd(intercept)    0.598  0.575  0.374  0.962
+14     BayesTools Dog_Side: sd(intercept)    0.601  0.579  0.375  0.956
+15 BayesTools CAR Dog_Side: sd(intercept)    0.602  0.579  0.372  0.962
 16           lme4                 Dog: sd    0.759     NA     NA     NA
-17     BayesTools                 Dog: sd    0.752  0.727  0.443  1.213
-18 BayesTools CAR                 Dog: sd    0.746  0.721  0.440  1.199
+17     BayesTools                 Dog: sd    0.760  0.730  0.443  1.238
+18 BayesTools CAR                 Dog: sd    0.745  0.721  0.432  1.199
 19           lme4                Dog: cor    0.949     NA     NA     NA
-20     BayesTools                Dog: cor    0.924  0.935  0.803  0.979
-21 BayesTools CAR                Dog: cor    0.958  0.965  0.887  0.989
+20     BayesTools                Dog: cor    0.925  0.936  0.803  0.981
+21 BayesTools CAR                Dog: cor    0.957  0.965  0.880  0.989
