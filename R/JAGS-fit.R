@@ -451,6 +451,11 @@
 #' without the parameter map and fit contract of this version of BayesTools
 #' must be refitted: they stop with an error of class
 #' \code{BayesTools_refit_required} (see [JAGS_validate_fit_contract()]).
+#' Fitting and extending stop with an error of class
+#' \code{BayesTools_numeric_locale} in a session whose numeric locale does not
+#' use a point as the decimal mark (R's default is the \code{"C"} locale):
+#' JAGS would read the numeric constants of the model only up to the decimal
+#' point.
 #' @param ... additional hidden arguments
 #'
 #' @examples \dontrun{
@@ -687,6 +692,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
                      sampler_gates = FALSE, sampler_blocks = NULL, runtime_report = NULL,
                      sampler_joint = NULL, sampler_probabilities = NULL, sampler_nested_weights = FALSE, ...){
 
+  .bt_check_numeric_locale()
   # A seeded fit leaves the caller's random-number state as it found it.
   if(!is.null(seed)){
     rng_state <- .bt_rng_state()
@@ -1472,6 +1478,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
                         worker_output = NULL, adapt = NULL,
                         runtime_report = attr(fit, "runtime_report", exact = TRUE)){
 
+  .bt_check_numeric_locale()
   if(inherits(fit, "BayesTools_draws_view")){
     stop(.bt_draws_view_condition(
       c("BayesTools_draws_view_sampling_unavailable", "BayesTools_sampling_unavailable"),

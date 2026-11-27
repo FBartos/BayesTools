@@ -1826,3 +1826,68 @@ test_that("computed failures are reported when another diagnostic of the row is 
   diagnostics$Rhat[1L] <- 1.01
   expect_identical(failures(TRUE), character())
 })
+
+test_that("chains with equal state occupancies agree", {
+
+  # three chains of an indicator that visit the rare state once each have
+  # equal means and equal variances: coda returns NaN for them (or a number
+  # below 1 where the means differ in the last bit), and the chains agree
+  rare <- function(at, n = 1000){
+    draws <- rep(1, n)
+    draws[at] <- 0
+    draws
+  }
+  chains   <- list(rare(10), rare(500), rare(900))
+  chain_id <- rep(1:3, each = 1000)
+  expect_true(BayesTools:::.bt_equal_state_occupancy(chains))
+  diagnostics <- BayesTools:::.bt_convergence_parameter_diagnostics(
+    unlist(chains), chain_id, 3L, TRUE, TRUE, TRUE, TRUE)
+  expect_identical(diagnostics$Rhat, 1)
+  expect_true(diagnostics$assessable)
+  expect_true(is.finite(diagnostics$ESS))
+
+  # only repeated finite values that every chain visits equally often
+  expect_false(BayesTools:::.bt_equal_state_occupancy(list(rare(10), rare(c(5, 500)), rare(900))))
+  expect_false(BayesTools:::.bt_equal_state_occupancy(list(rep(1, 10), rep(1, 10))))
+  expect_false(BayesTools:::.bt_equal_state_occupancy(list(c(0.1, 0.2, 0.3), c(0.4, 0.5, 0.6))))
+  expect_false(BayesTools:::.bt_equal_state_occupancy(list(c(0, Inf, 0, Inf), c(Inf, 0, Inf, 0))))
+  expect_false(BayesTools:::.bt_equal_state_occupancy(list(c(0, 1, 2, 2), c(2, 1, 0, 0))))
+  expect_true(BayesTools:::.bt_equal_state_occupancy(list(rare(1, 10), rare(c(3, 7), 20))))
+  # chains that do not repeat a value stay with coda, also copies of one chain
+  continuous <- seq(0.05, 0.95, length.out = 19)
+  expect_false(BayesTools:::.bt_equal_state_occupancy(list(continuous, rev(continuous), continuous)))
+  # more than two values: three states visited equally often in every chain
+  states <- list(rep(c(0, 1, 2), c(5, 3, 2)), rep(c(2, 0, 1), c(2, 5, 3)), rep(c(1, 2, 0), c(3, 2, 5)))
+  expect_true(BayesTools:::.bt_equal_state_occupancy(states))
+  three <- BayesTools:::.bt_convergence_parameter_diagnostics(
+    unlist(states), rep(1:3, each = 10), 3L, TRUE, FALSE, FALSE, FALSE)
+  expect_identical(three$Rhat, 1)
+  # unequal occupancies, and equal means with unequal variances, stay with coda
+  unequal <- BayesTools:::.bt_convergence_parameter_diagnostics(
+    c(rare(10), rare(c(5, 500)), rare(900)), chain_id, 3L, TRUE, FALSE, FALSE, FALSE)
+  expect_true(is.finite(unequal$Rhat))
+  expect_false(identical(unequal$Rhat, 1))
+  spread <- BayesTools:::.bt_convergence_parameter_diagnostics(
+    c(rep(c(-1, 1), 500), rep(c(-2, 2), 500), rep(c(-3, 3), 500)), chain_id, 3L, TRUE, FALSE, FALSE, FALSE)
+  expect_gt(spread$Rhat, 1.05)
+
+  # the convergence check and the summary table report the same value
+  fit <- .mock_convergence_fit(
+    matrix(rare(10, 100), ncol = 1, dimnames = list(NULL, "mu")),
+    matrix(rare(60, 100), ncol = 1, dimnames = list(NULL, "mu")),
+    list(mu = prior("normal", list(0, 1)))
+  )
+  checked <- JAGS_check_convergence(fit, max_Rhat = 1.05, min_ESS = NULL, max_error = NULL, max_SD_error = NULL)
+  expect_true(checked)
+  expect_identical(attr(checked, "diagnostics")$Rhat, 1)
+  expect_identical(.convergence_states(checked)[["mu"]], "assessable")
+  table <- BayesTools:::.runjags_summary_fast(
+    matrix(unlist(chains), ncol = 1, dimnames = list(NULL, "gamma")),
+    n_samples = 1000, n_chains = 3, conditional = FALSE)
+  expect_identical(table[["R_hat"]], 1)
+  two_columns <- BayesTools:::.runjags_summary_fast(
+    cbind(gamma = unlist(chains), mu = seq_len(3000) %% 7),
+    n_samples = 1000, n_chains = 3, conditional = FALSE)
+  expect_identical(two_columns["gamma", "R_hat"], 1)
+  expect_false(identical(two_columns["mu", "R_hat"], 1))
+})

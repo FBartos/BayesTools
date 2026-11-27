@@ -30,6 +30,31 @@
   expr
 }
 
+# JAGS reads the numeric constants of the model text with the C library, which
+# follows LC_NUMERIC: under a decimal comma it stops at the decimal point and
+# reads 1.5 as 1, silently. On Unix R writes numbers with the C library too,
+# so there the model text itself would hold commas. R keeps LC_NUMERIC at "C"
+# unless the session or an embedding application changes it; a fit is refused
+# otherwise, before any model text is built.
+.bt_check_numeric_locale <- function(){
+
+  mark <- unname(Sys.localeconv()[["decimal_point"]])
+  if(identical(mark, ".")){
+    return(invisible(TRUE))
+  }
+  stop(structure(
+    list(
+      message = paste0(
+        "JAGS models cannot be fitted while the numeric locale of the session uses '", mark,
+        "' as the decimal mark: JAGS would misread the numeric constants of the model. ",
+        "Run 'Sys.setlocale(\"LC_NUMERIC\", \"C\")' before fitting."
+      ),
+      call = NULL
+    ),
+    class = c("BayesTools_numeric_locale", "error", "condition")
+  ))
+}
+
 # Run the chains assigned to one R process. The caller owns process-level
 # setup and reporting. Keep JAGS to one thread per process for both serial
 # fits and PSOCK workers, including workers that own multiple chains.

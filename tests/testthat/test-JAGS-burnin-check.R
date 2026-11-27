@@ -56,6 +56,36 @@ test_that("degenerate blocks are decided before coda", {
     expect_true(is.nan(.burnin_unsplit_point(equal_halves)))
   }
   expect_identical(.burnin_rhat(equal), 1)
+  # a quarter occupancy has exactly representable means on every platform:
+  # coda's NaN and the rule hold everywhere
+  quarter <- c(rep(0, 30), rep(1, 10))
+  equal_quarter <- list(c(quarter, rev(quarter)), c(rev(quarter), quarter), c(quarter, quarter))
+  expect_true(is.nan(.burnin_unsplit_point(unlist(lapply(equal_quarter, function(chain){
+    list(chain[1:40], chain[41:80])
+  }), recursive = FALSE))))
+  expect_identical(.burnin_rhat(equal_quarter), 1)
+
+  # huge values: the sums of the half-chains overflow, which must not read
+  # as equal means (two chains that clearly disagree); equal means stay equal
+  disagreeing <- list(seq(1, 2, length.out = 100), seq(3, 4, length.out = 100))
+  expect_gt(.burnin_rhat(disagreeing), 2)
+  # (their variances overflow, so coda cannot assess them: NA, not agreement)
+  expect_identical(.burnin_rhat(lapply(disagreeing, function(chain) chain * 1e307)), NA_real_)
+  # the same at the largest doubles, whose log2() rounds up to 1024: a scale
+  # of 2^1024 is infinite and would turn every value into zero
+  top <- list(rep(c(8.99e307, .Machine$double.xmax), 50), rep(c(-1e300, -5e299), 50))
+  expect_identical(.burnin_rhat(top), NA_real_)
+  # sums that do not overflow are compared as they are: counts in half-chains
+  # that are permutations of each other have equal means on every platform,
+  counts <- c(rep(0, 13), rep(1, 9), rep(2, 11), rep(3, 7))
+  expect_identical(.burnin_rhat(list(c(counts, rev(counts)), c(rev(counts), counts))), 1)
+  # and half-chains whose tiny sums differ (1 to 4 times 2^-1000, one of
+  # them next to a cancelling pair of 2^100) do not have equal means
+  tiny <- function(times, pair = FALSE){
+    c(if(pair) c(2^100, -2^100), rep(2^-1000, times), rep(0, 32 - times - 2 * pair))
+  }
+  expect_gt(.burnin_rhat(list(c(tiny(1), tiny(2)), c(tiny(3), tiny(4, pair = TRUE)))), 1.05)
+  expect_identical(.burnin_rhat(lapply(equal, function(chain) chain * 1e307)), 1)
 
   # nothing to assess: constant everywhere
   expect_identical(.burnin_rhat(list(rep(2, 100), rep(2, 100))), NA_real_)
@@ -1357,4 +1387,57 @@ test_that("the JASP warm-up bar ticks after the check and its extensions", {
   expect_identical(events[1:5], c("start Adapting and burnin the model", "warm-up block 200",
     "extension 300", "tick", "start Sampling the model"))
   expect_identical(out$burnin_check$extension, 300)
+})
+
+test_that("numbers are read and fits are refused under a decimal-comma LC_NUMERIC", {
+
+  # R keeps LC_NUMERIC at "C", but a session or an embedding application can
+  # change it; the C library's reader then expects a comma, and printed
+  # numbers and stored keys still have a point
+  texts <- c("1.88", "1.8800000000000001", "1e-200", "2")
+  reference <- BayesTools:::.JAGS_read_number(texts)
+  expect_false(anyNA(reference))
+
+  old <- Sys.getlocale("LC_NUMERIC")
+  withr::defer(suppressWarnings(Sys.setlocale("LC_NUMERIC", old)))
+  comma <- FALSE
+  for(candidate in c("German_Germany.1252", "German", "de_DE.UTF-8", "de_DE", "nl_NL.UTF-8", "fr_FR.UTF-8")){
+    set <- suppressWarnings(Sys.setlocale("LC_NUMERIC", candidate))
+    if(nzchar(set) && identical(unname(Sys.localeconv()[["decimal_point"]]), ",")){
+      comma <- TRUE
+      break
+    }
+  }
+  skip_if_not(comma, "No decimal-comma locale is available.")
+
+  expect_identical(BayesTools:::.JAGS_read_number(texts), reference)
+  # text with the locale's own mark is not a number of a model or a warning
+  expect_identical(BayesTools:::.JAGS_read_number(c("1,88", "x")), c(NA_real_, NA_real_))
+  expect_identical(unname(Sys.localeconv()[["decimal_point"]]), ",")
+
+  # JAGS reads the constants of the model text with the C library too: under
+  # a decimal comma it stops at the point and reads the prior mean 0.5 as 0,
+  # silently (and on Unix R writes the model text with commas). Fits and
+  # extensions are refused, and the session's locale is left as it is
+  fit_here <- function(){
+    JAGS_fit(model_syntax = "model{}", data = list(),
+      prior_list = list(mu = prior("normal", list(0.5, 0.25))),
+      chains = 2, adapt = 100, burnin = 100, sample = 500, seed = 1, silent = TRUE)
+  }
+  refused <- tryCatch(fit_here(), error = identity)
+  expect_s3_class(refused, "BayesTools_numeric_locale")
+  expect_identical(conditionMessage(refused), paste0(
+    "JAGS models cannot be fitted while the numeric locale of the session uses ',' as the decimal mark: ",
+    "JAGS would misread the numeric constants of the model. ",
+    "Run 'Sys.setlocale(", dQuote("LC_NUMERIC", FALSE), ", ", dQuote("C", FALSE), ")' before fitting."
+  ))
+  expect_identical(unname(Sys.localeconv()[["decimal_point"]]), ",")
+
+  suppressWarnings(Sys.setlocale("LC_NUMERIC", old))
+  fit <- fit_here()
+  draws <- unlist(lapply(fit$mcmc, function(chain) as.numeric(chain[, "mu"])))
+  # Monte Carlo standard error 0.25 / sqrt(1000) = 0.008
+  expect_lt(abs(mean(draws) - 0.5), 0.05)
+  suppressWarnings(Sys.setlocale("LC_NUMERIC", set))
+  expect_error(JAGS_extend(fit), class = "BayesTools_numeric_locale")
 })
