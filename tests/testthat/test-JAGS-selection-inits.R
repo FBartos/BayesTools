@@ -411,7 +411,9 @@ test_that("selection mixture weights at the normalization limits are used as the
 
   # weights whose smallest share of an admitted sum underflows to zero: that
   # branch is never the starting branch
-  underflow <- prior_mixture(selection_inits_weighted_branches(c(1e200, 1e-200)))
+  # (the doubles of these decimals as the C library reads them: R's parser can
+  # be off in the last digit where long double is double, on Apple silicon)
+  underflow <- prior_mixture(selection_inits_weighted_branches(BayesTools:::.JAGS_read_number(c("1e+200", "1e-200"))))
   expect_identical(selection_inits_labels(JAGS_get_inits(list(bias = underflow), chains = 6, seed = 1)), rep(1L, 6))
   expect_identical(dcat_line(selection_backend_spec(underflow, include_init = FALSE)), "bias_indicator ~ dcat(c(1e+200, 1e-200))")
   three <- prior_mixture(selection_inits_weighted_branches(c(1, 1, 5e-324)))
