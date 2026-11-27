@@ -18,7 +18,7 @@ This is a more generic version of the prior_spike_and_slab function."><meta name
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9020</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9021</span>
       </span>
     </div>
 
@@ -94,7 +94,7 @@ should be considered as a null distribution. Defaults to <code>rep(FALSE, length
 <dt id="arg-components">components<a class="anchor" aria-label="anchor" href="#arg-components"></a></dt>
 <dd><p>a character vector indicating which of the prior distributions
 belong to the same mixture component (this is an alternative specification to the <code>is_null</code> argument).
-Defaults to <code>NULL</code> (i.e., <code>is_null</code> is used.</p></dd>
+Defaults to <code>NULL</code> (i.e., <code>is_null</code> is used).</p></dd>
 
 </dl></div>
     <div id="value">
@@ -105,7 +105,10 @@ holds the component priors with their <code>prior_weights</code> and <code>compo
     </div>
     <div id="details">
     <h2>Details</h2>
-    <p>The <code>prior_weights</code> of the components are their prior odds,
+    <p>A mixture of publication-bias priors (PET, PEESE, weight function,
+p-hacking, composed bias, or none priors) must be named <code>bias</code> in the
+prior list of <code><a href="JAGS_fit.html">JAGS_fit()</a></code> and <code><a href="JAGS_add_priors.html">JAGS_add_priors()</a></code>.</p>
+<p>The <code>prior_weights</code> of the components are their prior odds,
 and any positive finite weights construct a mixture. Weights that cannot be
 normalized in double precision (their sum, accumulated in double precision,
 overflows or is below <code>.Machine$double.xmin</code>) are refused when a

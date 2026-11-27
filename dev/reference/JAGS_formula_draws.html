@@ -27,7 +27,7 @@ standardization of data."><meta name="robots" content="noindex"><!-- mathjax -->
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9020</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9021</span>
       </span>
     </div>
 
@@ -171,10 +171,12 @@ carrying one is an error.</p></dd>
 
 
 <dt id="arg-formula-scale">formula_scale<a class="anchor" aria-label="anchor" href="#arg-formula-scale"></a></dt>
-<dd><p>named list specifying whether to standardize continuous predictors.
-If <code>NULL</code> (default), no standardization is applied. If a named list is provided,
-continuous predictors with <code>TRUE</code> values will be standardized (mean-centered and
-scaled by standard deviation). The intercept is never standardized. Scaled
+<dd><p><code>TRUE</code>, <code>FALSE</code>, or a named list specifying whether to
+standardize continuous predictors. If <code>NULL</code> (default) or <code>FALSE</code>, no
+standardization is applied; <code>TRUE</code> standardizes every continuous predictor. If a
+named list is provided, continuous predictors with <code>TRUE</code> values will be
+standardized (mean-centered and scaled by standard deviation). The intercept is never
+standardized. Scaled
 predictors are centered in every fixed and random term, including terms
 without a free intercept, so the model is specified on the standardized
 scale; see Details.</p></dd>

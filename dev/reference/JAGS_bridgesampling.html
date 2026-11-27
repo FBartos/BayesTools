@@ -22,7 +22,7 @@ additional arguments, and returns the log likelihood of the model part."><meta n
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9020</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9021</span>
       </span>
     </div>
 
@@ -111,8 +111,11 @@ additional arguments, and returns the log likelihood of the model part.</p>
 
 
 <dl><dt id="arg-fit">fit<a class="anchor" aria-label="anchor" href="#arg-fit"></a></dt>
-<dd><p>model fitted with <code><a href="JAGS_fit.html">JAGS_fit()</a></code>, or posterior
-samples obtained with <a href="https://rdrr.io/pkg/rjags/man/rjags-package.html" class="external-link">rjags-package</a>.
+<dd><p>model fitted with <code><a href="JAGS_fit.html">JAGS_fit()</a></code>, posterior
+samples obtained with <a href="https://rdrr.io/pkg/rjags/man/rjags-package.html" class="external-link">rjags-package</a>, or a fit of the
+<span class="pkg">runjags</span> package (its stored chains are read as they are, without
+<span class="pkg">runjags</span>; a fit with a <code>mutate</code> function is refused, pass
+<code>coda::as.mcmc.list(fit)</code> and its priors as <code>prior_list</code> instead).
 Derived-draw views are refused with
 <code>BayesTools_draws_view_inference_unavailable</code> (also
 <code>BayesTools_draws_view_unavailable</code>); use <code>fit$original_fit</code>.</p></dd>

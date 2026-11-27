@@ -18,7 +18,7 @@ a model and samples it using rjags."><meta name="robots" content="noindex"><!-- 
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9020</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9021</span>
       </span>
     </div>
 
@@ -142,7 +142,8 @@ a model and samples it using <span class="pkg">rjags</span>.</p>
 <dd><p>named list of prior distribution
 (names correspond to the parameter names) of parameters not specified within the
 <code>formula_list</code>. Factor priors must carry their levels, set with
-<code><a href="prior_factor_levels.html">prior_factor_levels()</a></code>.</p></dd>
+<code><a href="prior_factor_levels.html">prior_factor_levels()</a></code>, and a mixture of publication-bias priors
+(<code><a href="prior_mixture.html">prior_mixture()</a></code>) must be named <code>bias</code>.</p></dd>
 
 
 <dt id="arg-formula-list">formula_list<a class="anchor" aria-label="anchor" href="#arg-formula-list"></a></dt>
@@ -209,9 +210,12 @@ iterations. Defaults to <code>1</code>. <code>adapt</code>, <code>burnin</code> 
 adaptation iterations when no sampler adapts) and its first retained draw
 is iteration <code>(adapt + burnin) * thin + 1</code>. The last
 retained draw, iteration <code>(adapt + burnin + sample - 1) * thin + 1</code>,
-must not be numbered beyond <code>.Machine$integer.max</code>. <code>adapt</code>,
-<code>burnin</code>, <code>sample</code> and <code>thin</code>, and <code>burnin_extend</code> and
-<code>sample_extend</code> of <code>autofit_control</code>, are whole numbers:
+must not be numbered beyond <code>.Machine$integer.max</code>. Burn-in that the
+readiness check of automatic fitting adds counts towards <code>burnin</code>
+in these positions. <code>chains</code>,
+<code>adapt</code>, <code>burnin</code>, <code>sample</code>, <code>thin</code> and <code>cores</code>,
+and <code>burnin_extend</code> and <code>sample_extend</code> of
+<code>autofit_control</code>, are whole numbers:
 <code>JAGS_fit()</code> and <code>JAGS_extend()</code> run a value accepted within a
 small tolerance of a whole number as the nearest whole number, and refuse
 a value below the minimum of its setting, also within that tolerance.</p></dd>
@@ -697,10 +701,10 @@ extended. A derived-draw view signals
 <code>BayesTools_sampling_unavailable</code> and
 <code>BayesTools_draws_view_unavailable</code>, before runtime arguments are forced;
 extend its <code>original_fit</code> and regenerate it with <code><a href="JAGS_draw_geometry.html">JAGS_with_draws()</a></code>.
-Fits without the parameter map and fit contract of this version
-of BayesTools (such as fits created by BayesTools 0.3.0) must be refitted:
-they stop with an error of class <code>BayesTools_refit_required</code> (see
-<code><a href="JAGS_fit_contract.html">JAGS_validate_fit_contract()</a></code>).</p></dd>
+Fits created by BayesTools 0.4.0 or earlier (runjags fits) and fits
+without the parameter map and fit contract of this version of BayesTools
+must be refitted: they stop with an error of class
+<code>BayesTools_refit_required</code> (see <code><a href="JAGS_fit_contract.html">JAGS_validate_fit_contract()</a></code>).</p></dd>
 
 </dl></div>
     <div id="value">

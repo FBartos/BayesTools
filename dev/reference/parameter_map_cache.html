@@ -5,7 +5,7 @@ BayesTools can avoid recomputing map-derived metadata without inventing
 their own storage inside fitted objects.
 The cache is keyed by the map and by key, a value naming everything
 else the cached result was derived from. Whenever key stops being
-identical() to the stored one the value is recomputed, so a result that
+base::identical() to the stored one the value is recomputed, so a result that
 also depends on data or priors stays correct when those change. Passing a
 key that does not cover every input is the one way to use this
 incorrectly.
@@ -28,7 +28,7 @@ provider's entries whenever the map's own tables are replaced."><meta name="robo
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9020</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9021</span>
       </span>
     </div>
 
@@ -82,7 +82,7 @@ BayesTools can avoid recomputing map-derived metadata without inventing
 their own storage inside fitted objects.</p>
 <p>The cache is keyed by the map <em>and</em> by <code>key</code>, a value naming everything
 else the cached result was derived from. Whenever <code>key</code> stops being
-<code><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical()</a></code> to the stored one the value is recomputed, so a result that
+<code><a href="https://rdrr.io/r/base/identical.html" class="external-link">base::identical()</a></code> to the stored one the value is recomputed, so a result that
 also depends on data or priors stays correct when those change. Passing a
 <code>key</code> that does not cover every input is the one way to use this
 incorrectly.</p>
@@ -108,7 +108,7 @@ provider's entries whenever the map's own tables are replaced.</p>
 
 <dt id="arg-key">key<a class="anchor" aria-label="anchor" href="#arg-key"></a></dt>
 <dd><p>a value identifying every input other than <code>map</code> that <code>compute</code>
-depends on. Compared with <code><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical()</a></code>.</p></dd>
+depends on. Compared with <code><a href="https://rdrr.io/r/base/identical.html" class="external-link">base::identical()</a></code>.</p></dd>
 
 
 <dt id="arg-compute">compute<a class="anchor" aria-label="anchor" href="#arg-compute"></a></dt>

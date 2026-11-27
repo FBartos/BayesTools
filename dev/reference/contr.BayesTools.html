@@ -19,7 +19,7 @@ variables in Bayesian models."><meta name="robots" content="noindex"><!-- mathja
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9020</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9021</span>
       </span>
     </div>
 
@@ -96,6 +96,15 @@ variables in Bayesian models.</p>
 <dd><p>logical indicating whether contrasts should be computed</p></dd>
 
 </dl></div>
+    <div id="value">
+    <h2>Value</h2>
+    <p>A numeric contrast matrix with one row per factor level, without
+dimnames. With <code>contrasts = TRUE</code>, <code>contr.orthonormal</code>,
+<code>contr.meandif</code> and <code>contr.ordered_cumulative</code> return n - 1
+columns and <code>contr.independent</code> and
+<code>contr.ordered_cumulative_levels</code> return n columns; with
+<code>contrasts = FALSE</code>, every function returns the n by n identity matrix.</p>
+    </div>
     <div id="details">
     <h2>Details</h2>
     <p>The package includes the following contrast functions:</p><dl><dt><code>contr.orthonormal</code></dt>
@@ -111,7 +120,7 @@ and k = n if <code>contrasts = FALSE</code>.</p></dd>
 <dt><code>contr.meandif</code></dt>
 <dd><p>Return a matrix of mean difference contrasts.
 This is an adjustment to the <code>contr.orthonormal</code> that ascertains that the prior
-distributions on difference between the gran mean and factor level are identical independent
+distributions on difference between the grand mean and factor level are identical independent
 of the number of factor levels (which does not hold for the orthonormal contrast). Furthermore,
 the contrast is re-scaled so the specified prior distribution exactly corresponds to the prior
 distribution on difference between each factor level and the grand mean – this is approximately

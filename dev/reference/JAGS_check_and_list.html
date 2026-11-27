@@ -3,7 +3,10 @@
 JAGS_fit function. adapt, burnin and sample count
 draws at the thinning thin; settings whose last retained draw,
 iteration (adapt + burnin + sample - 1) * thin + 1, would be
-numbered beyond .Machine$integer.max are refused."><meta name="robots" content="noindex"><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js" integrity="sha256-nvJJv9wWKEm88qvoQl9ekL2J+k/RWIsaSScxxlsrv8k=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/config/TeX-AMS-MML_HTMLorMML.js" integrity="sha256-84DKXVJXs0/F8OTMzX4UR909+jtl4G7SPypPavF+GfA=" crossorigin="anonymous"></script><!--[if lt IE 9]>
+numbered beyond .Machine$integer.max are refused. The settings are
+described as the arguments of JAGS_fit(); the defaults named there are
+those of JAGS_fit(), as these functions require every setting except
+check_mins, skip_sample_extend and call."><meta name="robots" content="noindex"><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js" integrity="sha256-nvJJv9wWKEm88qvoQl9ekL2J+k/RWIsaSScxxlsrv8k=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/config/TeX-AMS-MML_HTMLorMML.js" integrity="sha256-84DKXVJXs0/F8OTMzX4UR909+jtl4G7SPypPavF+GfA=" crossorigin="anonymous"></script><!--[if lt IE 9]>
 <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
 <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
 <![endif]--></head><body data-spy="scroll" data-target="#toc">
@@ -21,7 +24,7 @@ numbered beyond .Machine$integer.max are refused."><meta name="robots" content="
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9020</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9021</span>
       </span>
     </div>
 
@@ -73,7 +76,10 @@ numbered beyond .Machine$integer.max are refused."><meta name="robots" content="
 <a href="JAGS_fit.html">JAGS_fit</a> function. <code>adapt</code>, <code>burnin</code> and <code>sample</code> count
 draws at the thinning <code>thin</code>; settings whose last retained draw,
 iteration <code>(adapt + burnin + sample - 1) * thin + 1</code>, would be
-numbered beyond <code>.Machine$integer.max</code> are refused.</p>
+numbered beyond <code>.Machine$integer.max</code> are refused. The settings are
+described as the arguments of <code><a href="JAGS_fit.html">JAGS_fit()</a></code>; the defaults named there are
+those of <code><a href="JAGS_fit.html">JAGS_fit()</a></code>, as these functions require every setting except
+<code>check_mins</code>, <code>skip_sample_extend</code> and <code>call</code>.</p>
     </div>
 
     <div id="ref-usage">
@@ -136,9 +142,12 @@ iterations. Defaults to <code>1</code>. <code>adapt</code>, <code>burnin</code> 
 adaptation iterations when no sampler adapts) and its first retained draw
 is iteration <code>(adapt + burnin) * thin + 1</code>. The last
 retained draw, iteration <code>(adapt + burnin + sample - 1) * thin + 1</code>,
-must not be numbered beyond <code>.Machine$integer.max</code>. <code>adapt</code>,
-<code>burnin</code>, <code>sample</code> and <code>thin</code>, and <code>burnin_extend</code> and
-<code>sample_extend</code> of <code>autofit_control</code>, are whole numbers:
+must not be numbered beyond <code>.Machine$integer.max</code>. Burn-in that the
+readiness check of automatic fitting adds counts towards <code>burnin</code>
+in these positions. <code>chains</code>,
+<code>adapt</code>, <code>burnin</code>, <code>sample</code>, <code>thin</code> and <code>cores</code>,
+and <code>burnin_extend</code> and <code>sample_extend</code> of
+<code>autofit_control</code>, are whole numbers:
 <code><a href="JAGS_fit.html">JAGS_fit()</a></code> and <code><a href="JAGS_fit.html">JAGS_extend()</a></code> run a value accepted within a
 small tolerance of a whole number as the nearest whole number, and refuse
 a value below the minimum of its setting, also within that tolerance.</p></dd>

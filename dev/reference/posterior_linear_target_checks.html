@@ -41,7 +41,7 @@ unavailable.'><meta name="robots" content="noindex"><!-- mathjax --><script src=
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9020</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9021</span>
       </span>
     </div>
 
@@ -162,6 +162,19 @@ build.").</p></dd>
 compute posterior ordinates.</p></dd>
 
 </dl></div>
+    <div id="value">
+    <h2>Value</h2>
+    <p><code>posterior_formula_measure_check()</code> returns
+<code>invisible(TRUE)</code> when the draws do not declare <code>measure</code>
+unavailable. <code>posterior_linear_weight_space()</code> returns
+<code>"coefficient"</code>, <code>"formula_contribution"</code>, or <code>NULL</code> for
+draws without linear weights. <code>posterior_fitted_linear_weights()</code>
+returns a named numeric vector of weights on the fitted coordinates:
+<code>weights</code> unchanged unless they are formula-contribution weights,
+which are returned multiplied by their constant multipliers and without
+their zero elements. Each function otherwise stops with the conditions
+described above.</p>
+    </div>
     <div id="see-also">
     <h2>See also</h2>
     <div class="dont-index"><p><code><a href="posterior_measure_check.html">posterior_measure_check()</a></code>, <code><a href="hypothesis_BF.html">hypothesis_BF()</a></code></p></div>
