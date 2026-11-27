@@ -56,6 +56,21 @@ test_that("degenerate blocks are decided before coda", {
     expect_true(is.nan(.burnin_unsplit_point(equal_halves)))
   }
   expect_identical(.burnin_rhat(equal), 1)
+  # a quarter occupancy has exactly representable means on every platform:
+  # coda's NaN and the rule hold everywhere
+  quarter <- c(rep(0, 30), rep(1, 10))
+  equal_quarter <- list(c(quarter, rev(quarter)), c(rev(quarter), quarter), c(quarter, quarter))
+  expect_true(is.nan(.burnin_unsplit_point(unlist(lapply(equal_quarter, function(chain){
+    list(chain[1:40], chain[41:80])
+  }), recursive = FALSE))))
+  expect_identical(.burnin_rhat(equal_quarter), 1)
+
+  # huge values: the sums of the half-chains overflow, which must not read
+  # as equal means (two chains that clearly disagree); equal means stay equal
+  disagreeing <- list(seq(1, 2, length.out = 100), seq(3, 4, length.out = 100))
+  expect_gt(.burnin_rhat(disagreeing), 2)
+  expect_false(identical(.burnin_rhat(lapply(disagreeing, function(chain) chain * 1e307)), 1))
+  expect_identical(.burnin_rhat(lapply(equal, function(chain) chain * 1e307)), 1)
 
   # nothing to assess: constant everywhere
   expect_identical(.burnin_rhat(list(rep(2, 100), rep(2, 100))), NA_real_)
@@ -1357,4 +1372,34 @@ test_that("the JASP warm-up bar ticks after the check and its extensions", {
   expect_identical(events[1:5], c("start Adapting and burnin the model", "warm-up block 200",
     "extension 300", "tick", "start Sampling the model"))
   expect_identical(out$burnin_check$extension, 300)
+})
+
+test_that("printed numbers are read back under a decimal-comma LC_NUMERIC", {
+
+  # R keeps LC_NUMERIC at "C", but a session can change it; the C library's
+  # reader then expects a comma, and the text of the warning (and of JAGS
+  # constants) still has a point
+  texts <- c("1.88", "1.8800000000000001", "1e-200", "2")
+  reference <- BayesTools:::.JAGS_read_number(texts)
+  expect_false(anyNA(reference))
+
+  old <- Sys.getlocale("LC_NUMERIC")
+  on.exit(suppressWarnings(Sys.setlocale("LC_NUMERIC", old)), add = TRUE)
+  comma <- FALSE
+  for(candidate in c("German_Germany.1252", "German", "de_DE.UTF-8", "de_DE", "nl_NL.UTF-8", "fr_FR.UTF-8")){
+    set <- suppressWarnings(Sys.setlocale("LC_NUMERIC", candidate))
+    if(nzchar(set) && identical(unname(Sys.localeconv()[["decimal_point"]]), ",")){
+      comma <- TRUE
+      break
+    }
+  }
+  skip_if_not(comma, "No decimal-comma locale is available.")
+
+  expect_identical(BayesTools:::.JAGS_read_number(texts), reference)
+  # text with the locale's own mark is not a number of a model or a warning
+  expect_identical(BayesTools:::.JAGS_read_number(c("1,88", "x")), c(NA_real_, NA_real_))
+  expect_identical(BayesTools:::.bt_burnin_format_limit(1.5009999999999999), "1.501")
+  message <- BayesTools:::.bt_burnin_warning(
+    .burnin_loop(list(c(mu = 2.5)), autofit = FALSE, burnin_max_Rhat = 1.88)$record)
+  expect_match(message, "R-hat 2.50 for 'mu' (limit 1.88)", fixed = TRUE)
 })

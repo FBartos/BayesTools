@@ -34,6 +34,8 @@
 
 ### Fixes
 - on Apple silicon, numeric constants in generated JAGS models and the values of compiled hypotheses are exact
+- on Apple silicon, predictions from random effects with non-integer numeric grouping levels no longer stop with a request to refit
+- chains that visit the two states of an indicator equally often get an R-hat of 1 instead of a missing value
 - the starting value of the publication-bias indicator of mixtures with selection or p-hacking components is drawn from its prior probabilities; draws differ from earlier versions
 - sampling or fitting a mixture prior whose prior weights cannot be normalized (their sum overflows or underflows) stops with an explanation
 - on Windows, fits run JAGS's linear algebra on one thread, which avoids a large slowdown of models with multivariate nodes

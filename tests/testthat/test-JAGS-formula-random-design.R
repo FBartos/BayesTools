@@ -103,6 +103,20 @@ test_that("group ownership retains exact numeric identity and safe display repla
     substring(term$group_component_identity_keys$g, 3L))
   options(old)
 
+  # 17-digit keys read back as the same doubles on every platform: R's own
+  # decimal reader returns a neighbouring double for some of them where long
+  # double is double (Apple silicon), which made ordinary levels fail replay
+  awkward <- c(0.09, 0.77285443804925302, 1.1, 2.675, 1e-200, 1e200)
+  awkward_keys <- BayesTools:::.bt_random_effect_numeric_identity(awkward)
+  expect_identical(awkward_keys[1:2], c("0.089999999999999997", "0.77285443804925302"))
+  expect_identical(BayesTools:::.JAGS_read_number(awkward_keys), awkward)
+  expect_identical(BayesTools:::.JAGS_read_number(c(awkward_keys[1L], "level"), fallback = TRUE),
+    c(awkward[1L], NA_real_))
+  awkward_term <- compile(data.frame(g = awkward))$formula_design$random_effects[[1L]]
+  expect_identical(awkward_term$n_groups, length(awkward))
+  expect_identical(replay(awkward_term, data.frame(g = rev(awkward)))$group_map,
+    rev(awkward_term$group_map))
+
   kernel <- diag(2)
   dimnames(kernel) <- list(term$group_levels, term$group_levels)
   known <- compile(data, group_covariance = random_group_covariance(kernel))

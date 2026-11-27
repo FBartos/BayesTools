@@ -62,7 +62,9 @@
 #' values give an R-hat of \code{Inf} and an ESS of 0, which fail
 #' \code{max_Rhat} and \code{min_ESS} whatever this argument is. Their MCMC
 #' error (the standard error SD / sqrt(ESS) of an ESS of 0) is \code{Inf}, so
-#' \code{max_error} and \code{max_SD_error} fail as well. Automatic fitting in
+#' \code{max_error} and \code{max_SD_error} fail as well. Chains that visit
+#' two values equally often (equal occupancies of an indicator state) agree
+#' and give an R-hat of 1. Automatic fitting in
 #' [JAGS_fit()] and [JAGS_extend()] judges assessability from the draws at
 #' each check and does not extend a fit for diagnostics that are not
 #' assessable then: it stops once every diagnostic that can be assessed
@@ -572,6 +574,22 @@ JAGS_check_convergence <- function(
   converged
 }
 
+# Whether the chains hold two values and visit them equally often, as the
+# occupancies of an indicator state can: such chains have equal means and equal
+# variances, for which coda::gelman.diag() divides zero by zero, and they
+# agree (R-hat 1). The visits are counted, because the means of such chains
+# differ in the last bit where mean() depends on the order of the values
+# (Apple silicon), and coda then returns a number below 1.
+.bt_equal_state_occupancy <- function(chains){
+
+  values <- unique(unlist(lapply(chains, as.numeric), use.names = FALSE))
+  if(length(values) != 2L || anyNA(values)){
+    return(FALSE)
+  }
+  shares <- vapply(chains, function(chain) sum(chain == values[[1L]]) / length(chain), numeric(1))
+  length(unique(shares)) == 1L
+}
+
 .bt_convergence_parameter_diagnostics <- function(
     samples,
     chain_id,
@@ -612,7 +630,9 @@ JAGS_check_convergence <- function(
   })
   mcmc_samples <- coda::as.mcmc.list(chains)
 
-  if(assess_Rhat && n_chains >= 2L){
+  if(assess_Rhat && n_chains >= 2L && .bt_equal_state_occupancy(chains)){
+    output[["Rhat"]] <- 1
+  }else if(assess_Rhat && n_chains >= 2L){
     output[["Rhat"]] <- tryCatch(
       {
         psrf <- suppressWarnings(coda::gelman.diag(
