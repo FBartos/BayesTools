@@ -48,9 +48,13 @@ test_that("degenerate blocks are decided before coda", {
   # half): coda gives NaN, the chains agree
   occupancy <- c(rep(0, 40), rep(1, 10))
   equal <- list(c(occupancy, rev(occupancy)), c(rev(occupancy), occupancy), c(occupancy, occupancy))
-  expect_true(is.nan(.burnin_unsplit_point(unlist(lapply(equal, function(chain){
-    list(chain[1:50], chain[51:100])
-  }), recursive = FALSE))))
+  equal_halves <- unlist(lapply(equal, function(chain) list(chain[1:50], chain[51:100])), recursive = FALSE)
+  # coda's NaN needs mean() to give these halves one value: it does where long
+  # double is extended; on Apple silicon the means differ in the last bit by
+  # the order of the draws and coda returns a number just below 1
+  if(length(unique(vapply(equal_halves, mean, numeric(1)))) == 1L){
+    expect_true(is.nan(.burnin_unsplit_point(equal_halves)))
+  }
   expect_identical(.burnin_rhat(equal), 1)
 
   # nothing to assess: constant everywhere
@@ -403,7 +407,9 @@ test_that("the printed limit never reads above the threshold and a listed value 
   printed <- function(threshold, value){
     message <- warning_at(threshold, c(mu = value))
     parts <- regmatches(message, regexec("R-hat ([^ ]+) for 'mu' \\(limit ([^)]+)\\)", message))[[1L]]
-    c(value = as.numeric(parts[[2L]]), limit = as.numeric(parts[[3L]]))
+    # read back as the C library reads them: as.numeric() loses the last digit
+    # of a 17-digit number where long double is double (Apple silicon)
+    c(value = BayesTools:::.JAGS_read_number(parts[[2L]]), limit = BayesTools:::.JAGS_read_number(parts[[3L]]))
   }
   # for the automatic values of 2 to 12 chains and for given values, each
   # value above the threshold (the next doubles above it, relative steps of
