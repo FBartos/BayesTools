@@ -53,6 +53,11 @@
 
     posterior <- do.call(cbind, lapply(converted, `[[`, "samples"))
 
+  }else if(inherits(fit, "runjags")){
+
+    # a fit of the runjags package: its stored chains, merged
+    posterior <- do.call(rbind, .bt_runjags_chains(fit))
+
   }else if(inherits(fit, "mcmc.list")){
 
     # rjags model with rjags::coda.samples or samples extracted via coda::as.mcmc.list
@@ -71,6 +76,26 @@
   }
 
   return(posterior)
+}
+
+# The chains of a fit made with the runjags package (not a BayesTools fit): the
+# coda 'mcmc.list' it keeps in 'mcmc', which its own coda methods read. Taking
+# them directly needs no runjags. Only runjags can add the variables of a
+# stored 'mutate' function, so such a fit is refused with the way around it.
+.bt_runjags_chains <- function(fit){
+
+  if(!inherits(fit[["mcmc"]], "mcmc.list")){
+    stop("The 'runjags' fit stores no posterior draws in its 'mcmc' element.", call. = FALSE)
+  }
+  if(!is.null(fit[["summary.pars"]][["mutate"]])){
+    stop(
+      "The 'runjags' fit stores a 'mutate' function, whose variables only runjags can add. ",
+      "Pass its draws, 'coda::as.mcmc.list(fit)' with runjags loaded, instead of the fit.",
+      call. = FALSE
+    )
+  }
+
+  fit[["mcmc"]]
 }
 
 .bt_fit_mcarray_to_matrix <- function(parameter, fallback_name = NULL){

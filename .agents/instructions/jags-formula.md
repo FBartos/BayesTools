@@ -502,25 +502,22 @@ sampler holds a bounded member through its distance from the anchoring bound
 the member only relative to that distance: to about 16 significant digits of it
 near the centre of an interval and to about 14 to 15 for a one-sided bound or
 close to a bound. A posterior much narrower than that distance is sampled on a
-coarse grid, with wrong moments or a chain that can freeze, and with passing
-diagnostics. Measured on development (a standard normal, 10,000 draws): symmetric
+coarse grid, with wrong moments or a chain that can freeze; this is not
+detected. Measured on development (a standard normal, 10,000 draws): symmetric
 bounds at 1e13 give 1,969 distinct values with correct moments, at 1e14 296
 with moments within Monte Carlo error, at 1e15 34 and an SD 15% too small, at
 1e16 3 to 5 and an SD up to 60% too large (some chains freeze), at 1e17 a
 frozen chain; one bound at a distance of 1e12 gives 1,416 distinct values, 1e13
-188, 1e14 11, and 1e15 a frozen chain. In a block of two normal coefficients
-with unit posterior scale, mean, SD and effective sample size are unchanged up
-to a distance of 1e14. The posterior scale is unknown when the sampler starts,
-so FactorSlice stops the fit at construction, with a "Factor slice sampler:"
-node error, for a member whose starting value lies farther than
-`max_anchor_distance` (1e10, the kernel's `anchor_distance()`) from its
-anchoring bound; RoBMA's block samplers apply the same rule. The limit is the
-sampler's, in the units of the node, and leaves the model alone: remove a bound
-that excludes no posterior mass, rescale the parameter, or declare the block
-without the node. An interval such as (0, 1e308) with a member near 0 samples.
-Not detected: a posterior narrower than about 1e-14 of a distance within the
-limit, and a chain that starts within the limit and concentrates far beyond it.
-A two-sided member whose span `upper - lower` is not finite
+188, 1e14 11, and 1e15 a frozen chain. The ratio of the distance to the
+posterior scale decides (the kernel header lists further measurements), and the
+convergence diagnostics pass in these cases. There is no check of the bounds or
+of the starting values: starting values are prior draws, which lie far from a
+bound for vague priors whose posterior does not, and a member far from its bound
+in large units samples correctly; a refusal at a starting distance above 1e10
+was tried and withdrawn in the release audit of November 2026. For such a
+member, declare the block
+without the node; removing the bound instead is valid only when it excludes no
+posterior mass. A two-sided member whose span `upper - lower` is not finite
 stops the fit at construction with a "Factor slice sampler:" node error. An
 additive constant so large that the log densities lose their differences
 breaks the slice arithmetic itself. The kernel's

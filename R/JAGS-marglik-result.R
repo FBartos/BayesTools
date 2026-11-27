@@ -411,6 +411,8 @@
   }else if(inherits(fit, "BayesTools_fit")){
     chains <- .extract_posterior_samples(fit, as_list = TRUE)
     chain_draws <- vapply(chains, nrow, integer(1))
+  }else if(inherits(fit, "runjags")){
+    chain_draws <- vapply(.bt_runjags_chains(fit), nrow, integer(1))
   }else if(is.list(fit) && length(fit) > 0L &&
            all(vapply(fit, inherits, logical(1), what = "mcarray"))){
     dimensions <- dim(fit[[1L]])

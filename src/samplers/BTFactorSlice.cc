@@ -134,18 +134,12 @@ namespace jags {
             _coordinates(coordinates(graph, chain)), _axes(_d), _x(_d)
         {
           graph->checkFinite(chain);
-          // The limits of the sampler's scale (see the kernel header). The
-          // bounds alone decide one: a two-sided member whose span upper - lower
-          // is not finite (for example (-1e308, 1e308)) cannot be held through
-          // its distance from a bound. The other is a precision limit: a member
-          // far from its anchoring bound is resolved only relative to that
-          // distance, and a posterior much narrower than it is sampled on a
-          // coarse grid (wrong moments, frozen chains) with passing diagnostics.
-          // The posterior scale is unknown here, so a member that starts farther
-          // than max_anchor_distance (1e10) from its anchoring bound is refused;
-          // an interval such as (0, 1e308) with a member near 0 samples.
+          // The one limit of the sampler's scale that the bounds alone decide: a
+          // two-sided member whose span upper - lower is not finite (for example
+          // (-1e308, 1e308)) cannot be held through its distance from a bound.
+          // Other precision limits (bounds very far from where the posterior
+          // concentrates) are not detected; see the kernel header.
           std::vector<StochasticNode *> const &nodes = graph->nodes();
-          graph->getValue(_x, chain);
           for (unsigned int i = 0; i < _d; ++i) {
             kernel::Coordinate const &coordinate = _coordinates[i];
             if (coordinate.transform() == kernel::Transform::interval &&
@@ -153,12 +147,6 @@ namespace jags {
               throwNodeError(nodes[i],
                 "Factor slice sampler: the support bounds of this node are too wide for the sampler's scale "
                 "(their difference exceeds the largest double); declare the block without this node");
-            }
-            if (coordinate.anchor_distance(_x[i]) > kernel::max_anchor_distance) {
-              throwNodeError(nodes[i],
-                "Factor slice sampler: this node starts farther than 1e10 from its support bound, beyond the "
-                "sampler's precision; remove the bound if it excludes no posterior mass, rescale the parameter, "
-                "or declare the block without this node");
             }
           }
         }

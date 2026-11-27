@@ -9,8 +9,9 @@
 #'
 #' @param fit model fitted with [JAGS_fit()], posterior
 #' samples obtained with \link[rjags]{rjags-package}, or a fit of the
-#' \pkg{runjags} package (its stored chains are read as they are; \pkg{runjags}
-#' is not needed).
+#' \pkg{runjags} package (its stored chains are read as they are, without
+#' \pkg{runjags}; a fit with a \code{mutate} function is refused, pass
+#' \code{coda::as.mcmc.list(fit)} instead).
 #' Derived-draw views are refused with
 #' \code{BayesTools_draws_view_inference_unavailable} (also
 #' \code{BayesTools_draws_view_unavailable}); use \code{fit$original_fit}.
@@ -397,16 +398,6 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       "Bridge sampling is unavailable for a derived-draw view. Use 'JAGS_bridgesampling()' on 'fit$original_fit'.",
       operation = "bridge"
     ))
-  }
-  if(inherits(fit, "runjags") && !inherits(fit, "BayesTools_fit")){
-    # A fit of the runjags package keeps its retained draws as a coda
-    # 'mcmc.list' in 'mcmc', which its own coda methods read; taking the
-    # chains directly needs no runjags (variables of a 'mutate' function are
-    # not added).
-    if(!inherits(fit[["mcmc"]], "mcmc.list")){
-      stop("The 'runjags' fit stores no posterior draws in its 'mcmc' element.", call. = FALSE)
-    }
-    fit <- fit[["mcmc"]]
   }
   # The bridge callback may capture this frame and be sent to workers.
   attr(fit, "runtime_state") <- NULL

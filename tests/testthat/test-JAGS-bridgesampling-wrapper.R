@@ -297,6 +297,20 @@ test_that("JAGS_bridgesampling drives the real upstream sampler on multiple chai
   from_runjags <- do.call(JAGS_bridgesampling, runjags_arguments)
   expect_identical(from_runjags[["logml"]], result[["logml"]])
   expect_identical(from_runjags[["diagnostics"]][["chains"]], result[["diagnostics"]][["chains"]])
+  # the fit itself stays the source of the priors it declares
+  declared <- runjags_arguments
+  attr(declared[["fit"]], "prior_list") <- arguments[["prior_list"]]
+  declared[["prior_list"]] <- NULL
+  expect_identical(do.call(JAGS_bridgesampling, declared)[["logml"]], result[["logml"]])
+  # only runjags can add the variables of a stored 'mutate' function
+  runjags_arguments[["fit"]] <- structure(
+    list(mcmc = posterior, summary.pars = list(mutate = function(x) x)), class = "runjags")
+  expect_error(
+    do.call(JAGS_bridgesampling, runjags_arguments),
+    paste0("The 'runjags' fit stores a 'mutate' function, whose variables only runjags can add. ",
+           "Pass its draws, 'coda::as.mcmc.list(fit)' with runjags loaded, instead of the fit."),
+    fixed = TRUE
+  )
   runjags_arguments[["fit"]] <- structure(list(), class = "runjags")
   expect_error(
     do.call(JAGS_bridgesampling, runjags_arguments),

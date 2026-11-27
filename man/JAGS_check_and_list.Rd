@@ -52,7 +52,9 @@ iterations. Defaults to \code{1}. \code{adapt}, \code{burnin} and
 adaptation iterations when no sampler adapts) and its first retained draw
 is iteration \code{(adapt + burnin) * thin + 1}. The last
 retained draw, iteration \code{(adapt + burnin + sample - 1) * thin + 1},
-must not be numbered beyond \code{.Machine$integer.max}. \code{chains},
+must not be numbered beyond \code{.Machine$integer.max}. Burn-in that the
+readiness check of automatic fitting adds counts towards \code{burnin}
+in these positions. \code{chains},
 \code{adapt}, \code{burnin}, \code{sample}, \code{thin} and \code{cores},
 and \code{burnin_extend} and \code{sample_extend} of
 \code{autofit_control}, are whole numbers:

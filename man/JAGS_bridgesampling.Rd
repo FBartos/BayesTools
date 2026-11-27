@@ -33,8 +33,9 @@ JAGS_bridgesampling(
 \arguments{
 \item{fit}{model fitted with \code{\link[=JAGS_fit]{JAGS_fit()}}, posterior
 samples obtained with \link[rjags]{rjags-package}, or a fit of the
-\pkg{runjags} package (its stored chains are read as they are; \pkg{runjags}
-is not needed).
+\pkg{runjags} package (its stored chains are read as they are, without
+\pkg{runjags}; a fit with a \code{mutate} function is refused, pass
+\code{coda::as.mcmc.list(fit)} instead).
 Derived-draw views are refused with
 \code{BayesTools_draws_view_inference_unavailable} (also
 \code{BayesTools_draws_view_unavailable}); use \code{fit$original_fit}.}

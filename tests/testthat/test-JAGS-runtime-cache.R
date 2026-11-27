@@ -820,3 +820,25 @@ test_that("fit settings: the burn-in opt-out needs no 'sample_extend' and near-w
     expect_length(calls[[length(calls)]]$inits, 2L)
   }
 })
+
+test_that("fit settings: near-whole 'cores' starts whole workers in fits and extensions", {
+
+  state <- .report_test_backend(.report_test_state())
+  started <- numeric()
+  testthat::local_mocked_bindings(
+    .JAGS_runtime_cluster_start = function(cores, ...){
+      started <<- c(started, cores)
+      as.list(seq_len(2L))
+    },
+    .JAGS_runtime_cluster_stop = function(...) invisible(NULL),
+    .package = "BayesTools"
+  )
+
+  # 'cores' within rounding of a whole number runs as that number
+  fit <- .report_test_fit(parallel = TRUE, cores = 2 - 1e-9)
+  expect_false(inherits(fit, "error"))
+  extended <- JAGS_extend(fit, autofit_control = .report_test_control(),
+    parallel = TRUE, cores = 2 - 1e-9)
+  expect_false(inherits(extended, "error"))
+  expect_identical(started, c(2, 2))
+})

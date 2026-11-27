@@ -23,28 +23,36 @@
 //   interval and to about 14 to 15 for a one-sided bound or close to a bound
 //   (fewer as |log distance| grows), where a double resolves a value to 16
 //   digits of its magnitude. A posterior much narrower than that distance is
-//   sampled on a coarse grid, with wrong moments or a chain that can freeze.
-//   Measured on development (a standard normal, 10,000 draws): symmetric
-//   bounds at 1e13 give 1,969 distinct values with correct moments, at 1e14
-//   296 with moments within Monte Carlo error, at 1e15 34 and an SD 15% too
-//   small, at 1e16 3 to 5 and an SD up to 60% too large (some chains freeze),
-//   at 1e17 a frozen chain; one bound at a distance of 1e12 gives 1,416
-//   distinct values, 1e13 188, 1e14 11, and 1e15 a frozen chain. In a block
-//   of two normal coefficients with unit posterior scale (4 x 5,000 draws,
-//   3 seeds) mean, SD and effective sample size are unchanged up to a
-//   distance of 1e14; symmetric bounds at 1e15 give an SD 13% too large and
-//   15% fewer effective draws and at 1e16 frozen chains; one bound freezes
-//   the chains at 1e15. The posterior scale is not known when the sampler
-//   starts, so a caller refuses a member whose starting value lies farther
-//   than max_anchor_distance (1e10) from its anchoring bound
-//   (anchor_distance()): the moments then hold for posteriors down to about
-//   1e-4 wide. This is a limit of the sampler, in the units of the node, not
-//   of the model: for such a member, remove a bound that excludes no
-//   posterior mass, rescale the parameter, or declare the block without the
-//   node. Not detected: a posterior narrower than about 1e-14 of the
-//   distance within the limit, and a chain that starts within the limit and
-//   concentrates far beyond it. An additive constant so large that the log
-//   densities lose their differences breaks the slice arithmetic itself.
+//   sampled on a coarse grid, with wrong moments or a chain that can freeze;
+//   this is not detected. Measured on development (a standard normal, 10,000
+//   draws): symmetric bounds at 1e13 give 1,969 distinct values with correct
+//   moments, at 1e14 296 with moments within Monte Carlo error, at 1e15 34
+//   and an SD 15% too small, at 1e16 3 to 5 and an SD up to 60% too large
+//   (some chains freeze), at 1e17 a frozen chain; one bound at a distance of
+//   1e12 gives 1,416 distinct values, 1e13 188, 1e14 11, and 1e15 a frozen
+//   chain. In a block of two normal coefficients with unit posterior scale
+//   (4 x 5,000 draws, 3 seeds) mean, SD and effective sample size are
+//   unchanged up to a distance of 1e14, where about 220 (two bounds) or 9
+//   (one bound) distinct values remain; symmetric bounds at 1e15 give an SD
+//   13% too large and at 1e16 frozen chains; one bound freezes the chains at
+//   1e15. The ratio of the distance to the posterior scale decides: at a
+//   distance of 1e10 a posterior SD of 1e-4 leaves 20 distinct values in
+//   6,000 draws, and one of 1e-5 an SD a quarter of the target with R-hat
+//   near 1.01. The convergence diagnostics pass in these cases.
+//   A check of the bounds or of the starting values cannot stand in for that
+//   ratio, so there is none: the posterior scale is unknown at the start,
+//   starting values are prior draws (an inverse-gamma(0.01, 0.01) value lies
+//   beyond 1e10 with probability 0.76 while the posterior sits near the
+//   data), an interval such as (0, 1e308) holds a member near 0 exactly, and
+//   a member far from its bound in large units (5e10 with an SD of 1e9)
+//   samples correctly. A refusal at a starting distance above 1e10 was tried
+//   and withdrawn for these reasons (release audit, November 2026). A
+//   scale-free check would have to compare the spread of the member on the
+//   sampler's scale, known after adaptation, with about 1e-13.
+//   For such a member, declare the block without the node; removing
+//   the bound instead is valid only when it excludes no posterior mass. An
+//   additive constant so large that the log densities lose their differences
+//   breaks the slice arithmetic itself.
 //   Far tail: beyond exp_overflow_threshold the back-transform of an interval
 //   reaches values at subnormal distances from a bound, as a one-sided member
 //   always could. A proposal there is evaluated, so a model whose density is
@@ -102,9 +110,6 @@ namespace BayesTools {
     // from the nearer bound is computed on the log scale instead.
     constexpr double exp_overflow_threshold = 709.782712893383973096;
     constexpr double log_two = 0.693147180559945309417232121458176568;
-    // Largest distance of a bounded member's starting value from its anchoring
-    // bound at which a caller starts the sampler (the precision limit above).
-    constexpr double max_anchor_distance = 1e10;
 
     // log(b - a) for b > a; log(b / 2 - a / 2) + log(2) only when b - a
     // overflows (a and b of opposite signs near the largest double).
@@ -143,18 +148,6 @@ namespace BayesTools {
       double lower() const { return _lower; }
       double upper() const { return _upper; }
       double log_span() const { return _log_span; }
-
-      // Distance of x from the bound that anchors it: the bound of a one-sided
-      // member, the nearer bound of an interval, 0 without a finite bound.
-      double anchor_distance(double x) const
-      {
-        switch (_transform) {
-        case Transform::lower: return x - _lower;
-        case Transform::upper: return _upper - x;
-        case Transform::interval: return x - _lower < _upper - x ? x - _lower : _upper - x;
-        default: return 0.0;
-        }
-      }
 
       double to_u(double x) const
       {
