@@ -4,17 +4,21 @@
 # BayesTools
 
 <!-- badges: start -->
+
 [![R-CMD-check](https://github.com/FBartos/BayesTools/actions/workflows/R-CMD-check.yaml/badge.svg?branch=development)](https://github.com/FBartos/BayesTools/actions/workflows/R-CMD-check.yaml)
 [![R-unit-tests](https://github.com/FBartos/BayesTools/actions/workflows/R-CMD-tests.yaml/badge.svg?branch=development)](https://github.com/FBartos/BayesTools/actions/workflows/R-CMD-tests.yaml)
 [![test-coverage](https://github.com/FBartos/BayesTools/actions/workflows/test-coverage.yaml/badge.svg?branch=development)](https://github.com/FBartos/BayesTools/actions/workflows/test-coverage.yaml)
 [![Codecov](https://codecov.io/gh/FBartos/BayesTools/branch/development/graph/badge.svg)](https://app.codecov.io/gh/FBartos/BayesTools?branch=development)
-[![CRAN status](https://www.r-pkg.org/badges/version/BayesTools)](https://CRAN.R-project.org/package=BayesTools)
+[![CRAN
+status](https://www.r-pkg.org/badges/version/BayesTools)](https://CRAN.R-project.org/package=BayesTools)
 <!-- badges: end -->
 
 The goal of BayesTools is to provide functions that simplify building R
 packages focused on Bayesian inference and Bayesian model-averaging.
 
-Install JAGS 5.0.0 or later before installing BayesTools. BayesTools uses rjags 5-5 or later. Use `JAGS_extend()` to continue a fit and `coda::as.mcmc.list()` to extract its chains.
+Install JAGS 5.0.0 or later before installing BayesTools. BayesTools
+uses rjags 5-5 or later. Use `JAGS_extend()` to continue a fit and
+`coda::as.mcmc.list()` to extract its chains.
 
 The package provides several tools:
 
@@ -35,7 +39,7 @@ The package functionality is illustrated via the following vignettes:
 |:---|:---|
 | [*Bayesian t-Test Compared with BayesFactor*](https://fbartos.github.io/BayesTools/articles/ComparisonR.html) | Bayesian two-sample t-test with `JAGS_fit()` and bridge sampling, compared with the `BayesFactor` package |
 | [*Variable Selection with Spike-and-Slab Priors*](https://fbartos.github.io/BayesTools/articles/SpikeAndSlab.html) | Inclusion Bayes factors from a spike and slab prior compared with bridge-sampling marginal likelihoods |
-| [*Random Effects with Formula Syntax*](https://fbartos.github.io/BayesTools/articles/RandomEffects.html) | lme4-like random-effects formulas (intercepts, slopes, correlations, nested and crossed effects) compared with `brms` |
+| [*Random Effects with Formula Syntax*](https://fbartos.github.io/BayesTools/articles/RandomEffects.html) | lme4-like random-effects formulas (intercepts, slopes, correlations, nested and crossed effects) compared with `lme4` and `brms` |
 
 ## Installation
 
@@ -181,7 +185,8 @@ priors_list1 <- list(mu = p1)
 priors_list2 <- list(mu = p2)
 ```
 
-We define the likelihood in `model_syntax`. `JAGS_fit()` adds the priors, prepares initial values, and samples with rjags.
+We define the likelihood in `model_syntax`. `JAGS_fit()` adds the
+priors, prepares initial values, and samples with rjags.
 
 ``` r
 # define likelihood for the data
