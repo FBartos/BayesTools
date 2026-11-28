@@ -252,8 +252,10 @@ fitted-coordinate \code{support}, \code{status}, \code{fixed_value}, \code{sourc
 blocks with scaled predictors (a bounded SD prior keeps its bounds, an SD
 that the original scale combines from several fitted coefficients is the
 fitted coefficient itself, and an SD fixed on the fitted scale is
-structural). It is the default catalog for a fit without scaled predictors
-and for quantities that the scales do not affect. A selection resolved from
+structural). Catalogs and resolved selections record their \code{predictor_scale}
+(\code{"original"} or \code{"fitted"}), including when both views contain identical
+rows. Rebuild an older catalog from the fit and resolve its selections
+again to supply this scale. A selection resolved from
 either catalog is accepted by \code{parameter_draws()}, \code{parameter_prior_density()},
 \code{parameter_transform()}, \code{parameter_gate_states()},
 \code{random_effects_marginal_update_plan()}, and \code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}},

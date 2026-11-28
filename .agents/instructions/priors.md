@@ -855,6 +855,15 @@ the grid is first built, on its first read, as for every deferred grid;
 ordinates, heights and region probabilities of such inputs keep their own
 route checks (maintainer decision, 2026-11-03).
 
+`parameter_declared_prior(fit, selection)` returns the declared scalar prior for an
+identity random SD, allocation scale, or raw correlation. A treatment-coded or
+independent factor SD uses the scalar marginal of its catalog source coordinate,
+including its mixture weights and shared spike-and-slab inclusion law. With
+`source = TRUE`, a one-to-one variance or transformed correlation also exposes
+its scalar source. Composite quantities have no single declared prior.
+`parameter_prior_density()` uses the same scalar source for these factor SDs
+and their variances, with conditioning applied to the owner before extraction.
+
 Heights and region probabilities require recorded provenance (the
 `adaptive_evaluation` attribute naming the prior measure): a density grid
 without it has no error control and cannot be refined, so it is used for

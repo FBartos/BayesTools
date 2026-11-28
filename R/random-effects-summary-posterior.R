@@ -118,13 +118,7 @@ random_effects_summary_posterior <- function(
   for(i in seq_len(nrow(quantities))){
     quantity  <- quantities[i, , drop = FALSE]
     key       <- quantity$extraction_key[[1L]]
-    selection <- list(
-      schema_version        = .bt_parameter_selection_version,
-      parameter_map_version = catalog$schema_version,
-      quantity_id           = quantity$quantity_id,
-      quantities            = quantity
-    )
-    class(selection) <- c("BayesTools_parameter_selection", "list")
+    selection <- .bt_parameter_selection_new(catalog, quantity)
     # the catalog quantity's mixed posterior: defined draws, catalog support,
     # canonical prior density, and atoms declared from the gate states
     values <- .bt_parameter_mixed_posterior(

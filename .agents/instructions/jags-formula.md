@@ -976,9 +976,12 @@ change nothing), with the same quantity identifiers, names, and aliases.
 `parameter_draws()`, `parameter_prior_density()`, `parameter_transform()`,
 `parameter_gate_states()`, `random_effects_marginal_update_plan()`, and
 `parameter_mixed_posterior()` accept a selection of either catalog and extract
-it on the scale of its catalog (`.bt_parameter_selection_scale()`: the catalog
-of the fit first, then the fitted-scale catalog; a selection of the latter is
-extracted from the fit without its scales). Downstream packages therefore
+it on the scale recorded in the catalog and selection header (`predictor_scale`
+is `"original"` or `"fitted"`). Validate the selected rows against that
+catalog. Identical rows can have different draws and laws, for example an
+allocated slope SD in a diagonal block. A provider extension preserves the
+view. Selections made before the scale was recorded must be resolved again
+from the fitted object. Downstream packages therefore
 select the scale through the catalog they resolve from and do not blank
 `formula_scale` of the fit. A selection of neither catalog is a stale or foreign
 selection, and `parameter_mixed_posterior(transform_scaled = TRUE)` refuses a
