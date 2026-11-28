@@ -111,8 +111,9 @@ on the public quantity scale for \code{parameter_transform_inverse()}.}
 }
 \value{
 \code{parameter_catalog()} and \code{parameter_catalog_extend()} return a
-\code{BayesTools_parameter_catalog}. \code{parameter_catalog_schema()} returns schema
-descriptions. \code{parameter_catalog_resolve()} returns a
+\code{BayesTools_parameter_catalog}. \code{parameter_catalog_schema()} returns the
+allowed \code{predictor_scale} values and descriptions of the catalog tables.
+\code{parameter_catalog_resolve()} returns a
 \code{BayesTools_parameter_selection}. \code{parameter_draws()} returns a
 \code{coda::mcmc.list} for BayesTools-owned quantities.
 \code{parameter_prior_density()} returns a \code{prior_linear_density} or \code{NULL}.
@@ -252,8 +253,10 @@ fitted-coordinate \code{support}, \code{status}, \code{fixed_value}, \code{sourc
 blocks with scaled predictors (a bounded SD prior keeps its bounds, an SD
 that the original scale combines from several fitted coefficients is the
 fitted coefficient itself, and an SD fixed on the fitted scale is
-structural). It is the default catalog for a fit without scaled predictors
-and for quantities that the scales do not affect. A selection resolved from
+structural). Catalogs and resolved selections record their \code{predictor_scale}
+(\code{"original"} or \code{"fitted"}), including when both views contain identical
+rows. Rebuild an older catalog from the fit and resolve its selections
+again to supply this scale. A selection resolved from
 either catalog is accepted by \code{parameter_draws()}, \code{parameter_prior_density()},
 \code{parameter_transform()}, \code{parameter_gate_states()},
 \code{random_effects_marginal_update_plan()}, and \code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}},
@@ -263,7 +266,8 @@ default catalog from the fit as it is (so blanking the \code{formula_scale} of t
 fit is not needed to extract the fitted scale). A selection that belongs to
 neither catalog stops as described above, and
 \code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}} stops for a selection of the fitted-scale
-catalog with \code{transform_scaled = TRUE}.
+catalog with \code{transform_scaled = TRUE} when the fit has scaled predictors.
+For a fit without scaled predictors either view yields the same draws.
 
 \code{parameter_draws()} is the deferred extraction boundary. The BayesTools fit
 method reads only the coordinates declared by the selected

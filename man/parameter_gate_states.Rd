@@ -16,7 +16,9 @@ parameter_gate_states(fit, selection, draws = NULL)
 from: a numeric matrix with one column per coordinate and one row per
 draw, an \code{mcmc} or \code{mcmc.list} object, or a named numeric vector holding
 one draw (as for \code{\link[=JAGS_evaluate_deterministic]{JAGS_evaluate_deterministic()}}). It must contain the
-gate and indicator coordinates of the quantity. Defaults to the
+gate and indicator coordinates of the quantity. A random SD or variance
+derived from a single ordered increment with a Bernoulli total or Bernoulli
+mixture member also requires the fitted ordered total coordinate. Defaults to the
 posterior draws of \code{fit}.}
 }
 \value{

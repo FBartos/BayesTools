@@ -82,7 +82,9 @@
 #'   [parameter_catalog_resolve()] from the catalog of the fit
 #'   ([parameter_catalog()]) or, with `transform_scaled = FALSE`, from the
 #'   catalog of the fitted scale (`parameter_catalog(fit, transform_scaled =
-#'   FALSE)`); a selection of the latter with `transform_scaled = TRUE` stops.
+#'   FALSE)`); a selection of the latter with `transform_scaled = TRUE` stops
+#'   when the fit declares scaled predictors. On a fit without scaled
+#'   predictors, either selection gives the same posterior.
 #' @param conditional whether to condition on the inclusion event of the
 #'   quantity: the gates of its allocation chain on for an allocation-derived
 #'   component SD or variance, and its own inclusion gate on for a variance
@@ -153,15 +155,15 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE,
     stop("'selection' must contain exactly one parameter quantity.",
          call. = FALSE)
   }
-  if(transform_scaled && identical(scale, "fitted")){
+  if(transform_scaled && identical(scale, "fitted") && .bt_parameter_fit_has_scaled_predictors(fit)){
     .bt_parameter_selection_stop(
       "The parameter selection belongs to the catalog of the fitted scale ('parameter_catalog(fit, transform_scaled = FALSE)'), not to that of the original scale: use 'transform_scaled = FALSE'."
     )
   }
-  if(!transform_scaled){
-    # The fitted scale: the fit without its declared predictor scales and the
-    # quantity of its catalog (support, atoms, prior density and draws all
-    # share the scale); a selection of that catalog is used as it is.
+  if(!transform_scaled && identical(scale, "fitted")){
+    fit <- .bt_parameter_fitted_fit(fit)
+  }else if(!transform_scaled){
+    # The caller requested fitted units for a selection from the original catalog.
     fitted    <- .bt_parameter_fitted_scale(fit, selection)
     fit       <- fitted$fit
     selection <- fitted$selection
@@ -192,7 +194,9 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE,
 #'   from: a numeric matrix with one column per coordinate and one row per
 #'   draw, an `mcmc` or `mcmc.list` object, or a named numeric vector holding
 #'   one draw (as for [JAGS_evaluate_deterministic()]). It must contain the
-#'   gate and indicator coordinates of the quantity. Defaults to the
+#'   gate and indicator coordinates of the quantity. A random SD or variance
+#'   derived from a single ordered increment with a Bernoulli total or Bernoulli
+#'   mixture member also requires the fitted ordered total coordinate. Defaults to the
 #'   posterior draws of `fit`.
 #'
 #' @return `NULL` for a quantity without inclusion gates or point components.
@@ -237,7 +241,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   }
   quantity <- selection$quantities[1L, , drop = FALSE]
   plan <- .bt_parameter_gate_plan(fit, quantity)
-  if(is.null(plan)){
+  if(is.null(plan) || (isTRUE(plan$atom_free) && is.null(plan$event_components))){
     return(NULL)
   }
   if(is.null(draws)){
@@ -254,13 +258,25 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     continuous[continuous] <- NA
   }
 
+  prior_atoms <- if(!is.null(plan$discrete_total)){
+    # A Bernoulli branch has two possible points. The scalar prior measure
+    # supplies their probabilities on the selected scale.
+    law <- .bt_parameter_prior_density_quantity(fit, selection,
+      n_grid = .prior_linear_density_default_grid(), tail_prob = .prior_linear_density_tail_prob())
+    if(!is.null(law)){
+      points <- law$points
+      data.frame(x = points$x, mass = points$p)
+    }
+  }else{
+    .bt_parameter_plan_prior_atoms(plan)
+  }
   list(
     atom        = states$atom,
     continuous  = continuous,
     defined     = states$defined,
     event       = states$event,
     known       = states$known,
-    prior_atoms = .bt_parameter_plan_prior_atoms(plan)
+    prior_atoms = prior_atoms
   )
 }
 
@@ -382,7 +398,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     keep          = keep,
     draws         = values[keep]
   )
-  components <- .bt_parameter_mixed_posterior_components(fit, quantity, original_sources, keep)
+  components <- .bt_parameter_mixed_posterior_components(fit, quantity, original_sources, keep, plan)
 
   if(!is.null(plan) && identical(plan$kind,"ordered_projection") && length(plan$specs)==1L){
     spec <- plan$specs[[1L]]
@@ -455,9 +471,13 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 # The semantic numeric columns are filtered public values. Component support
 # decoding instead reads the selected owners' original indicator rows before
 # that filtering, using the ordinary marginal producer's existing machinery.
-.bt_parameter_mixed_posterior_components <- function(fit, quantity, sources, keep){
+.bt_parameter_mixed_posterior_components <- function(fit, quantity, sources, keep, plan = NULL){
 
   key <- quantity$extraction_key[[1L]]
+  if(identical(plan$origin, "ordered_total")){
+    return(.bt_ordered_total_mixture_components(fit, key, sources, keep, owner = plan$owner,
+      transform = .bt_parameter_transform_from_quantity(fit, quantity)))
+  }
   if(!key$type %in% c("coordinate", "factor_level") || !length(key$dependencies)) return(NULL)
   ordered <- .bt_ordered_total_mixture_components(fit, key, sources, keep)
   if(!is.null(ordered)) return(ordered)
@@ -1055,7 +1075,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   }else{
     NULL
   }
-  columns <- unique(c(gate_columns, source$indicator, plan$indicator))
+  columns <- unique(c(gate_columns, source$indicator, plan$indicator,
+    if(!isTRUE(plan$unknown)) plan$discrete_total$total_names))
   if(is.null(model_samples)){
     model_samples <- if(length(columns) > 0L){
       as.matrix(.bt_parameter_draw_dependencies(fit, columns))
@@ -1108,9 +1129,19 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     ))
   }
   if(identical(plan$kind, "point")){
-    if(isTRUE(plan$unknown)){
+    if(isTRUE(plan$unknown) || (isTRUE(plan$atom_free) && is.null(plan$indicator))){
       return(list(atom = rep(NA_real_, n), defined = defined, event = NULL,
-                  known = FALSE))
+                  known = isTRUE(plan$atom_free)))
+    }
+    if(!is.null(plan$discrete_total)){
+      spec <- plan$discrete_total
+      states <- .bt_ordered_total_structure(spec, model_samples, model_samples[, spec$total_names, drop = FALSE])
+      atom <- as.numeric(states$location)
+      if(!is.null(plan$transform) && any(!is.na(atom))){
+        atom[!is.na(atom)] <- parameter_transform_forward(atom[!is.na(atom)], plan$transform)
+      }
+      return(list(atom = atom, defined = defined, known = !any(states$unavailable),
+        event = if(isTRUE(with_event) && !is.null(plan$event_components)) plan$event_components[states$component]))
     }
     component <- if(is.null(plan$indicator)){
       # a prior with one branch
@@ -1265,16 +1296,25 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     return(NULL)
   }
   prior <- prior_list[[owners]]
-  if(!.posterior_components_is_mixture(prior)){
+  ordered_total <- identical(key$type, "random_summary") && is.prior.ordered(prior) &&
+    identical(owners, key$source_prior)
+  if(ordered_total){
+    # The same certificate used for the prior density: the one-coefficient
+    # ordered SD is its single total with unit multiplier before display.
+    prior <- .bt_random_scalar_source_prior(fit, key)
+  }
+  single_total <- ordered_total && (is.prior.point(prior) || is.prior.discrete(prior))
+  if(!single_total && !.posterior_components_is_mixture(prior)){
     return(NULL)
   }
   columns <- .prior_linear_prior_columns(owners, prior)
   positions <- match(dependencies, columns)
-  locations <- vapply(seq_along(prior), function(i){
-    location <- .posterior_atoms_point_location(prior[[i]], length(columns))
+  members <- if(single_total) list(prior) else prior
+  locations <- vapply(members, function(member){
+    location <- .posterior_atoms_point_location(member, length(columns))
     if(is.null(location)) NA_real_ else sum(weights * location[positions])
-  }, numeric(1))
-  if(all(is.na(locations))){
+  }, numeric(1), USE.NAMES = FALSE)
+  if(all(is.na(locations)) && !ordered_total){
     return(NULL)
   }
   if(!is.null(transform)){
@@ -1283,21 +1323,41 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
       transform
     )
   }
-  indicator <- paste0(owners, "_indicator")
+  discrete_total <- if(ordered_total && any(vapply(members, is.prior.discrete, logical(1)))){
+    .bt_ordered_spec(owners, prior_list[[owners]])
+  }
+  indicator_owner <- if(ordered_total) .prior_ordered_total_name(owners) else owners
+  indicator <- paste0(indicator_owner, "_indicator")
   coordinates <- parameter_coordinates(fit)
-  status <- coordinates$monitor_status[match(indicator, coordinates$coordinate_name)]
-  known <- !is.na(status) && status %in% c("sampled", "structural")
-  event <- .bt_parameter_point_event_components(prior, locations)
+  required <- c(if(!single_total) indicator, discrete_total$total_names)
+  missing <- required[!coordinates$monitor_status[match(required, coordinates$coordinate_name)] %in% c("sampled", "structural")]
+  known <- !length(missing)
+  atom_free <- ordered_total && all(vapply(members, function(member){
+    !is.prior.discrete(member) && isFALSE(.bt_prior_has_point_component(member))
+  }, logical(1)))
+  event <- if(single_total){
+    list(components = NULL, reason = if(is.prior.point(prior)) "its ordered total is fixed" else "its ordered total has no inclusion gate")
+  }else .bt_parameter_point_event_components(prior, locations)
+  if(ordered_total && !known && is.null(event$reason)){
+    event$reason <- if(indicator %in% missing){
+      "the component indicator of its prior is not monitored"
+    }else{
+      paste0("its ordered total coordinate '", missing[[1L]], "' is not monitored")
+    }
+  }
 
   list(
     kind        = "point",
-    origin      = "prior",
+    origin      = if(ordered_total) "ordered_total" else "prior",
     owner       = owners,
     prior       = prior,
     locations   = locations,
-    prior_probabilities = .bt_prior_component_probabilities(prior),
-    indicator   = if(known) indicator,
-    unknown     = !known,
+    prior_probabilities = if(single_total) 1 else .bt_prior_component_probabilities(prior),
+    indicator   = if(known && !single_total) indicator,
+    discrete_total = discrete_total,
+    transform   = transform,
+    unknown     = !known && !atom_free,
+    atom_free   = atom_free,
     chain_gates = character(),
     # the inclusion event (parameter_mixed_posterior(conditional = TRUE)): the
     # draws whose monitored indicator selects a continuous component
@@ -1332,7 +1392,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   }
   event <- components == "alternative"
   continuous <- vapply(seq_along(prior), function(i){
-    is.na(locations[[i]]) && isFALSE(.bt_prior_has_point_component(prior[[i]]))
+    is.na(locations[[i]]) && !is.prior.discrete(prior[[i]]) && isFALSE(.bt_prior_has_point_component(prior[[i]]))
   }, logical(1))
   if(!any(event)){
     return(list(
@@ -1376,7 +1436,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   if(identical(plan$origin, "indicator")){
     refuse("it is the inclusion indicator of a component of its prior")
   }
-  if(isTRUE(plan$unknown)){
+  if(isTRUE(plan$unknown) && !identical(plan$origin, "ordered_total")){
     refuse(paste0(
       "the component indicator of its prior is not monitored (the point ",
       "components are not in the draws)"
@@ -1398,6 +1458,14 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 .bt_parameter_point_conditioned_fit <- function(fit, plan, name){
 
   prior_list <- attr(fit, "prior_list", exact = TRUE)
+  if(identical(plan$origin, "ordered_total")){
+    # Only this SD's scalar law and support are evaluated on the transient fit.
+    # Its sole coefficient is exactly the total, conditioned on that total's
+    # own indicator. Preserve the conditional relative weights of its slabs.
+    prior_list[[plan$owner]] <- .bt_ordered_total_conditioned(prior_list, plan$owner, name)
+    attr(fit, "prior_list") <- prior_list
+    return(fit)
+  }
   options <- .condition_event_model_options(
     prior_list,
     .condition_event(prior_list, plan$owner, "AND")

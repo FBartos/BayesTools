@@ -3552,17 +3552,19 @@ test_that("the catalog of the fitted scale describes the fitted coordinates of a
   expect_identical(fixed_row$status, "structural")
   expect_equal(fixed_row$fixed_value, 1.5)
 
-  # a fit without scaled predictors has one catalog, also with the scales
-  # of its formula blanked
+  # identical rows on an unscaled fit still retain the requested view
   plain <- .hypothesis_model_test_scaled_fit(
     prior_random(g = random_block(sd = prior("uniform", list(1, 2)))),
     ~ 1 + x + (0 + x || g), formula_scale = FALSE
   )
-  expect_identical(parameter_catalog(plain, transform_scaled = FALSE), parameter_catalog(plain))
-  blanked <- fit
-  attr(blanked, "formula_scale") <- list()
-  expect_identical(parameter_catalog(blanked), original)
-  expect_identical(parameter_catalog(blanked, transform_scaled = FALSE), fitted)
+  plain_fitted <- parameter_catalog(plain, transform_scaled = FALSE)
+  expect_identical(plain_fitted$quantities, parameter_catalog(plain)$quantities)
+  expect_identical(plain_fitted$predictor_scale, "fitted")
+  expect_identical(parameter_catalog(plain)$predictor_scale, "original")
+  plain_selection <- parameter_catalog_resolve(plain_fitted, "(mu) sd(x)")
+  expect_identical(parameter_mixed_posterior(plain, plain_selection),
+                   parameter_mixed_posterior(plain, plain_selection, transform_scaled = FALSE))
+  expect_identical(parameter_catalog(fit), original)
 
 })
 
@@ -3600,13 +3602,6 @@ test_that("selections of either catalog are extracted on the scale of their cata
   expect_identical(parameter_mixed_posterior(fit, fitted, transform_scaled = FALSE), mixed)
   expect_equal(as.numeric(mixed), as.numeric(as.matrix(fitted_draws)))
   expect_equal(posterior_metadata(mixed, "support")$bounds, c(1, 2))
-  # the fit with the scales blanked (the extraction of a downstream package)
-  blanked <- fit
-  attr(blanked, "formula_scale") <- list()
-  expect_equal(as.numeric(as.matrix(parameter_draws(blanked, original))),
-               as.numeric(as.matrix(fitted_draws)))
-  expect_equal(as.numeric(as.matrix(parameter_draws(blanked, fitted))),
-               as.numeric(as.matrix(fitted_draws)))
   expect_no_error(random_effects_marginal_update_plan(fit, fitted))
   expect_no_error(parameter_gate_states(fit, fitted))
 
@@ -3622,13 +3617,17 @@ test_that("selections of either catalog are extracted on the scale of their cata
   # selections of another catalog are refused by every function
   tampered <- fitted
   tampered$quantities$support[[1L]]$bounds <- c(0, 1)
+  wrong_scale <- fitted
+  wrong_scale$predictor_scale <- "original"
   foreign <- parameter_catalog_resolve(
     parameter_catalog(.hypothesis_model_test_fit(), transform_scaled = FALSE), "sigma"
   )
-  for(selection in list(tampered, foreign)){
+  for(selection in list(tampered, wrong_scale, foreign)){
     for(call in list(
       function() parameter_draws(fit, selection),
       function() parameter_prior_density(fit, selection),
+      function() parameter_declared_prior(fit, selection),
+      function() random_effects_marginal_update_plan(fit, selection),
       function() parameter_transform(fit, selection),
       function() parameter_gate_states(fit, selection),
       function() parameter_mixed_posterior(fit, selection, transform_scaled = FALSE),
@@ -3666,6 +3665,61 @@ test_that("prior draws of a standardized block are extracted with a selection of
   expect_true(all(is.finite(as.matrix(draws))))
   expect_equal(posterior_metadata(draws, "support")[[1L]]$bounds, c(0, Inf))
 
+})
+
+test_that("equal catalog rows retain the predictor scale of their allocated SD", {
+
+  fit <- .hypothesis_model_test_scaled_fit(
+    prior_random(allocation = random_variance_allocation(
+      name = "within", terms = "g", target = "sd_component", scale = "mean_variance",
+      sd = prior("gamma", list(2, 2)), weights = prior("dirichlet", list(c(1, 1)))
+    )),
+    ~ 1 + x + (1 + x || g), n = 100L
+  )
+  catalog <- parameter_catalog(fit, transform_scaled = FALSE)
+  name <- "(mu) sd(x)"
+  original <- parameter_catalog_resolve(parameter_catalog(fit), name)
+  fitted <- parameter_catalog_resolve(catalog, name)
+  expect_identical(original$quantities, fitted$quantities)
+  expect_identical(original$quantity_id, fitted$quantity_id)
+  expect_identical(fitted$predictor_scale, "fitted")
+  expect_identical(original$predictor_scale, "original")
+
+  # A new provider alias must preserve the view of its underlying catalog.
+  alias <- catalog$aliases[match(fitted$quantity_id, catalog$aliases$quantity_id), , drop = FALSE]
+  alias$alias <- "my_slope_sd"
+  alias$simplified <- FALSE
+  extended <- parameter_catalog_extend(catalog, catalog$quantities[0, ], alias, "MyModel")
+  expect_identical(parameter_catalog_resolve(extended, alias$alias), fitted)
+
+  term <- attr(fit, "formula_design")$mu$random_effects[[1L]]
+  allocation <- term$sd_binding$allocations[[1L]]
+  draws <- as.matrix(coda::as.mcmc.list(fit))
+  fitted_sd <- draws[, allocation$source$name] * sqrt(2 * draws[, paste0(allocation$weight_name, "[2]")])
+  original_sd <- fitted_sd / stats::sd(.hypothesis_model_test_x_values())
+  expect_equal(as.numeric(as.matrix(parameter_draws(fit, fitted))), fitted_sd)
+  expect_equal(as.numeric(as.matrix(parameter_draws(fit, original))), original_sd)
+  expect_identical(parameter_draws(.bt_parameter_fitted_fit(fit), fitted), parameter_draws(fit, fitted))
+  expect_equal(as.numeric(parameter_mixed_posterior(fit, fitted, transform_scaled = FALSE)), fitted_sd)
+  expect_error(parameter_mixed_posterior(fit, fitted, transform_scaled = TRUE),
+               class = "BayesTools_parameter_resolution_error")
+  expect_s3_class(parameter_prior_density(fit, fitted), "prior_linear_density")
+  # The allocation-product density currently covers fitted components. This
+  # original slope is a pure rescaling, but that density route is not implemented.
+  expect_null(parameter_prior_density(fit, original))
+  expect_type(parameter_gate_states(fit, fitted), "list")
+  expect_null(parameter_gate_states(fit, original))
+  expect_identical(random_effects_marginal_update_plan(fit, fitted)$family, "affine")
+  expect_identical(random_effects_marginal_update_plan(fit, original)$reason, "scaled_component_sd")
+
+  unmarked <- fitted
+  unmarked$predictor_scale <- NULL
+  expect_error(parameter_draws(fit, unmarked), "Resolve the parameter again",
+               class = "BayesTools_parameter_resolution_error")
+  old_catalog <- catalog
+  old_catalog$predictor_scale <- NULL
+  expect_error(parameter_catalog_resolve(old_catalog, name), "Rebuild it with 'parameter_catalog",
+               fixed = TRUE, class = "BayesTools_parameter_resolution_error")
 })
 
 

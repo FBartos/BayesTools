@@ -1,5 +1,6 @@
 # development version
 ### Breaking changes
+- Rebuild previously saved parameter catalogs and selections from the fitted object to record the predictor scale
 - The fitted parameter map uses schema 23 and can read complete pre-R2 schema 22 fits
 - BayesTools requires JAGS 5.0.0 or later and rjags 5-5 or later. Thanks to [Matt Denwood](https://github.com/FBartos/BayesTools/pull/87) for the patch to obtain JAGS compiler flags directly from rjags, and to [Martyn Plummer](https://github.com/FBartos/RoBMA/pull/80) for the JAGS 5 C++ API guidance applied to the native module.
 - `JAGS_fit()` returns a `BayesTools_fit` with coda methods on success and the error condition if initial fitting fails. Use `JAGS_extend()` to continue a fit
@@ -12,6 +13,8 @@
 - `JAGS_fit()` counts `adapt` and `burnin` at the fit's thinning like `sample` (as does `JAGS_extend()` for `adapt`), so fits with `thin` above 1 run `thin` times as many burn-in iterations and, where a sampler adapts, adaptation iterations, and their draws can differ from earlier versions
 
 ### Features
+- `parameter_declared_prior()` returns the scalar prior of a selected random-effect SD or correlation
+- `transformed_prior_density()` returns the coefficient prior used by `plot_transformed_prior()`
 - JASP progress updates retain the requested draw count and reuse adapted samplers throughout a fit
 - `plot_model_probabilities()` displays posterior model probabilities and model states in a matrix
 - `plot_posterior()` and `plot_marginal()` can select factor levels by name and draw a separate plot for each selected level; `posterior_factor_columns()` lists the plotted columns of a factor
@@ -33,6 +36,8 @@
 - `JAGS_fit()` checks that the chains agree at the end of burn-in, extends burn-in with `autofit`, and warns when they do not (`burnin_max_Rhat`, `burnin_extend` and `burnin_max_extend` in `autofit_control`)
 
 ### Fixes
+- Random-effect draws and prior densities respect the selected predictor scale
+- Factor-level SDs and variances retain their coordinate's prior, including mixture and spike-and-slab priors
 - on Apple silicon, numeric constants in generated JAGS models and the values of compiled hypotheses are exact
 - on Apple silicon, predictions from random effects with non-integer numeric grouping levels no longer stop with a request to refit
 - chains that visit the same values equally often (such as the states of an indicator) get an R-hat of 1 instead of a missing value

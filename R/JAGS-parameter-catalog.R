@@ -1,6 +1,6 @@
 # Metadata-only semantic parameter catalog and deferred draw extraction.
 
-.bt_parameter_selection_version <- 1L
+.bt_parameter_selection_version <- 2L
 
 .bt_parameter_catalog_quantity_columns <- c(
   "quantity_id", "canonical_name", "provider", "namespace", "role",
@@ -149,8 +149,10 @@
 #' blocks with scaled predictors (a bounded SD prior keeps its bounds, an SD
 #' that the original scale combines from several fitted coefficients is the
 #' fitted coefficient itself, and an SD fixed on the fitted scale is
-#' structural). It is the default catalog for a fit without scaled predictors
-#' and for quantities that the scales do not affect. A selection resolved from
+#' structural). Catalogs and resolved selections record their `predictor_scale`
+#' (`"original"` or `"fitted"`), including when both views contain identical
+#' rows. Rebuild an older catalog from the fit and resolve its selections
+#' again to supply this scale. A selection resolved from
 #' either catalog is accepted by `parameter_draws()`, `parameter_prior_density()`,
 #' `parameter_transform()`, `parameter_gate_states()`,
 #' `random_effects_marginal_update_plan()`, and [parameter_mixed_posterior()],
@@ -160,7 +162,8 @@
 #' fit is not needed to extract the fitted scale). A selection that belongs to
 #' neither catalog stops as described above, and
 #' [parameter_mixed_posterior()] stops for a selection of the fitted-scale
-#' catalog with `transform_scaled = TRUE`.
+#' catalog with `transform_scaled = TRUE` when the fit has scaled predictors.
+#' For a fit without scaled predictors either view yields the same draws.
 #'
 #' `parameter_draws()` is the deferred extraction boundary. The BayesTools fit
 #' method reads only the coordinates declared by the selected
@@ -305,8 +308,9 @@
 #' @param ... arguments for methods.
 #'
 #' @return `parameter_catalog()` and `parameter_catalog_extend()` return a
-#' `BayesTools_parameter_catalog`. `parameter_catalog_schema()` returns schema
-#' descriptions. `parameter_catalog_resolve()` returns a
+#' `BayesTools_parameter_catalog`. `parameter_catalog_schema()` returns the
+#' allowed `predictor_scale` values and descriptions of the catalog tables.
+#' `parameter_catalog_resolve()` returns a
 #' `BayesTools_parameter_selection`. `parameter_draws()` returns a
 #' `coda::mcmc.list` for BayesTools-owned quantities.
 #' `parameter_prior_density()` returns a `prior_linear_density` or `NULL`.
@@ -342,10 +346,19 @@ parameter_catalog.BayesTools_fit <- function(object, transform_scaled = TRUE, ..
   check_bool(transform_scaled, "transform_scaled", allow_NA = FALSE)
   JAGS_validate_fit_contract(object, requires = "parameter_map")
   if(!transform_scaled){
-    return(.bt_parameter_map_catalog(.bt_parameter_fitted_map(object)))
+    return(.bt_parameter_map_catalog(.bt_parameter_fitted_map(object), predictor_scale = "fitted"))
   }
 
   .bt_parameter_map_catalog(parameter_map(object))
+}
+
+# A fitted-scale view clears the fit-level scales, and keeps the original
+# formula design. Check both declarations when deciding whether scales differ.
+.bt_parameter_fit_has_scaled_predictors <- function(fit){
+
+  designs <- attr(fit, "formula_design", exact = TRUE)
+  .bt_formula_scale_has_scaled(attr(fit, "formula_scale", exact = TRUE)) ||
+    .bt_formula_scale_has_scaled(lapply(designs, `[[`, "formula_scale"))
 }
 
 # The parameter map of the fitted scale of the predictors. The catalog of a
@@ -362,11 +375,7 @@ parameter_catalog.BayesTools_fit <- function(object, transform_scaled = TRUE, ..
   map            <- parameter_map(fit)
   prior_list     <- attr(fit, "prior_list", exact = TRUE)
   formula_design <- attr(fit, "formula_design", exact = TRUE)
-  declared <- length(attr(fit, "formula_scale", exact = TRUE)) > 0L ||
-    any(vapply(formula_design, function(design){
-      length(design[["formula_scale"]]) > 0L
-    }, logical(1)))
-  if(!declared){
+  if(!.bt_parameter_fit_has_scaled_predictors(fit)){
     return(map)
   }
 
@@ -419,54 +428,26 @@ parameter_catalog.BayesTools_fit <- function(object, transform_scaled = TRUE, ..
 .bt_parameter_fitted_scale <- function(fit, selection){
 
   fit     <- .bt_parameter_fitted_fit(fit)
-  catalog <- parameter_catalog(fit)
+  catalog <- .bt_parameter_map_catalog(parameter_map(fit), predictor_scale = "fitted")
   rows    <- match(selection$quantity_id, catalog$quantities$quantity_id)
   if(anyNA(rows)){
     stop("The quantity '", selection$quantities$canonical_name[is.na(rows)][1L],
          "' is not available on the fitted scale of the predictors.",
          call. = FALSE)
   }
-  selection <- list(
-    schema_version        = .bt_parameter_selection_version,
-    parameter_map_version = catalog$schema_version,
-    quantity_id           = catalog$quantities$quantity_id[rows],
-    quantities            = catalog$quantities[rows, , drop = FALSE]
-  )
-  class(selection) <- c("BayesTools_parameter_selection", "list")
-  .bt_validate_parameter_selection(selection, catalog = catalog)
+  selection <- .bt_parameter_selection_new(catalog, catalog$quantities[rows, , drop = FALSE])
 
   list(fit = fit, selection = selection)
 }
 
-# Whether the quantities of a selection are rows of a catalog (the selection is
-# validated by .bt_validate_parameter_selection()).
-.bt_parameter_selection_in_catalog <- function(selection, catalog){
-
-  rows <- match(selection$quantity_id, catalog$quantities$quantity_id)
-
-  !anyNA(rows) &&
-    identical(selection$quantities, catalog$quantities[rows, , drop = FALSE])
-}
-
-# The catalog of a fit that a selection belongs to: "original" (the catalog of
-# the fit, which a quantity that does not depend on the predictor scales shares
-# with the catalog of the fitted scale) or "fitted" (the catalog of
-# parameter_catalog(fit, transform_scaled = FALSE) only). A selection of
-# neither stops as a selection of another catalog.
+# Check membership against the declared view. Even when a quantity's rows
+# coincide, extraction of its draws and prior can depend on the predictor scale.
 .bt_parameter_selection_scale <- function(fit, selection){
 
-  .bt_validate_parameter_selection(selection)
-  catalog <- parameter_catalog(fit)
-  if(.bt_parameter_selection_in_catalog(selection, catalog)){
-    return("original")
-  }
-  fitted <- parameter_catalog(fit, transform_scaled = FALSE)
-  if(.bt_parameter_selection_in_catalog(selection, fitted)){
-    return("fitted")
-  }
-
-  .bt_validate_parameter_selection(selection, catalog = catalog)
-  "original"
+  .bt_validate_parameter_selection(selection, catalog = parameter_catalog(
+    fit, transform_scaled = identical(selection$predictor_scale, "original")
+  ))
+  selection$predictor_scale
 }
 
 # The fit that a selection is extracted from: the fit for a selection of its
@@ -508,7 +489,7 @@ parameter_catalog_schema <- function(){
       "Quantity component, or an empty string.",
       "Unambiguous default display label.",
       "Scale of stored dependency coordinates.",
-      "Scale of the selected quantity.",
+      "Display units of this quantity in its catalog view; the predictor units are given by the catalog's predictor_scale.",
       "One of sampled, structural, derived, or unavailable.",
       "Exact structural value; otherwise NA.",
       "Whether the quantity is private implementation metadata.",
@@ -539,6 +520,7 @@ parameter_catalog_schema <- function(){
   )
   list(
     schema_version = .bt_parameter_map_version,
+    predictor_scale = c("original", "fitted"),
     quantities = quantities,
     aliases = aliases,
     relationships = .bt_relationship_schema()
@@ -693,14 +675,22 @@ parameter_catalog_resolve <- function(catalog, alias, namespace = NULL,
     )
   }
 
+  out <- .bt_parameter_selection_new(catalog, candidates)
+  .bt_validate_parameter_selection(out)
+  out
+}
+
+# Build a selection from rows of its originating catalog.
+.bt_parameter_selection_new <- function(catalog, quantities){
+
   out <- list(
     schema_version = .bt_parameter_selection_version,
     parameter_map_version = catalog$schema_version,
-    quantity_id = candidates$quantity_id,
-    quantities = candidates
+    predictor_scale = catalog$predictor_scale,
+    quantity_id = quantities$quantity_id,
+    quantities = quantities
   )
   class(out) <- c("BayesTools_parameter_selection", "list")
-  .bt_validate_parameter_selection(out)
   out
 }
 
@@ -1193,32 +1183,9 @@ parameter_prior_density.BayesTools_fit <- function(
 .bt_parameter_prior_density_direct_quantity <- function(
     object, quantity, key, n_grid, tail_prob){
 
-  if(!key$source_type %in% c("identity", "one_to_one_transform")){
+  source_prior <- .bt_random_scalar_source_prior(object, key)
+  if(is.null(source_prior)){
     return(NULL)
-  }
-  prior_list <- attr(object, "prior_list", exact = TRUE)
-  source_prior <- if(nzchar(key$source_prior) &&
-                     key$source_prior %in% names(prior_list)){
-    prior_list[[key$source_prior]]
-  }else{
-    NULL
-  }
-  if(is.null(source_prior) || !is.prior(source_prior)){
-    return(NULL)
-  }
-  if(.prior_linear_prior_dimension(source_prior) != 1L){
-    # one level of an independent factor prior (e.g., the per-level SDs of an
-    # hcs block) has the prior's own scalar distribution as its marginal
-    columns <- .prior_linear_prior_columns(key$source_prior, source_prior)
-    if(!is.prior.independent(source_prior) ||
-       !key$source_parameter %in% columns){
-      return(NULL)
-    }
-    source_prior <- prior(
-      distribution = source_prior$distribution,
-      parameters   = source_prior$parameters,
-      truncation   = source_prior$truncation
-    )
   }
   transform <- .bt_parameter_transform_from_quantity(object, quantity)
   .bt_parameter_prior_density_transformed(
@@ -2740,6 +2707,7 @@ parameter_transform_jacobian <- function(values, transform){
 
   out <- list(
     schema_version = .bt_parameter_map_version,
+    predictor_scale = "original",
     quantities = quantities,
     aliases = aliases,
     relationships = relationships
@@ -5624,9 +5592,17 @@ parameter_transform_jacobian <- function(values, transform){
 
 .bt_validate_parameter_catalog <- function(catalog){
 
+  if(inherits(catalog, "BayesTools_parameter_catalog") && is.list(catalog) &&
+     is.null(catalog[["predictor_scale"]])){
+    .bt_parameter_selection_stop(paste0(
+      "The catalog does not record its predictor scale. Rebuild it with 'parameter_catalog(fit)' ",
+      "or 'parameter_catalog(fit, transform_scaled = FALSE)' and resolve the parameter again."
+    ))
+  }
   valid <- inherits(catalog, "BayesTools_parameter_catalog") &&
     is.list(catalog) &&
-    identical(names(catalog), c("schema_version", "quantities", "aliases", "relationships")) &&
+    identical(names(catalog), c("schema_version", "predictor_scale", "quantities", "aliases", "relationships")) &&
+    (identical(catalog$predictor_scale, "original") || identical(catalog$predictor_scale, "fitted")) &&
     identical(catalog$schema_version, .bt_parameter_map_version)
   if(!valid){
     .bt_stop_refit_required("Parameter catalog metadata are missing or unsupported. Refit or rebuild the catalog with this version of BayesTools.")
@@ -5874,13 +5850,15 @@ parameter_transform_jacobian <- function(values, transform){
     is.list(selection) &&
     identical(
       names(selection),
-      c("schema_version", "parameter_map_version", "quantity_id",
+      c("schema_version", "parameter_map_version", "predictor_scale", "quantity_id",
         "quantities")
     ) &&
     identical(selection$schema_version, .bt_parameter_selection_version) &&
+    (identical(selection$predictor_scale, "original") || identical(selection$predictor_scale, "fitted")) &&
     identical(selection$parameter_map_version,
               .bt_parameter_map_version) &&
     is.character(selection$quantity_id) &&
+    is.data.frame(selection$quantities) &&
     length(selection$quantity_id) == nrow(selection$quantities)
   if(!valid){
     .bt_parameter_selection_stop("Parameter selection metadata are missing or unsupported. Resolve the parameter again with this version of BayesTools.")
@@ -5901,7 +5879,7 @@ parameter_transform_jacobian <- function(values, transform){
   }
   if(!is.null(catalog)){
     expected <- match(selection$quantity_id, catalog$quantities$quantity_id)
-    if(anyNA(expected)){
+    if(!identical(selection$predictor_scale, catalog$predictor_scale) || anyNA(expected)){
       .bt_parameter_selection_stop("The parameter selection does not belong to this fitted catalog. Resolve the parameter again from this catalog.")
     }
     catalog_rows <- catalog$quantities[expected, , drop = FALSE]

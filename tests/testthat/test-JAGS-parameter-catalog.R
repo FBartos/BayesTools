@@ -2019,14 +2019,21 @@ test_that("LKJ correlation priors are exact where the correlation is an LKJ entr
                                info = "scaled")
   expect_null(density_of(scaled$fit, names[[1L]]))
   expect_null(density_of(scaled$fit, names[[2L]]))
-  # Standardized summaries drop the formula scale: every correlation is then
-  # the fitted-scale LKJ entry.
-  standardized <- scaled$fit
-  attr(standardized, "formula_scale") <- list()
+  # Each fitted-scale selection has its LKJ marginal, even where the two
+  # catalogs give the intercept-slope correlation identical metadata rows.
+  fitted <- parameter_catalog(scaled$fit, transform_scaled = FALSE)
   for(name in names){
-    .expect_lkj_marginal_density(density_of(standardized, name), shape,
-                                 info = paste("standardized", name))
+    selected <- parameter_catalog_resolve(fitted, name)
+    .expect_lkj_marginal_density(parameter_prior_density(scaled$fit, selected),
+                                 shape, info = paste("standardized", name))
   }
+  first_pair <- parameter_catalog_resolve(fitted, names[[1L]])
+  original_pair <- parameter_catalog_resolve(parameter_catalog(scaled$fit), names[[1L]])
+  expect_identical(first_pair$quantities, original_pair$quantities)
+  raw <- transform_prior_samples(scaled$fit, n_samples = 50L, seed = 8, formula_scale = list())
+  fitted_cor <- 2 * raw[, scaled$random_term$correlation$primitive_names[[1L]]] - 1
+  expect_equal(as.numeric(as.matrix(parameter_draws(scaled$fit, first_pair, model_samples = raw))),
+               fitted_cor, tolerance = 1e-12)
 
   # Gated SDs (spike-and-slab priors with a point at zero): the primitives are
   # a priori independent of the SDs and their gates.

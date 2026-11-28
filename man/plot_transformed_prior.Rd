@@ -2,7 +2,8 @@
 % Please edit documentation in R/priors-transformed-density.R
 \name{plot_transformed_prior}
 \alias{plot_transformed_prior}
-\title{Plot Transformed Prior Densities}
+\alias{transformed_prior_density}
+\title{Extract or Plot Transformed Prior Densities}
 \usage{
 plot_transformed_prior(
   prior_list,
@@ -18,6 +19,14 @@ plot_transformed_prior(
   par_name = NULL,
   ...
 )
+
+transformed_prior_density(
+  prior_list,
+  column_names,
+  formula_scale = NULL,
+  parameter,
+  omit_identity = FALSE
+)
 }
 \arguments{
 \item{prior_list}{named list of prior distributions.}
@@ -31,7 +40,7 @@ fitted parameter space.}
 formula. Standardization information without the fitted design stops with a
 \code{BayesTools_formula_transform_unavailable} error.}
 
-\item{parameter}{coefficient name to plot.}
+\item{parameter}{coefficient name to select.}
 
 \item{n_points}{number of plotting points. A prior density that needs
 numerical integration (a Gaussian convolution, a scale mixture, or a sum of
@@ -53,9 +62,18 @@ transformed scale.}
 \item{par_name}{optional plotting label.}
 
 \item{...}{additional plotting arguments.}
+
+\item{omit_identity}{return \code{NULL} when the coefficient transformation
+is the identity. This allows a caller to use the original prior object.}
 }
 \value{
-For \code{plot_type = "base"}, invisibly returns base-plot metadata.
+\code{transformed_prior_density()} returns the original-predictor-scale
+coefficient law as a \code{prior_linear_density} object, including its point
+masses, or \code{NULL} for an identity when \code{omit_identity = TRUE}.
+For a target of a compiled coefficient transform, the returned law records
+its \code{formula_coefficient_transform} and \code{formula_coefficient_target}
+attributes as in \code{\link[=JAGS_formula_prior_density]{JAGS_formula_prior_density()}}.
+For \code{plot_type = "base"}, \code{plot_transformed_prior()} invisibly returns base-plot metadata.
 For \code{plot_type = "ggplot"}, returns a \code{ggplot} object. Returns
 \code{NULL} when the requested parameter is an identity transform and no
 output transformation was requested. A parameter without a prior in
@@ -66,9 +84,9 @@ column has no density on this route (it needs the fitted design of the
 block) and is refused rather than returned as an identity.
 }
 \description{
-Plots a prior density after applying the same deterministic
-coefficient transformation used for formula-scale back-transforms. The helper
-supports continuous densities and point-mass priors in the same plot. The
+Extracts or plots a prior density after applying the same deterministic
+coefficient transformation used for formula-scale back-transforms. The law
+includes continuous densities and point masses. The
 density is that of the monitored coefficient: a prior's \code{multiply_by}
 scaling applies only to the linear predictor and is not applied here.
 }

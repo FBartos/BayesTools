@@ -117,6 +117,7 @@ bayestools_test_profile_contexts <- list(
     "posterior-factor-levels",
     "native-registration",
     "native-range",
+    "parameter-declared-prior",
     "parameter-labels",
     "prior-density-ordinate",
     "prior-ordered",

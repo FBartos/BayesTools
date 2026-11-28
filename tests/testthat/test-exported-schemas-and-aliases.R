@@ -188,7 +188,8 @@ test_that("parameter_catalog_schema describes the tables of parameter_catalog()"
   )
 
   schema <- parameter_catalog_schema()
-  expect_identical(names(schema), c("schema_version", "quantities", "aliases", "relationships"))
+  expect_identical(names(schema), c("schema_version", "predictor_scale", "quantities", "aliases", "relationships"))
+  expect_identical(schema$predictor_scale, c("original", "fitted"))
   for(table in c("quantities", "aliases", "relationships")){
     expect_identical(names(schema[[table]]), c("field", "type", "description"), info = table)
     expect_identical(anyDuplicated(schema[[table]]$field), 0L, info = table)

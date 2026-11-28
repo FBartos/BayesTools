@@ -2799,6 +2799,19 @@ test_that("plot_transformed_prior exposes transformed prior plotting as a public
   formula_scale <- list(mu = formula_scale_for_test(~ x, list(x = list(mean = 5, sd = 2))))
   attr(formula_scale$mu, "log_intercept") <- FALSE
 
+  law <- transformed_prior_density(prior_list, names(prior_list), formula_scale, "mu_x",
+                                   omit_identity = TRUE)
+  expect_s3_class(law, "prior_linear_density")
+  expect_identical(attr(law, "formula_coefficient_target"), "mu_x")
+  expect_equal(attr(law, "formula_coefficient_transform")$matrix["mu_x", c("mu_intercept", "mu_x")],
+               c(mu_intercept = 0, mu_x = .5))
+  expect_equal(law$points, data.frame(x = 0, p = .25))
+  expect_equal(exp(prior_density_ordinate(law, .5)$log_density), .75 * stats::dnorm(.5, .5, .125))
+  expect_null(transformed_prior_density(prior_list, names(prior_list), parameter = "mu_x",
+                                        omit_identity = TRUE))
+  identity <- transformed_prior_density(prior_list, names(prior_list), parameter = "mu_x")
+  expect_equal(exp(prior_density_ordinate(identity, 1)$log_density), .75 * stats::dnorm(1, 1, .25))
+
   plot <- plot_transformed_prior(
     prior_list    = prior_list,
     column_names  = c("mu_intercept", "mu_x"),
@@ -2862,6 +2875,11 @@ test_that("plot_transformed_prior returns NULL only for untransformed identity p
   )
 
   # a coefficient of the fitted space without a prior is refused, not NULL
+  expect_error(
+    transformed_prior_density(prior_list, c(names(prior_list), "mu_z"),
+                              parameter = "mu_z", omit_identity = TRUE),
+    "has no prior for it", fixed = TRUE
+  )
   expect_error(
     plot_transformed_prior(
       prior_list     = prior_list,

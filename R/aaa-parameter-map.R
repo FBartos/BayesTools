@@ -402,10 +402,11 @@ parameter_map_cache <- function(map, provider, key, compute){
   value
 }
 
-.bt_parameter_map_catalog <- function(map){
+.bt_parameter_map_catalog <- function(map, predictor_scale = "original"){
 
   out <- list(
     schema_version = map$schema_version,
+    predictor_scale = predictor_scale,
     quantities = map$quantities,
     aliases = map$aliases,
     relationships = map$relationships
