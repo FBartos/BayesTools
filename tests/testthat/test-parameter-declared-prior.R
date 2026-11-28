@@ -1,3 +1,5 @@
+skip_if_not_test_profile("unit")
+
 # Direct random factor SDs, using the same compiler and fitted catalog as JAGS.
 .declared_factor_sd_fit <- function(sd_prior, contrast){
 
@@ -159,4 +161,131 @@ test_that("a two-column LKJ correlation exposes the prior of its fitted primitiv
   expect_null(parameter_declared_prior(fit, fitted))
   expect_identical(parameter_declared_prior(fit, fitted, source = TRUE), prior("beta", list(2, 2)))
   expect_null(parameter_declared_prior(fit, original, source = TRUE))
+})
+
+test_that("a centered random slope leaves the original intercept SD's declared prior intact", {
+
+  data <- data.frame(x = rep(c(-2, 2), 4), id = factor(rep(1:4, each = 2)))
+  result <- JAGS_formula(~ 1 + x + us(1 + x | id), "mu", data,
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+    prior_random = prior_random(sd = prior("gamma", list(2, 3))), formula_scale = TRUE)
+  term <- result$formula_design$random_effects[[1L]]
+  fit <- .prior_monitor_test_fit(result, c(JAGS_to_monitor(result$prior_list),
+    term$correlation$primitive_names))
+  catalog <- parameter_catalog(fit)
+  intercept <- parameter_catalog_resolve(catalog, "(mu) sd(intercept)")
+  slope <- parameter_catalog_resolve(catalog, "(mu) sd(x)")
+  expect_identical(intercept$quantities$extraction_key[[1]]$source_scale, 1)
+  expect_identical(parameter_declared_prior(fit, intercept), result$prior_list[[term$sd_parameter_names[1]]])
+  expect_null(parameter_declared_prior(fit, slope))
+})
+
+.declared_ordered_sd_fixture <- function(total, omit_indicator = FALSE){
+
+  data <- data.frame(f = ordered(rep(c("low", "high"), 4), levels = c("low", "high")),
+                     id = factor(rep(1:4, each = 2)))
+  result <- JAGS_formula(~ 1 + (0 + f || id), "mu", data,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(id = random_block(sd = prior_ordered(total, allocation = 1))))
+  draws <- .generate_prior_sample_matrix(result$prior_list, 400, seed = 5)
+  owner <- result$formula_design$random_effects[[1L]]$sd_parameter_names
+  indicator <- paste0(prior_ordered_total_name(owner), "_indicator")
+  if(omit_indicator) draws <- draws[, setdiff(colnames(draws), indicator), drop = FALSE]
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), result$prior_list,
+    formula_design = list(mu = result$formula_design))
+  list(fit = fit, draws = draws, owner = owner, indicator = indicator)
+}
+
+test_that("single-increment ordered SDs and variances use their total's point states", {
+
+  totals <- list(
+    spike = prior_spike_and_slab(prior("uniform", list(1, 3)), prior("beta", list(1, 3))),
+    mixture = prior_mixture(list(prior("point", list(.5), prior_weights = 2),
+      prior("uniform", list(1, 3)), prior("uniform", list(3, 5), prior_weights = 3)),
+      is_null = c(TRUE, FALSE, FALSE)),
+    fixed = prior("point", list(.5))
+  )
+  for(kind in names(totals)){
+    fixture <- .declared_ordered_sd_fixture(totals[[kind]])
+    fit <- fixture$fit
+    draws <- fixture$draws
+    owner <- fixture$owner
+    indicator <- fixture$indicator
+    active <- switch(kind, spike = draws[, indicator] == 1, mixture = draws[, indicator] != 1,
+      fixed = rep(FALSE, nrow(draws)))
+    atom <- if(kind == "spike") 0 else .5
+    prior_atom_mass <- switch(kind, spike = .75, mixture = 2/6, fixed = 1)
+    for(power in 1:2){
+      label <- c("(mu) sd(f)", "(mu) var(f)")[power]
+      selection <- parameter_catalog_resolve(parameter_catalog(fit), label)
+      states <- parameter_gate_states(fit, selection)
+      expect_true(states$known)
+      expect_equal(states$atom, ifelse(active, NA_real_, atom^power))
+      expect_equal(states$prior_atoms, data.frame(x = atom^power, mass = prior_atom_mass))
+      law <- parameter_prior_density(fit, selection)
+      expect_equal(law$points, data.frame(x = atom^power, p = prior_atom_mass))
+      mixed <- parameter_mixed_posterior(fit, selection)
+      atoms <- posterior_metadata(mixed, "atoms")
+      expect_equal(as.numeric(atoms$locations), atom^power)
+      expect_equal(atoms$mass, mean(!active))
+      if(kind == "fixed"){
+        expect_error(parameter_mixed_posterior(fit, selection, conditional = TRUE), "fixed")
+        next
+      }
+      conditional <- parameter_mixed_posterior(fit, selection, conditional = TRUE)
+      expect_equal(as.numeric(conditional), as.numeric(draws[active, owner])^power)
+      expect_equal(posterior_metadata(conditional, "support")$bounds,
+        c(1, if(kind == "mixture") 5 else 3)^power)
+      conditional_law <- posterior_metadata(conditional, "prior_density")
+      expect_equal(nrow(conditional_law$points), 0L)
+      value <- 2^power
+      height <- (if(kind == "mixture") .25 else 1) / 2
+      jacobian <- power * 2^(power - 1L)
+      expect_equal(exp(prior_density_ordinate(conditional_law, value)$log_density), height / jacobian)
+      region <- hypothesis_BF(fit, paste(label, ">", value), seed = 1)
+      prior_prob <- switch(kind, spike = .25/2, mixture = (3 + .5)/6)
+      expect_equal(unname(attr(region, "raw_log_BF")),
+        stats::qlogis(mean(draws[,owner] > 2)) - stats::qlogis(prior_prob), tolerance = 1e-8)
+      point <- hypothesis_BF(fit, paste(label, "=", value), seed = 1)
+      expect_true(is.finite(attr(point, "raw_log_BF")))
+    }
+  }
+})
+
+test_that("Bernoulli ordered SD totals declare their observed discrete branch and masses", {
+
+  binary <- prior("bernoulli", list(.3))
+  slab <- prior("uniform", list(1, 3))
+  mixture <- prior_mixture(list(binary, slab), is_null = c(TRUE, FALSE))
+  for(total in list(binary, mixture)){
+    fixture <- .declared_ordered_sd_fixture(total)
+    fit <- fixture$fit
+    discrete <- if(is.prior.mixture(total)) fixture$draws[, fixture$indicator] == 1 else rep(TRUE, nrow(fixture$draws))
+    weights <- if(is.prior.mixture(total)) c(.35, .15) else c(.7, .3)
+    for(label in c("(mu) sd(f)", "(mu) var(f)")){
+      selection <- parameter_catalog_resolve(parameter_catalog(fit), label)
+      states <- parameter_gate_states(fit, selection)
+      expect_true(states$known)
+      expect_equal(states$atom, ifelse(discrete, fixture$draws[, fixture$owner], NA_real_))
+      expect_equal(states$prior_atoms, data.frame(x = c(0, 1), mass = weights))
+      atoms <- posterior_metadata(parameter_mixed_posterior(fit, selection), "atoms")
+      expect_equal(atoms$mass, c(mean(states$atom %in% 0), mean(states$atom %in% 1)))
+      if(is.prior.mixture(total)){
+        conditional <- parameter_mixed_posterior(fit, selection, conditional = TRUE)
+        expect_equal(nrow(posterior_metadata(conditional, "prior_density")$points), 0L)
+        expect_equal(length(conditional), sum(!discrete))
+      }else{
+        expect_error(parameter_mixed_posterior(fit, selection, conditional = TRUE), "no inclusion gate")
+      }
+    }
+  }
+  # A binary alternative is atomic. The point-plan condition requires a
+  # continuous alternative, as it does for a scalar point alternative.
+  fit <- .declared_ordered_sd_fixture(prior_mixture(list(binary, slab), is_null = c(FALSE, TRUE)))$fit
+  selection <- parameter_catalog_resolve(parameter_catalog(fit), "(mu) sd(f)")
+  expect_error(parameter_mixed_posterior(fit, selection, conditional = TRUE), "not continuous")
+  fit <- .declared_ordered_sd_fixture(mixture, omit_indicator = TRUE)$fit
+  selection <- parameter_catalog_resolve(parameter_catalog(fit), "(mu) sd(f)")
+  expect_false(parameter_gate_states(fit, selection)$known)
+  expect_error(parameter_mixed_posterior(fit, selection, conditional = TRUE), "not monitored")
 })

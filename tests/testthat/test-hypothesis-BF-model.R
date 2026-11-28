@@ -3626,6 +3626,8 @@ test_that("selections of either catalog are extracted on the scale of their cata
     for(call in list(
       function() parameter_draws(fit, selection),
       function() parameter_prior_density(fit, selection),
+      function() parameter_declared_prior(fit, selection),
+      function() random_effects_marginal_update_plan(fit, selection),
       function() parameter_transform(fit, selection),
       function() parameter_gate_states(fit, selection),
       function() parameter_mixed_posterior(fit, selection, transform_scaled = FALSE),
@@ -3702,6 +3704,8 @@ test_that("equal catalog rows retain the predictor scale of their allocated SD",
   expect_error(parameter_mixed_posterior(fit, fitted, transform_scaled = TRUE),
                class = "BayesTools_parameter_resolution_error")
   expect_s3_class(parameter_prior_density(fit, fitted), "prior_linear_density")
+  # The allocation-product density currently covers fitted components. This
+  # original slope is a pure rescaling, but that density route is not implemented.
   expect_null(parameter_prior_density(fit, original))
   expect_type(parameter_gate_states(fit, fitted), "list")
   expect_null(parameter_gate_states(fit, original))

@@ -2802,6 +2802,9 @@ test_that("plot_transformed_prior exposes transformed prior plotting as a public
   law <- transformed_prior_density(prior_list, names(prior_list), formula_scale, "mu_x",
                                    omit_identity = TRUE)
   expect_s3_class(law, "prior_linear_density")
+  expect_identical(attr(law, "formula_coefficient_target"), "mu_x")
+  expect_equal(attr(law, "formula_coefficient_transform")$matrix["mu_x", c("mu_intercept", "mu_x")],
+               c(mu_intercept = 0, mu_x = .5))
   expect_equal(law$points, data.frame(x = 0, p = .25))
   expect_equal(exp(prior_density_ordinate(law, .5)$log_density), .75 * stats::dnorm(.5, .5, .125))
   expect_null(transformed_prior_density(prior_list, names(prior_list), parameter = "mu_x",

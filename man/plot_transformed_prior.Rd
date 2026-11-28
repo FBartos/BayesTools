@@ -70,6 +70,9 @@ is the identity. This allows a caller to use the original prior object.}
 \code{transformed_prior_density()} returns the original-predictor-scale
 coefficient law as a \code{prior_linear_density} object, including its point
 masses, or \code{NULL} for an identity when \code{omit_identity = TRUE}.
+For a target of a compiled coefficient transform, the returned law records
+its \code{formula_coefficient_transform} and \code{formula_coefficient_target}
+attributes as in \code{\link[=JAGS_formula_prior_density]{JAGS_formula_prior_density()}}.
 For \code{plot_type = "base"}, \code{plot_transformed_prior()} invisibly returns base-plot metadata.
 For \code{plot_type = "ggplot"}, returns a \code{ggplot} object. Returns
 \code{NULL} when the requested parameter is an identity transform and no

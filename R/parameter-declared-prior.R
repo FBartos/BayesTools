@@ -34,10 +34,12 @@ parameter_declared_prior <- function(object, selection, source = FALSE){
   if(!identical(quantity$provider, "BayesTools") || !identical(key$type, "random_summary")){
     return(NULL)
   }
-  if(!source && !(identical(key$source_type, "identity") &&
-                  identical(key$source_transform, "identity") &&
-                  (identical(key$source_scale, NA_real_) || isTRUE(key$source_scale == 1)))){
-    return(NULL)
+  if(!source){
+    identity <- identical(key$source_type, "identity") && identical(key$source_transform, "identity") &&
+      (identical(key$source_scale, NA_real_) || isTRUE(key$source_scale == 1))
+    unchanged_sd <- identical(key$source_type, "one_to_one_transform") &&
+      identical(key$source_transform, "random_sd") && isTRUE(key$source_scale == 1)
+    if(!identity && !unchanged_sd) return(NULL)
   }
 
   .bt_random_scalar_source_prior(object, key)

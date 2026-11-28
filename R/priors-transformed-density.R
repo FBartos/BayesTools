@@ -206,6 +206,9 @@
 #' @return \code{transformed_prior_density()} returns the original-predictor-scale
 #' coefficient law as a \code{prior_linear_density} object, including its point
 #' masses, or \code{NULL} for an identity when \code{omit_identity = TRUE}.
+#' For a target of a compiled coefficient transform, the returned law records
+#' its \code{formula_coefficient_transform} and \code{formula_coefficient_target}
+#' attributes as in [JAGS_formula_prior_density()].
 #' For \code{plot_type = "base"}, \code{plot_transformed_prior()} invisibly returns base-plot metadata.
 #' For \code{plot_type = "ggplot"}, returns a \code{ggplot} object. Returns
 #' \code{NULL} when the requested parameter is an identity transform and no
@@ -285,8 +288,16 @@ transformed_prior_density <- function(prior_list, column_names, formula_scale = 
     parameters    = owners
   )
   .bt_formula_measure_check(prior_densities, "prior_density", parameter)
-
-  prior_densities[[parameter]]
+  law <- prior_densities[[parameter]]
+  transforms <- attr(prior_densities, "context", exact = TRUE)$transforms
+  for(transform in transforms){
+    if(parameter %in% transform$descriptor$target_names){
+      attr(law, "formula_coefficient_transform") <- transform$descriptor
+      attr(law, "formula_coefficient_target") <- parameter
+      break
+    }
+  }
+  law
 }
 
 .plot_transformed_prior_is_identity <- function(prior_list, column_names, formula_scale, parameter){

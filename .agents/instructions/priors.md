@@ -860,7 +860,10 @@ identity random SD, allocation scale, or raw correlation. A treatment-coded or
 independent factor SD uses the scalar marginal of its catalog source coordinate,
 including its mixture weights and shared spike-and-slab inclusion law. A vector
 point supplies that coordinate's point. A one-coefficient ordered SD supplies
-its total when the bound projection certifies a multiplier of one. With
+its total when the bound projection certifies a multiplier of one. Its SD
+and variance use the total's mixture indicator for atom states and conditioning,
+and the declared total coordinate for the states of a Bernoulli member.
+An SD whose certified pure rescaling factor is exactly one retains its declared prior. With
 `source = TRUE`, a one-to-one variance or transformed correlation also exposes
 its scalar source. Composite quantities have no single declared prior.
 `parameter_prior_density()` uses the same scalar source for these factor SDs

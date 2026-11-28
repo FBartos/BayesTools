@@ -201,13 +201,14 @@
 # that the posterior ordinate of a total with several bounded alternatives is
 # estimated within each component (and reflected at its own bounds). NULL for
 # other quantities and when the indicator is not monitored.
-.bt_ordered_total_mixture_components <- function(fit, key, sources, keep){
+.bt_ordered_total_mixture_components <- function(fit, key, sources, keep,
+                                                 owner = NULL, transform = NULL){
 
-  if(!identical(key$type, "coordinate")){
-    return(NULL)
-  }
   prior_list <- attr(fit, "prior_list", exact = TRUE)
-  owner <- .bt_ordered_total_owner(prior_list, key$dependencies)
+  if(is.null(owner)){
+    if(!identical(key$type, "coordinate")) return(NULL)
+    owner <- .bt_ordered_total_owner(prior_list, key$dependencies)
+  }
   if(is.null(owner) || !.posterior_components_is_mixture(prior_list[[owner]]$total)){
     return(NULL)
   }
@@ -220,7 +221,8 @@
   .posterior_components_new(
     index    = .bt_component_from_indicator(total, sources[keep, indicator]),
     supports = lapply(seq_along(total), function(component){
-      .posterior_support_from_prior(.posterior_components_component_prior(total, component))
+      support <- .posterior_support_from_prior(.posterior_components_component_prior(total, component))
+      if(is.null(transform) || is.null(support)) support else .bt_parameter_catalog_transform_support(support, transform)
     })
   )
 }
