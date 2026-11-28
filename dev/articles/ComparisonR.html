@@ -88,7 +88,8 @@
                         <h4 data-toc-skip class="author">František
 Bartoš</h4>
             
-            <h4 data-toc-skip class="date">2nd of April 2022</h4>
+            <h4 data-toc-skip class="date">2nd of April 2022 (updated:
+27th of November 2026)</h4>
       
       <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/development/vignettes/ComparisonR.Rmd" class="external-link"><code>vignettes/ComparisonR.Rmd</code></a></small>
       <div class="hidden name"><code>ComparisonR.Rmd</code></div>
@@ -269,8 +270,9 @@ since I used it the model syntax I specified earlier.</p>
 <span>  Nx <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>,</span>
 <span>  Ny <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">y</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>Then, I pass the model and priors to <code><a href="../reference/JAGS_fit.html">JAGS_fit()</a></code>, which
-prepares the starting values and samples the model using rjags.</p>
+<p>Then, I pass the arguments into the <code><a href="../reference/JAGS_fit.html">JAGS_fit()</a></code> function
+that wraps around the rjags R package, specifying the prior
+distributions, preparing the starting values, etc…</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ttest_model_H0</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span></span>
 <span>  model_syntax <span class="op">=</span> <span class="va">ttest_model</span>,</span>
@@ -286,7 +288,7 @@ prepares the starting values and samples the model using rjags.</p>
 <span>  seed         <span class="op">=</span> <span class="fl">1</span></span>
 <span><span class="op">)</span> </span></code></pre></div>
 <p>I can print the estimated model summary with
-<code><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table()</a></code>.</p>
+<code><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table()</a></code> function.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">ttest_model_Hp</span><span class="op">)</span></span>
 <span><span class="co">#&gt;        Mean    SD 0.025   0.5 0.975 error(MCMC) error(MCMC)/SD   ESS R-hat</span></span>
