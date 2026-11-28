@@ -858,7 +858,9 @@ route checks (maintainer decision, 2026-11-03).
 `parameter_declared_prior(fit, selection)` returns the declared scalar prior for an
 identity random SD, allocation scale, or raw correlation. A treatment-coded or
 independent factor SD uses the scalar marginal of its catalog source coordinate,
-including its mixture weights and shared spike-and-slab inclusion law. With
+including its mixture weights and shared spike-and-slab inclusion law. A vector
+point supplies that coordinate's point. A one-coefficient ordered SD supplies
+its total when the bound projection certifies a multiplier of one. With
 `source = TRUE`, a one-to-one variance or transformed correlation also exposes
 its scalar source. Composite quantities have no single declared prior.
 `parameter_prior_density()` uses the same scalar source for these factor SDs

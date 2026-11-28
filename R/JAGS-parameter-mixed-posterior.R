@@ -82,7 +82,9 @@
 #'   [parameter_catalog_resolve()] from the catalog of the fit
 #'   ([parameter_catalog()]) or, with `transform_scaled = FALSE`, from the
 #'   catalog of the fitted scale (`parameter_catalog(fit, transform_scaled =
-#'   FALSE)`); a selection of the latter with `transform_scaled = TRUE` stops.
+#'   FALSE)`); a selection of the latter with `transform_scaled = TRUE` stops
+#'   when the fit declares scaled predictors. On a fit without scaled
+#'   predictors, either selection gives the same posterior.
 #' @param conditional whether to condition on the inclusion event of the
 #'   quantity: the gates of its allocation chain on for an allocation-derived
 #'   component SD or variance, and its own inclusion gate on for a variance
@@ -153,7 +155,7 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE,
     stop("'selection' must contain exactly one parameter quantity.",
          call. = FALSE)
   }
-  if(transform_scaled && identical(scale, "fitted")){
+  if(transform_scaled && identical(scale, "fitted") && .bt_parameter_fit_has_scaled_predictors(fit)){
     .bt_parameter_selection_stop(
       "The parameter selection belongs to the catalog of the fitted scale ('parameter_catalog(fit, transform_scaled = FALSE)'), not to that of the original scale: use 'transform_scaled = FALSE'."
     )

@@ -170,11 +170,11 @@
   entry
 }
 
-#' @title Plot Transformed Prior Densities
+#' @title Extract or Plot Transformed Prior Densities
 #'
-#' @description Plots a prior density after applying the same deterministic
-#' coefficient transformation used for formula-scale back-transforms. The helper
-#' supports continuous densities and point-mass priors in the same plot. The
+#' @description Extracts or plots a prior density after applying the same deterministic
+#' coefficient transformation used for formula-scale back-transforms. The law
+#' includes continuous densities and point masses. The
 #' density is that of the monitored coefficient: a prior's \code{multiply_by}
 #' scaling applies only to the linear predictor and is not applied here.
 #'
@@ -186,7 +186,9 @@
 #' (\code{attr(fit, "formula_scale")}), which carries the fitted design of each
 #' formula. Standardization information without the fitted design stops with a
 #' \code{BayesTools_formula_transform_unavailable} error.
-#' @param parameter coefficient name to plot.
+#' @param parameter coefficient name to select.
+#' @param omit_identity return \code{NULL} when the coefficient transformation
+#' is the identity. This allows a caller to use the original prior object.
 #' @param n_points number of plotting points. A prior density that needs
 #' numerical integration (a Gaussian convolution, a scale mixture, or a sum of
 #' two non-normal terms) is plotted at no more than 200 equally spaced points
@@ -201,7 +203,10 @@
 #' @param par_name optional plotting label.
 #' @param ... additional plotting arguments.
 #'
-#' @return For \code{plot_type = "base"}, invisibly returns base-plot metadata.
+#' @return \code{transformed_prior_density()} returns the original-predictor-scale
+#' coefficient law as a \code{prior_linear_density} object, including its point
+#' masses, or \code{NULL} for an identity when \code{omit_identity = TRUE}.
+#' For \code{plot_type = "base"}, \code{plot_transformed_prior()} invisibly returns base-plot metadata.
 #' For \code{plot_type = "ggplot"}, returns a \code{ggplot} object. Returns
 #' \code{NULL} when the requested parameter is an identity transform and no
 #' output transformation was requested. A parameter without a prior in
@@ -221,38 +226,19 @@ plot_transformed_prior <- function(prior_list, column_names, formula_scale = NUL
                                    plot_type = c("base", "ggplot"),
                                    par_name = NULL, ...){
 
-  check_list(prior_list, "prior_list")
-  check_char(column_names, "column_names", check_length = FALSE)
-  check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
-  check_char(parameter, "parameter")
   check_int(n_points, "n_points", lower = 2)
   check_real(x_range, "x_range", check_length = 2, allow_NULL = TRUE)
   plot_type <- match.arg(plot_type)
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
 
-  if(!parameter %in% column_names){
-    stop("Parameter '", parameter, "' was not found in 'column_names'.", call. = FALSE)
-  }
-
-  if(is.null(transformation) &&
-     .plot_transformed_prior_is_identity(prior_list, column_names, formula_scale, parameter)){
-    return(NULL)
-  }
-
-  prior_densities <- .generate_transformed_prior_densities(
-    prior_list    = prior_list,
-    column_names  = parameter,
-    formula_scale = formula_scale
+  law <- transformed_prior_density(
+    prior_list, column_names, formula_scale, parameter,
+    omit_identity = is.null(transformation)
   )
-
-  if(!parameter %in% names(prior_densities)){
-    stop("The prior density of '", parameter, "' is unavailable: 'prior_list' has no prior ",
-         "for it. Supply the prior of the parameter or an identity parameter.", call. = FALSE)
-  }
-  .bt_formula_measure_check(prior_densities, "prior_density", parameter)
+  if(is.null(law)) return(NULL)
 
   plot_data <- .prior_linear_density_to_plot_data(
-    prior_densities[[parameter]],
+    law,
     n_points                 = n_points,
     x_range                  = x_range,
     transformation           = transformation,
@@ -266,6 +252,41 @@ plot_transformed_prior <- function(prior_list, column_names, formula_scale = NUL
     par_name  = if(is.null(par_name)) parameter else par_name,
     ...
   )
+}
+
+#' @rdname plot_transformed_prior
+#' @export
+transformed_prior_density <- function(prior_list, column_names, formula_scale = NULL,
+                                      parameter, omit_identity = FALSE){
+
+  check_list(prior_list, "prior_list")
+  check_char(column_names, "column_names", check_length = FALSE)
+  check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
+  check_char(parameter, "parameter")
+  check_bool(omit_identity, "omit_identity", allow_NA = FALSE)
+  if(!parameter %in% column_names){
+    stop("Parameter '", parameter, "' was not found in 'column_names'.", call. = FALSE)
+  }
+  owners <- .prior_linear_active_parameters(prior_list, stats::setNames(1, parameter))
+  if(!length(owners)){
+    stop("The prior density of '", parameter, "' is unavailable: 'prior_list' has no prior ",
+         "for it. Supply the prior of the parameter or an identity parameter.", call. = FALSE)
+  }
+
+  if(omit_identity &&
+     .plot_transformed_prior_is_identity(prior_list, column_names, formula_scale, parameter)){
+    return(NULL)
+  }
+
+  prior_densities <- .generate_transformed_prior_densities(
+    prior_list    = prior_list,
+    column_names  = parameter,
+    formula_scale = formula_scale,
+    parameters    = owners
+  )
+  .bt_formula_measure_check(prior_densities, "prior_density", parameter)
+
+  prior_densities[[parameter]]
 }
 
 .plot_transformed_prior_is_identity <- function(prior_list, column_names, formula_scale, parameter){

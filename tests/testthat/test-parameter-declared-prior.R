@@ -114,3 +114,49 @@ test_that("one-column ordered and point-vector SDs keep their scalar laws", {
     }
   }
 })
+
+test_that("scalar SD marginals match the constructor and the fitted coordinate law", {
+
+  simple <- prior("uniform", list(1, 3))
+  spike <- prior_spike_and_slab(simple, prior("beta", list(1, 3)))
+  mixture <- prior_mixture(list(prior("point", list(.5), prior_weights = 2), simple),
+    components = c("fixed", "estimated"))
+  for(contrast in c("treatment", "independent")){
+    for(expected in list(simple, spike, mixture)){
+      fit <- .declared_factor_sd_fit(expected, contrast)
+      selection <- parameter_catalog_resolve(parameter_catalog(fit), "(mu) sd(f[b])")
+      key <- selection$quantities$extraction_key[[1L]]
+      scalar <- parameter_declared_prior(fit, selection)
+      # The fitted prior additionally identifies its formula and random block.
+      # The marginal must retain all distribution and mixture attributes.
+      for(field in c("parameter", "random_sd", "random_factor", "random_grouping_factor",
+                     "random_name", "random_structure")) attr(scalar, field) <- NULL
+      expect_identical(scalar, expected)
+      coordinate <- .bt_parameter_prior_density_coordinates(fit, selection$quantities,
+        list(type = "coordinate", dependencies = key$source_parameter), n_grid = 512L,
+        tail_prob = 1e-6)
+      marginal <- parameter_prior_density(fit, selection, n_grid = 512L, tail_prob = 1e-6)
+      expect_equal(marginal$points, coordinate$points)
+      expect_equal(prior_density_ordinate(marginal, 2)$log_density,
+        prior_density_ordinate(coordinate, 2)$log_density)
+    }
+  }
+})
+
+test_that("a two-column LKJ correlation exposes the prior of its fitted primitive", {
+
+  data <- data.frame(x = c(1, 3, 4, 5, 1, 2), id = factor(rep(1:3, each = 2)))
+  result <- JAGS_formula(~ 1 + x + us(1 + x | id), "mu", data,
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+    prior_random = prior_random(id = random_block(sd = prior("gamma", list(2, 1)),
+      cor = prior_lkj(eta = 2))), formula_scale = TRUE)
+  term <- result$formula_design$random_effects[[1L]]
+  fit <- .prior_monitor_test_fit(result, c(JAGS_to_monitor(result$prior_list),
+    term$correlation$primitive_names))
+  fitted <- parameter_catalog_resolve(parameter_catalog(fit, transform_scaled = FALSE),
+    "(mu) cor(intercept,x)")
+  original <- parameter_catalog_resolve(parameter_catalog(fit), "(mu) cor(intercept,x)")
+  expect_null(parameter_declared_prior(fit, fitted))
+  expect_identical(parameter_declared_prior(fit, fitted, source = TRUE), prior("beta", list(2, 2)))
+  expect_null(parameter_declared_prior(fit, original, source = TRUE))
+})

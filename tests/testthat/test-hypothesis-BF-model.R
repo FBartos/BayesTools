@@ -3561,6 +3561,9 @@ test_that("the catalog of the fitted scale describes the fitted coordinates of a
   expect_identical(plain_fitted$quantities, parameter_catalog(plain)$quantities)
   expect_identical(plain_fitted$predictor_scale, "fitted")
   expect_identical(parameter_catalog(plain)$predictor_scale, "original")
+  plain_selection <- parameter_catalog_resolve(plain_fitted, "(mu) sd(x)")
+  expect_identical(parameter_mixed_posterior(plain, plain_selection),
+                   parameter_mixed_posterior(plain, plain_selection, transform_scaled = FALSE))
   expect_identical(parameter_catalog(fit), original)
 
 })
@@ -3694,6 +3697,7 @@ test_that("equal catalog rows retain the predictor scale of their allocated SD",
   original_sd <- fitted_sd / stats::sd(.hypothesis_model_test_x_values())
   expect_equal(as.numeric(as.matrix(parameter_draws(fit, fitted))), fitted_sd)
   expect_equal(as.numeric(as.matrix(parameter_draws(fit, original))), original_sd)
+  expect_identical(parameter_draws(.bt_parameter_fitted_fit(fit), fitted), parameter_draws(fit, fitted))
   expect_equal(as.numeric(parameter_mixed_posterior(fit, fitted, transform_scaled = FALSE)), fitted_sd)
   expect_error(parameter_mixed_posterior(fit, fitted, transform_scaled = TRUE),
                class = "BayesTools_parameter_resolution_error")
@@ -3708,6 +3712,10 @@ test_that("equal catalog rows retain the predictor scale of their allocated SD",
   unmarked$predictor_scale <- NULL
   expect_error(parameter_draws(fit, unmarked), "Resolve the parameter again",
                class = "BayesTools_parameter_resolution_error")
+  old_catalog <- catalog
+  old_catalog$predictor_scale <- NULL
+  expect_error(parameter_catalog_resolve(old_catalog, name), "Rebuild it with 'parameter_catalog",
+               fixed = TRUE, class = "BayesTools_parameter_resolution_error")
 })
 
 

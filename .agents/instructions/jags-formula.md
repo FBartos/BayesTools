@@ -985,7 +985,9 @@ from the fitted object. Downstream packages therefore
 select the scale through the catalog they resolve from and do not blank
 `formula_scale` of the fit. A selection of neither catalog is a stale or foreign
 selection, and `parameter_mixed_posterior(transform_scaled = TRUE)` refuses a
-selection of the fitted-scale catalog. The fit-cache key of the tests contains
+selection of the fitted-scale catalog when the fit has scaled predictors. For
+an unscaled fit, the posterior accepts either catalog view with either setting.
+The fit-cache key of the tests contains
 `parameter_catalog.BayesTools_fit` (the fitting file calls it): editing it, or
 what it calls, needs a `fit` profile refresh of the cached fits.
 

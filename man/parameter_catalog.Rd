@@ -111,8 +111,9 @@ on the public quantity scale for \code{parameter_transform_inverse()}.}
 }
 \value{
 \code{parameter_catalog()} and \code{parameter_catalog_extend()} return a
-\code{BayesTools_parameter_catalog}. \code{parameter_catalog_schema()} returns schema
-descriptions. \code{parameter_catalog_resolve()} returns a
+\code{BayesTools_parameter_catalog}. \code{parameter_catalog_schema()} returns the
+allowed \code{predictor_scale} values and descriptions of the catalog tables.
+\code{parameter_catalog_resolve()} returns a
 \code{BayesTools_parameter_selection}. \code{parameter_draws()} returns a
 \code{coda::mcmc.list} for BayesTools-owned quantities.
 \code{parameter_prior_density()} returns a \code{prior_linear_density} or \code{NULL}.
@@ -265,7 +266,8 @@ default catalog from the fit as it is (so blanking the \code{formula_scale} of t
 fit is not needed to extract the fitted scale). A selection that belongs to
 neither catalog stops as described above, and
 \code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}} stops for a selection of the fitted-scale
-catalog with \code{transform_scaled = TRUE}.
+catalog with \code{transform_scaled = TRUE} when the fit has scaled predictors.
+For a fit without scaled predictors either view yields the same draws.
 
 \code{parameter_draws()} is the deferred extraction boundary. The BayesTools fit
 method reads only the coordinates declared by the selected

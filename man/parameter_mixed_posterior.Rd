@@ -17,7 +17,9 @@ parameter_mixed_posterior(
 \item{selection}{a selection of one catalog quantity, created with
 \code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}} from the catalog of the fit
 (\code{\link[=parameter_catalog]{parameter_catalog()}}) or, with \code{transform_scaled = FALSE}, from the
-catalog of the fitted scale (\code{parameter_catalog(fit, transform_scaled = FALSE)}); a selection of the latter with \code{transform_scaled = TRUE} stops.}
+catalog of the fitted scale (\code{parameter_catalog(fit, transform_scaled = FALSE)}); a selection of the latter with \code{transform_scaled = TRUE} stops
+when the fit declares scaled predictors. On a fit without scaled
+predictors, either selection gives the same posterior.}
 
 \item{conditional}{whether to condition on the inclusion event of the
 quantity: the gates of its allocation chain on for an allocation-derived

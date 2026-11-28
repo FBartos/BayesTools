@@ -162,7 +162,8 @@
 #' fit is not needed to extract the fitted scale). A selection that belongs to
 #' neither catalog stops as described above, and
 #' [parameter_mixed_posterior()] stops for a selection of the fitted-scale
-#' catalog with `transform_scaled = TRUE`.
+#' catalog with `transform_scaled = TRUE` when the fit has scaled predictors.
+#' For a fit without scaled predictors either view yields the same draws.
 #'
 #' `parameter_draws()` is the deferred extraction boundary. The BayesTools fit
 #' method reads only the coordinates declared by the selected
@@ -351,6 +352,15 @@ parameter_catalog.BayesTools_fit <- function(object, transform_scaled = TRUE, ..
   .bt_parameter_map_catalog(parameter_map(object))
 }
 
+# A fitted-scale view clears the fit-level scales, and keeps the original
+# formula design. Check both declarations when deciding whether scales differ.
+.bt_parameter_fit_has_scaled_predictors <- function(fit){
+
+  designs <- attr(fit, "formula_design", exact = TRUE)
+  .bt_formula_scale_has_scaled(attr(fit, "formula_scale", exact = TRUE)) ||
+    .bt_formula_scale_has_scaled(lapply(designs, `[[`, "formula_scale"))
+}
+
 # The parameter map of the fitted scale of the predictors. The catalog of a
 # fit with scaled predictors describes the original scale of its random-effect
 # SDs, variances, and correlations (support, atoms, gates, extraction, scale of
@@ -365,11 +375,7 @@ parameter_catalog.BayesTools_fit <- function(object, transform_scaled = TRUE, ..
   map            <- parameter_map(fit)
   prior_list     <- attr(fit, "prior_list", exact = TRUE)
   formula_design <- attr(fit, "formula_design", exact = TRUE)
-  declared <- length(attr(fit, "formula_scale", exact = TRUE)) > 0L ||
-    any(vapply(formula_design, function(design){
-      length(design[["formula_scale"]]) > 0L
-    }, logical(1)))
-  if(!declared){
+  if(!.bt_parameter_fit_has_scaled_predictors(fit)){
     return(map)
   }
 
@@ -5586,6 +5592,13 @@ parameter_transform_jacobian <- function(values, transform){
 
 .bt_validate_parameter_catalog <- function(catalog){
 
+  if(inherits(catalog, "BayesTools_parameter_catalog") && is.list(catalog) &&
+     is.null(catalog[["predictor_scale"]])){
+    .bt_parameter_selection_stop(paste0(
+      "The catalog does not record its predictor scale. Rebuild it with 'parameter_catalog(fit)' ",
+      "or 'parameter_catalog(fit, transform_scaled = FALSE)' and resolve the parameter again."
+    ))
+  }
   valid <- inherits(catalog, "BayesTools_parameter_catalog") &&
     is.list(catalog) &&
     identical(names(catalog), c("schema_version", "predictor_scale", "quantities", "aliases", "relationships")) &&

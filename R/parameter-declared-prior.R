@@ -8,9 +8,11 @@
 #'
 #' @param object a `BayesTools_fit`.
 #' @param selection one quantity resolved by [parameter_catalog_resolve()].
-#' @param source logical. With `TRUE`, a one-to-one transformation such as the
-#' square of an SD also returns its scalar source prior. For a fitted two-column
-#' LKJ correlation this is the Beta prior on its primitive in \code{[0, 1]}.
+#' @param source logical. With `FALSE`, the selected quantity must be the
+#' identity of a scalar prior. With `TRUE`, a one-to-one transformation such as
+#' a variance or a rescaled slope SD returns its source prior in fitted units.
+#' For a fitted two-column LKJ correlation this is the Beta prior on its primitive
+#' in \code{[0, 1]}. A composite quantity has no single source prior.
 #'
 #' @return A scalar `prior` object, including a scalar mixture or spike-and-slab
 #' prior. Returns `NULL` for a quantity without a supported declaration of this
@@ -33,7 +35,8 @@ parameter_declared_prior <- function(object, selection, source = FALSE){
     return(NULL)
   }
   if(!source && !(identical(key$source_type, "identity") &&
-                  identical(key$source_transform, "identity"))){
+                  identical(key$source_transform, "identity") &&
+                  (identical(key$source_scale, NA_real_) || isTRUE(key$source_scale == 1)))){
     return(NULL)
   }
 
@@ -47,7 +50,13 @@ parameter_declared_prior <- function(object, selection, source = FALSE){
   }
   if(identical(key$source_transform, "lkj2")){
     term <- .bt_parameter_catalog_find_random_term(object, key)
-    eta <- term$correlation$eta
+    correlation <- .bt_random_effect_correlation_metadata(term)
+    eta <- correlation$eta
+    if(!identical(correlation$type, "lkj") || !isTRUE(term$n_columns == 2L) ||
+       !identical(key$source_parameter, correlation$primitive_names) ||
+       !is.numeric(eta) || length(eta) != 1L || !is.finite(eta) || eta <= 0){
+      return(NULL)
+    }
     return(prior("beta", list(alpha = eta, beta = eta)))
   }
   if(!key$evaluator %in% c("sd", "sd_variance", "allocation_sd", "allocation_var", "rho")){
@@ -57,13 +66,13 @@ parameter_declared_prior <- function(object, selection, source = FALSE){
   if(!is.prior(owner)){
     return(NULL)
   }
-  if(!.bt_prior_is_factor_family(owner) && !is.prior.vector(owner)){
-    if(is.prior.simple(owner) || inherits(owner, "prior.simple_mixture")) return(owner)
-    return(NULL)
-  }
   columns <- .prior_linear_prior_columns(key$source_prior, owner)
   index <- match(key$source_parameter, columns)
   if(is.na(index)){
+    return(NULL)
+  }
+  if(!.bt_prior_is_factor_family(owner) && !is.prior.vector(owner)){
+    if(is.prior.simple(owner) || inherits(owner, "prior.simple_mixture")) return(owner)
     return(NULL)
   }
   if(is.prior.vector(owner) && is.prior.point(owner)){
@@ -92,13 +101,16 @@ parameter_declared_prior <- function(object, selection, source = FALSE){
     members <- lapply(x, .bt_random_factor_sd_scalar_prior)
     if(any(vapply(members, is.null, logical(1)))) return(NULL)
     x[] <- members
+    # Restore the constructors' method dispatch order. The formula compiler
+    # can add its factor wrapper after the existing scalar mixture classes.
+    class(x) <- c("prior",
+      if(is.prior.spike_and_slab(x)) c("prior.spike_and_slab", "prior.simple_spike_and_slab"),
+      "prior.simple_mixture", "prior.mixture")
   }else if(!is.prior.simple(x) || is.prior.vector(x)){
     return(NULL)
+  }else{
+    class(x) <- setdiff(class(x), c("prior.factor", "prior.treatment", "prior.independent"))
   }
-  classes <- setdiff(class(x), c("prior.factor", "prior.treatment", "prior.independent"))
-  classes[classes == "prior.factor_mixture"] <- "prior.simple_mixture"
-  classes[classes == "prior.factor_spike_and_slab"] <- "prior.simple_spike_and_slab"
-  class(x) <- unique(classes)
   for(field in c(.bt_factor_metadata_names, "K")){
     attr(x, field) <- NULL
   }

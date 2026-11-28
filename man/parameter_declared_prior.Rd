@@ -11,9 +11,11 @@ parameter_declared_prior(object, selection, source = FALSE)
 
 \item{selection}{one quantity resolved by \code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}.}
 
-\item{source}{logical. With \code{TRUE}, a one-to-one transformation such as the
-square of an SD also returns its scalar source prior. For a fitted two-column
-LKJ correlation this is the Beta prior on its primitive in \code{[0, 1]}.}
+\item{source}{logical. With \code{FALSE}, the selected quantity must be the
+identity of a scalar prior. With \code{TRUE}, a one-to-one transformation such as
+a variance or a rescaled slope SD returns its source prior in fitted units.
+For a fitted two-column LKJ correlation this is the Beta prior on its primitive
+in \code{[0, 1]}. A composite quantity has no single source prior.}
 }
 \value{
 A scalar \code{prior} object, including a scalar mixture or spike-and-slab
