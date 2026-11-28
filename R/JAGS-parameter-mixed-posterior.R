@@ -241,7 +241,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   }
   quantity <- selection$quantities[1L, , drop = FALSE]
   plan <- .bt_parameter_gate_plan(fit, quantity)
-  if(is.null(plan)){
+  if(is.null(plan) || (isTRUE(plan$atom_free) && is.null(plan$event_components))){
     return(NULL)
   }
   if(is.null(draws)){
@@ -1129,9 +1129,9 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     ))
   }
   if(identical(plan$kind, "point")){
-    if(isTRUE(plan$unknown)){
+    if(isTRUE(plan$unknown) || (isTRUE(plan$atom_free) && is.null(plan$indicator))){
       return(list(atom = rep(NA_real_, n), defined = defined, event = NULL,
-                  known = FALSE))
+                  known = isTRUE(plan$atom_free)))
     }
     if(!is.null(plan$discrete_total)){
       spec <- plan$discrete_total
@@ -1330,10 +1330,21 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   indicator <- paste0(indicator_owner, "_indicator")
   coordinates <- parameter_coordinates(fit)
   required <- c(if(!single_total) indicator, discrete_total$total_names)
-  known <- all(coordinates$monitor_status[match(required, coordinates$coordinate_name)] %in% c("sampled", "structural"))
+  missing <- required[!coordinates$monitor_status[match(required, coordinates$coordinate_name)] %in% c("sampled", "structural")]
+  known <- !length(missing)
+  atom_free <- ordered_total && all(vapply(members, function(member){
+    !is.prior.discrete(member) && isFALSE(.bt_prior_has_point_component(member))
+  }, logical(1)))
   event <- if(single_total){
     list(components = NULL, reason = if(is.prior.point(prior)) "its ordered total is fixed" else "its ordered total has no inclusion gate")
   }else .bt_parameter_point_event_components(prior, locations)
+  if(ordered_total && !known && is.null(event$reason)){
+    event$reason <- if(indicator %in% missing){
+      "the component indicator of its prior is not monitored"
+    }else{
+      paste0("its ordered total coordinate '", missing[[1L]], "' is not monitored")
+    }
+  }
 
   list(
     kind        = "point",
@@ -1345,7 +1356,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     indicator   = if(known && !single_total) indicator,
     discrete_total = discrete_total,
     transform   = transform,
-    unknown     = !known,
+    unknown     = !known && !atom_free,
+    atom_free   = atom_free,
     chain_gates = character(),
     # the inclusion event (parameter_mixed_posterior(conditional = TRUE)): the
     # draws whose monitored indicator selects a continuous component
@@ -1424,7 +1436,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   if(identical(plan$origin, "indicator")){
     refuse("it is the inclusion indicator of a component of its prior")
   }
-  if(isTRUE(plan$unknown)){
+  if(isTRUE(plan$unknown) && !identical(plan$origin, "ordered_total")){
     refuse(paste0(
       "the component indicator of its prior is not monitored (the point ",
       "components are not in the draws)"

@@ -180,7 +180,7 @@ test_that("a centered random slope leaves the original intercept SD's declared p
   expect_null(parameter_declared_prior(fit, slope))
 })
 
-.declared_ordered_sd_fixture <- function(total, omit_indicator = FALSE){
+.declared_ordered_sd_fixture <- function(total, omit_indicator = FALSE, omit_total = FALSE){
 
   data <- data.frame(f = ordered(rep(c("low", "high"), 4), levels = c("low", "high")),
                      id = factor(rep(1:4, each = 2)))
@@ -191,6 +191,7 @@ test_that("a centered random slope leaves the original intercept SD's declared p
   owner <- result$formula_design$random_effects[[1L]]$sd_parameter_names
   indicator <- paste0(prior_ordered_total_name(owner), "_indicator")
   if(omit_indicator) draws <- draws[, setdiff(colnames(draws), indicator), drop = FALSE]
+  if(omit_total) draws <- draws[, setdiff(colnames(draws), prior_ordered_total_name(owner)), drop = FALSE]
   fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), result$prior_list,
     formula_design = list(mu = result$formula_design))
   list(fit = fit, draws = draws, owner = owner, indicator = indicator)
@@ -288,4 +289,39 @@ test_that("Bernoulli ordered SD totals declare their observed discrete branch an
   selection <- parameter_catalog_resolve(parameter_catalog(fit), "(mu) sd(f)")
   expect_false(parameter_gate_states(fit, selection)$known)
   expect_error(parameter_mixed_posterior(fit, selection, conditional = TRUE), "not monitored")
+  for(total in list(binary, mixture)){
+    fit <- .declared_ordered_sd_fixture(total, omit_total = TRUE)$fit
+    selection <- parameter_catalog_resolve(parameter_catalog(fit), "(mu) sd(f)")
+    expect_false(parameter_gate_states(fit, selection)$known)
+    reason <- if(is.prior.mixture(total)) "ordered total coordinate 'mu__xREx__id_f_ordered_total' is not monitored" else "no inclusion gate"
+    expect_error(parameter_mixed_posterior(fit, selection, conditional = TRUE), reason, fixed = TRUE)
+  }
+})
+
+test_that("continuous ordered mixtures retain component metadata independently of gate states", {
+
+  members <- list(prior("uniform", list(1, 2)), prior("uniform", list(3, 4)))
+  for(omit in c(FALSE, TRUE)){
+    fit <- .declared_ordered_sd_fixture(prior_mixture(members, components = c("a", "b")),
+      omit_indicator = omit)$fit
+    selected <- parameter_catalog_resolve(parameter_catalog(fit), "(mu) sd(f)")
+    expect_null(parameter_gate_states(fit, selected))
+    posterior <- parameter_mixed_posterior(fit, selected)
+    expect_length(posterior_metadata(posterior, "atoms")$mass, 0)
+    if(!omit) expect_length(.posterior_components_get(posterior)$supports, 2)
+
+    fit <- .declared_ordered_sd_fixture(prior_mixture(members, is_null = c(TRUE, FALSE)),
+      omit_indicator = omit)$fit
+    selected <- parameter_catalog_resolve(parameter_catalog(fit), "(mu) sd(f)")
+    states <- parameter_gate_states(fit, selected)
+    expect_true(states$known)
+    expect_true(all(states$continuous))
+    if(omit){
+      expect_null(states$event)
+      expect_error(parameter_mixed_posterior(fit, selected, conditional = TRUE), "component indicator")
+    }else{
+      conditional <- parameter_mixed_posterior(fit, selected, conditional = TRUE)
+      expect_equal(posterior_metadata(conditional, "support")$bounds, c(3, 4))
+    }
+  }
 })
